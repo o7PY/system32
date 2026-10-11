@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goggle</title>
+<style>
+  :root { color-scheme: light; --accent: #5b4bd6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #fff; color: #202124; min-height: 100vh; }
+  .wordmark { font-weight: 700; letter-spacing: -.03em; user-select: none; }
+  .wordmark span:nth-child(1) { color: #6a4cff; } .wordmark span:nth-child(2) { color: #00a88f; }
+  .wordmark span:nth-child(3) { color: #ff7043; } .wordmark span:nth-child(4) { color: #1e9bd7; }
+  .wordmark span:nth-child(5) { color: #e0457b; } .wordmark span:nth-child(6) { color: #f2a100; }
+  form.box { position: relative; display: flex; align-items: center; background: #fff; border: 1px solid #dadce0; border-radius: 26px; padding: 0 18px; height: 48px; box-shadow: 0 1px 4px rgba(32,33,36,.12); }
+  form.box:focus-within { box-shadow: 0 1px 8px rgba(32,33,36,.28); border-color: transparent; }
+  form.box svg { width: 18px; height: 18px; flex: none; margin-right: 12px; stroke: #80868b; fill: none; stroke-width: 2; stroke-linecap: round; }
+  form.box input { flex: 1; border: 0; outline: 0; font: inherit; font-size: 16px; background: none; height: 100%; }
+
+  /* home */
+  #home { display: flex; flex-direction: column; align-items: center; padding-top: 17vh; }
+  #home .wordmark { font-size: 76px; margin-bottom: 26px; }
+  #home form.box { width: min(560px, 88vw); }
+  .btns { display: flex; gap: 12px; margin-top: 26px; }
+  .btns button { font: inherit; font-size: 14px; background: #f3f4f6; border: 1px solid #f3f4f6; border-radius: 6px; padding: 10px 18px; color: #3c4043; cursor: pointer; }
+  .btns button:hover { border-color: #dadce0; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .tagline { margin-top: 34px; font-size: 12.5px; color: #70757a; }
+
+  /* results */
+  #results { display: none; }
+  body.has-results #home { display: none; }
+  body.has-results #results { display: block; }
+  header { display: flex; align-items: center; gap: 28px; padding: 18px 28px 14px; border-bottom: 1px solid #ebebeb; }
+  header .wordmark { font-size: 30px; cursor: pointer; }
+  header form.box { width: min(560px, 60vw); height: 42px; }
+  .page { max-width: 660px; padding: 14px 28px 60px 28px; margin-left: 150px; }
+  @media (max-width: 900px) { .page { margin-left: 0; } }
+  .meta { color: #70757a; font-size: 13px; margin-bottom: 14px; }
+  .dym { font-size: 17px; margin: 4px 0 18px; }
+  .dym a { color: #1a0dab; font-style: italic; font-weight: 600; cursor: pointer; text-decoration: none; }
+  .dym a:hover { text-decoration: underline; }
+  .res { margin-bottom: 26px; }
+  .res .url { font-size: 13px; color: #4d5156; }
+  .res h3 { margin: 2px 0 3px; font-size: 20px; font-weight: 400; color: #1a0dab; }
+  .res p { margin: 0; font-size: 14px; line-height: 1.58; color: #4d5156; }
+  .res.post { border-left: 3px solid var(--accent); padding-left: 14px; }
+  .res.post .who { font-size: 12.5px; color: #70757a; margin-bottom: 2px; }
+  h2.sec { font-size: 14px; font-weight: 600; color: #5f6368; margin: 22px 0 12px; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+
+<section id="home">
+  <div class="wordmark" aria-label="Goggle"><span>G</span><span>o</span><span>g</span><span>g</span><span>l</span><span>e</span></div>
+  <form class="box" id="homeForm" role="search">
+    <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5"/></svg>
+    <input id="homeQ" type="text" autocomplete="off" spellcheck="false" aria-label="Search Goggle" autofocus>
+  </form>
+  <div class="btns">
+    <button type="button" id="searchBtn">Goggle Search</button>
+    <button type="button" id="corruptBtn">I'm Feeling Corrupted</button>
+  </div>
+  <div class="tagline">Goggle is offline-first. Everything else is offline-only.</div>
+</section>
+
+<section id="results">
+  <header>
+    <div class="wordmark" id="miniMark" role="link" tabindex="0" aria-label="Goggle home"><span>G</span><span>o</span><span>g</span><span>g</span><span>l</span><span>e</span></div>
+    <form class="box" id="resForm" role="search">
+      <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5"/></svg>
+      <input id="resQ" type="text" autocomplete="off" spellcheck="false" aria-label="Search Goggle">
+    </form>
+  </header>
+  <div class="page" id="page"></div>
+</section>
+
+<script src="../../games/_shared/sdk.js" data-game="goggle"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---- easter egg table: add a key here and it just works --------------------------------
+     key (lower-case, trimmed) -> { egg, results[], didYouMean?, posts?, run?() }              */
+  var SUDO = {
+    egg: 'sudo',
+    results: [{ url: 'sys32://goggle/sudoers', title: 'sudo: permission denied',
+      text: 'User is not in the sudoers file. This incident will be reported.' }],
+    run: function () { setTimeout(function () { System32.effect('toast', { title: 'Security', text: 'Incident reported.', egg: 'sudo' }); }, 2000); }
+  };
+  var RECURSION = {
+    egg: 'did-you-mean',
+    didYouMean: 'recursion',
+    results: [
+      { url: 'sys32://goggle/define?recursion', title: 'Recursion - Definition and Meaning', text: 'See: recursion. (Also see: Did you mean "recursion"?)' },
+      { url: 'sys32://encyclopedia-briefcase/Recursion', title: 'Recursion - Encyclopedia Briefcase', text: 'Recursion occurs when a thing is defined in terms of itself. For the definition of recursion, see recursion.' }
+    ],
+    run: function () { System32.effect('egg', { egg: 'did-you-mean' }); }
+  };
+  var EGGS = {
+    'how to exit vim': {
+      egg: 'vim',
+      results: [
+        { url: 'sys32://stackunderflow/questions/11828270', title: 'How do I exit Vim? - StackUnderflow', text: 'I opened vim 11 years ago and I am typing this from inside it. Please send help. Tried :q, :q!, :wq, ZZ, Esc, prayer.' },
+        { url: 'sys32://goggle/vim-cheatsheet', title: 'The Vim cheat sheet that will not set you free', text: 'Step 1: press Esc. Step 2: press Esc again. Step 3: realise you are in a different vim now.' },
+        { url: 'sys32://news/vim-trapped', title: 'Local man trapped in terminal editor since 2009', text: 'Reports say he is "doing fine" and "has learned to love the hjkl".' }
+      ],
+      run: function () { setTimeout(function () { System32.effect('crash', { egg: 'vim' }); }, 1300); }
+    },
+    'sudo': SUDO,
+    'do a barrel roll': {
+      egg: 'barrel-roll',
+      results: [
+        { url: 'sys32://goggle/roll', title: 'Do a barrel roll - Goggle', text: 'Whee. Please remain seated with your browser fastened.' },
+        { url: 'sys32://games/starcat', title: 'Starcat 64 - Barrel roll guide', text: 'Press Z twice. Or R twice. Or do it in the browser.' }
+      ],
+      run: function () {
+        document.documentElement.animate([{ transform: 'rotate(0turn)' }, { transform: 'rotate(1turn)' }], { duration: 1100, easing: 'ease-in-out' });
+        System32.effect('egg', { egg: 'barrel-roll' });
+      }
+    },
+    'system32': {
+      egg: 'forum',
+      results: [],
+      posts: [
+        { who: 'u/closed_one_more · 14 replies', title: 'Why does my "free prize" keep multiplying??', text: 'I closed one and three more appeared. I am starting to think the page is alive. Anyone else notice it never really runs out?' },
+        { who: 'bankruptcy_bob · 3 replies', title: 'Locked out of my own bank account but the password was RIGHT THERE', text: 'Replies say "have you tried reading the page properly?" The page looks normal?? Not the page they meant, apparently.' },
+        { who: 'cascade_victim · 27 replies', title: 'my CSS has opinions', text: 'One !important and now everything is pink. I reordered the rules and it got worse. Who is winning here and why is it not me.' },
+        { who: 'window_whisperer · 9 replies', title: 'windows will not stay where i put them', text: 'Dragged it left, it went right. Then one popped up that just said 404. I think the recovery tool is trying to tell me something.' }
+      ],
+      run: function () { System32.effect('egg', { egg: 'forum' }); }
+    },
+    'delete system32': {
+      egg: 'delete-system32',
+      results: [
+        { url: 'sys32://goggle/rm', title: 'rm -rf /windows/system32 - are you sure?', text: 'It will not make your computer faster. It will make your computer a sculpture.' }
+      ],
+      run: function () { setTimeout(function () { System32.effect('bsod', { egg: 'delete-system32' }); }, 900); }
+    },
+    'goggle': RECURSION,
+    'recursion': RECURSION
+  };
+
+  function lookup(q) {
+    var k = q.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (k === 'sudo' || k.indexOf('sudo ') === 0) return SUDO;
+    return Object.prototype.hasOwnProperty.call(EGGS, k) ? EGGS[k] : null;
+  }
+
+  /* ---- rendering (textContent only: nothing from the query is ever parsed as HTML) ---- */
+  var page = document.getElementById('page');
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+  function showResults(q, entry, withEffects) {
+    document.body.classList.add('has-results');
+    document.getElementById('resQ').value = q;
+    document.title = q + ' - Goggle';
+    page.textContent = '';
+    var n = entry.results.length + (entry.posts ? entry.posts.length : 0);
+    page.appendChild(el('div', 'meta', 'About ' + (n * 421 + 1337).toLocaleString() + ' results (0.' + (30 + n * 7) + ' seconds)'));
+
+    if (entry.didYouMean) {
+      var d = el('div', 'dym', 'Did you mean: ');
+      var a = el('a', null, entry.didYouMean);
+      a.tabIndex = 0;
+      a.setAttribute('role', 'link');
+      a.addEventListener('click', function () { submit(entry.didYouMean); });
+      a.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(entry.didYouMean); });
+      d.appendChild(a); d.appendChild(document.createTextNode('?'));
+      page.appendChild(d);
+    }
+    entry.results.forEach(function (r) {
+      var box = el('div', 'res');
+      box.appendChild(el('div', 'url', r.url));
+      box.appendChild(el('h3', null, r.title));
+      box.appendChild(el('p', null, r.text));
+      page.appendChild(box);
+    });
+    if (entry.posts) {
+      page.appendChild(el('h2', 'sec', 'Forum threads'));
+      entry.posts.forEach(function (p) {
+        var box = el('div', 'res post');
+        box.appendChild(el('div', 'who', p.who));
+        box.appendChild(el('h3', null, p.title));
+        box.appendChild(el('p', null, p.text));
+        page.appendChild(box);
+      });
+    }
+    if (withEffects && entry.run) entry.run();
+  }
+
+  function showHome(q) {
+    document.body.classList.remove('has-results');
+    document.title = 'Goggle';
+    var input = document.getElementById('homeQ');
+    input.value = q || '';
+    input.focus();
+  }
+
+  function submit(raw) {
+    var q = String(raw || '').trim();
+    if (!q) return;
+    var entry = lookup(q);
+    if (!entry) { System32.navigate('offline'); return; }     // anything else: the internet is down
+    System32.navigate('search', q);                           // lets the shell update address bar + history
+    showResults(q, entry, true);
+  }
+
+  document.getElementById('homeForm').addEventListener('submit', function (e) { e.preventDefault(); submit(document.getElementById('homeQ').value); });
+  document.getElementById('resForm').addEventListener('submit', function (e) { e.preventDefault(); submit(document.getElementById('resQ').value); });
+  document.getElementById('searchBtn').addEventListener('click', function () { submit(document.getElementById('homeQ').value); });
+  document.getElementById('corruptBtn').addEventListener('click', function () { System32.navigate('random'); });
+  document.getElementById('miniMark').addEventListener('click', function () { System32.navigate('home'); showHome(''); });
+
+  /* ---- initial load: ?q=... (history navigation or Start-menu search). fresh=1 means "a new search" ---- */
+  var params = new URLSearchParams(location.search);
+  var q0 = params.get('q');
+  var fresh = params.get('fresh') === '1';
+  if (q0) {
+    var entry0 = lookup(q0);
+    if (entry0) showResults(q0, entry0, fresh);
+    else if (fresh) System32.navigate('offline');
+    else showHome(q0);
+  } else {
+    showHome('');
+  }
+  System32.ready();
+})();
+</script>
+</body>
+</html>

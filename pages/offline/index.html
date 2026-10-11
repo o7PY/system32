@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No internet</title>
+<style>
+  :root { color-scheme: light dark; --fg: #535353; --bg: #fff; --muted: #70757a; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #d0d0d0; --bg: #202124; --muted: #9aa0a6; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); font-family: "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 6vh 20px 20px; }
+  svg.plug { width: 110px; height: 70px; stroke: var(--fg); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  h1 { margin: 14px 0 6px; font-size: 26px; font-weight: 500; }
+  p { margin: 4px 0; color: var(--muted); font-size: 14px; text-align: center; max-width: 520px; line-height: 1.5; }
+  code { font-size: 12px; }
+  #stage { margin-top: 28px; width: min(640px, 100%); position: relative; }
+  canvas { width: 100%; height: auto; display: block; background: transparent; image-rendering: pixelated; outline: none; }
+  #hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+<svg class="plug" viewBox="0 0 110 70" aria-hidden="true">
+  <path d="M8 35h24"/><rect x="32" y="22" width="22" height="26" rx="4"/><path d="M42 22v-8M44 14h-4"/>
+  <path d="M78 35h24"/><rect x="62" y="22" width="22" height="26" rx="4"/><path d="M68 12v10M74 12v10" stroke-width="0"/>
+  <path d="M56 30l-4 5 6 2-4 6" stroke-width="2.5"/>
+</svg>
+<h1>No internet</h1>
+<p>Try checking the network cables, modem, and router. Or reconnecting to Wi-Fi. Or giving up and playing this instead.</p>
+<p><code>ERR_INTERNET_DISCONNECTED</code></p>
+
+<div id="stage"><canvas id="c" width="640" height="200" tabindex="0" aria-label="Runner game: press Space or click to jump"></canvas></div>
+<div id="hint">Press Space / click to jump. Avoid the bugs.</div>
+
+<script src="../../games/_shared/sdk.js" data-game="offline"></script>
+<script>
+(function () {
+  'use strict';
+  var cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  var W = 640, H = 200, GROUND = 168;
+  var fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#535353';
+  var hi = 0, score = 0, speed, bugs, py, vy, grounded, started, over, paused, spawn;
+
+  function reset() { speed = 5; bugs = []; py = GROUND; vy = 0; grounded = true; score = 0; over = false; spawn = 50; }
+  reset(); started = false; paused = false;
+
+  function jump() {
+    if (over) { reset(); started = true; return; }
+    started = true;
+    if (grounded) { vy = -11.5; grounded = false; }
+  }
+  addEventListener('keydown', function (e) { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); } });
+  cv.addEventListener('pointerdown', function () { cv.focus(); jump(); });
+
+  function step() {
+    if (!started || over || paused) return;
+    vy += 0.62; py += vy;
+    if (py >= GROUND) { py = GROUND; vy = 0; grounded = true; }
+    if (--spawn <= 0) { bugs.push({ x: W + 10, w: 18, h: 14 + (Math.random() < 0.3 ? 8 : 0) }); spawn = (40 + Math.random() * 55) * (5 / speed) + 18; }
+    bugs.forEach(function (b) { b.x -= speed; });
+    bugs = bugs.filter(function (b) { return b.x > -40; });
+    speed += 0.0025; score += speed * 0.02;
+    // player hitbox is a bit smaller than the sprite (14x22)
+    for (var i = 0; i < bugs.length; i++) {
+      var b = bugs[i];
+      if (60 + 12 > b.x + 2 && 60 + 2 < b.x + b.w - 2 && py > GROUND - b.h + 2) { die(); break; }
+    }
+  }
+
+  function die() {
+    over = true;
+    var s = Math.floor(score);
+    if (s > hi) { hi = s; System32.progress('high score', hi); }
+  }
+
+  function drawCursor(x, y) {                 // pixel arrow, 3px "pixels"
+    ctx.fillStyle = fg;
+    var px = [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[1,1],[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[3,3],[3,4],[3,5],[3,6],[3,7],[4,4],[4,5],[4,6],[4,7],[4,8],[5,5],[5,6],[5,7],[5,8],[5,9],[6,6],[6,7],[6,10],[6,9],[7,7]];
+    px.forEach(function (p) { ctx.fillRect(x + p[0] * 2.4, y - 25 + p[1] * 2.4, 2.4, 2.4); });
+  }
+  function drawBug(b) {
+    var y = GROUND - b.h;
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, y + b.h * 0.6, b.w / 2, b.h * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(b.x + b.w - 5, y + 1, 5, 5);
+    ctx.strokeStyle = fg; ctx.lineWidth = 1.5;
+    for (var i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(b.x + 4 + i * 5, y + b.h); ctx.lineTo(b.x + 1 + i * 5, y + b.h + 4); ctx.stroke(); }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, GROUND + 4, W, 2);
+    for (var i = 0; i < 14; i++) ctx.fillRect(((i * 53 - score * 6) % W + W) % W, GROUND + 10 + (i % 3) * 5, 8, 1.5);
+    drawCursor(60, py);
+    bugs.forEach(drawBug);
+    ctx.font = '16px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('HI ' + String(hi).padStart(5, '0') + '  ' + String(Math.floor(score)).padStart(5, '0'), W - 12, 24);
+    ctx.textAlign = 'center';
+    if (!started) ctx.fillText('Press Space to start', W / 2, 90);
+    if (over) { ctx.font = '20px ui-monospace, Consolas, monospace'; ctx.fillText('G A M E   O V E R', W / 2, 80); ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText('Space to try again', W / 2, 104); }
+    if (paused && !over) ctx.fillText('paused', W / 2, 90);
+  }
+
+  function frame() { step(); draw(); requestAnimationFrame(frame); }
+  requestAnimationFrame(frame);
+
+  System32.onInit(function (i) { if (i && i.highScore > hi) hi = i.highScore; });
+  System32.onPause(function () { paused = true; });
+  System32.onResume(function () { paused = false; });
+  System32.ready();
+})();
+</script>
+</body>
+</html>

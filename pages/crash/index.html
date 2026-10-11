@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vim</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14161a; color: #d6dae0; font: 15px/1.35 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow: hidden; }
+  #screen { box-sizing: border-box; padding: 8px 12px; height: 100%; display: flex; flex-direction: column; }
+  .lines { flex: 1; overflow: hidden; }
+  .lines div { height: 20px; }
+  .tilde { color: #5d7bd6; }
+  .bar { background: #2b3040; padding: 0 8px; height: 20px; }
+  #cmd { height: 22px; }
+  .cursor { display: inline-block; width: 8px; height: 15px; background: #d6dae0; vertical-align: -2px; animation: b 1s steps(1) infinite; }
+  @keyframes b { 50% { opacity: 0; } }
+  .err { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<div id="screen">
+  <div class="lines" id="lines"><div>I just wanted to edit one line.</div></div>
+  <div class="bar">[No Name]                                                    1,1   All</div>
+  <div id="cmd"><span id="typed">-- INSERT --</span><span class="cursor"></span></div>
+</div>
+<script src="../../games/_shared/sdk.js" data-game="crash"></script>
+<script>
+(function () {
+  'use strict';
+  var lines = document.getElementById('lines'), typed = document.getElementById('typed');
+  for (var i = 0; i < 40; i++) { var d = document.createElement('div'); d.className = 'tilde'; d.textContent = '~'; lines.appendChild(d); }
+
+  var attempts = [
+    [':q', 'E37: No write since last change (add ! to override)'],
+    [':q!', 'E162: No write since last change for buffer "[No Name]"'],
+    [':wq', 'E32: No file name'],
+    ['ZZ', 'E32: No file name'],
+    ['<Esc><Esc><Esc>', '-- INSERT --'],
+    [':exit', 'E492: Not an editor command: exit'],
+    ['Ctrl-C', 'Type  :qa!  and press <Enter> to abandon all changes and exit Vim'],
+    [':qa!', 'E37: Where did you even get that from?'],
+    ['please', 'E492: Not an editor command: please']
+  ];
+  var n = 0;
+  function next() {
+    var a = attempts[n % attempts.length]; n++;
+    var i = 0;
+    typed.className = '';
+    typed.textContent = '';
+    (function type() {
+      if (i <= a[0].length) { typed.textContent = a[0].slice(0, i++); setTimeout(type, 55); }
+      else setTimeout(function () { typed.className = 'err'; typed.textContent = a[1]; setTimeout(next, 450); }, 140);
+    })();
+  }
+  next();
+  System32.ready();
+})();
+</script>
+</body>
+</html>

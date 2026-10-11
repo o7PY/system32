@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System32</title>
+  <meta name="description" content="A fake Windows-style desktop that is falling apart. Beat four mini-games to repair it.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230067c0'/%3E%3Ccircle cx='11' cy='11' r='4.5' fill='%234cc2ff'/%3E%3Ccircle cx='21' cy='11' r='4.5' fill='%23fff'/%3E%3Ccircle cx='11' cy='21' r='4.5' fill='%23fff'/%3E%3Ccircle cx='21' cy='21' r='4.5' fill='%234cc2ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/desktop.css">
+  <link rel="stylesheet" href="css/taskbar.css">
+  <link rel="stylesheet" href="css/window.css">
+  <link rel="stylesheet" href="css/apps.css">
+</head>
+<body data-phase="boot">
+
+  <div id="mobile-guard" role="alert">
+    <div>
+      <svg class="ic" width="64" height="64" aria-hidden="true"><use href="assets/icons.svg#monitor"/></svg>
+      <h1>System32 requires a desktop</h1>
+      <p>Open this page on a screen at least 900&nbsp;px wide.</p>
+    </div>
+  </div>
+
+  <!-- ===== desktop ===== -->
+  <main id="desktop">
+    <div id="wallpaper"></div>
+    <div id="tear"></div>
+    <div id="icons" role="group" aria-label="Desktop"></div>
+    <div id="selection-box"></div>
+    <div id="windows"></div>
+  </main>
+
+  <!-- ===== taskbar ===== -->
+  <nav id="taskbar" aria-label="Taskbar">
+    <div id="tb-center">
+      <button id="start-btn" class="tb-btn" aria-label="Start" aria-haspopup="true" aria-expanded="false" title="Start">
+        <svg class="ic" aria-hidden="true"><use href="assets/icons.svg#start"/></svg>
+      </button>
+      <button id="search-btn" class="tb-btn" aria-label="Search" title="Search">
+        <svg class="ic" aria-hidden="true"><use href="assets/icons.svg#search"/></svg>
+      </button>
+      <div id="tb-apps"></div>
+    </div>
+    <div id="tb-tray">
+      <button id="tray-chevron" class="tray-btn" aria-label="Show hidden icons" title="Show hidden icons">
+        <svg class="ic" aria-hidden="true"><use href="assets/icons.svg#chevron-up"/></svg>
+      </button>
+      <button id="tray-wifi" class="tray-btn" aria-label="Network: No internet" title="No internet">
+        <svg class="ic" aria-hidden="true"><use href="assets/icons.svg#wifi-off"/></svg>
+      </button>
+      <button id="tray-volume" class="tray-btn" aria-label="Volume" title="Volume">
+        <svg class="ic" aria-hidden="true"><use href="assets/icons.svg#volume-off"/></svg>
+      </button>
+      <button id="clock" aria-label="Date and time">
+        <span id="clock-time"></span><span id="clock-date"></span>
+      </button>
+      <button id="show-desktop" aria-label="Show desktop" title="Show desktop"></button>
+    </div>
+  </nav>
+
+  <div id="start-menu" role="dialog" aria-label="Start menu" hidden></div>
+  <div id="flyouts"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="scan-sweep"></div>
+  <div id="overlays"></div>
+
+  <!-- ===== boot / lock / sign-in ===== -->
+  <section id="screen-boot" class="screen" aria-label="Starting System32">
+    <div class="spinner" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="boot-title">System32</div>
+    <div id="boot-sub">Repairing…</div>
+  </section>
+
+  <section id="screen-signin" class="screen" aria-label="Sign in">
+    <div class="avatar"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#user"/></svg></div>
+    <div class="signin-name">User</div>
+    <button id="signin-btn">Sign in</button>
+  </section>
+
+  <section id="screen-lock" class="screen" aria-label="Lock screen">
+    <div id="lock-time"></div>
+    <div id="lock-date"></div>
+    <div id="lock-hint">Click or press any key to unlock</div>
+  </section>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

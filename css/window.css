@@ -1,0 +1,92 @@
+/* Window chrome + dialogs */
+
+#windows {
+  position: fixed; left: 0; top: 0; right: 0; bottom: var(--taskbar-h);
+  z-index: 10; overflow: hidden; pointer-events: none;
+}
+.window {
+  position: absolute; pointer-events: auto;
+  display: flex; flex-direction: column;
+  background: var(--window-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-inactive);
+  overflow: hidden;
+  outline: none;
+}
+.window.active { box-shadow: var(--shadow-active); border-color: rgba(120, 120, 120, .35); }
+.window.maximized {
+  left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important;
+  border-radius: 0; border: 0;
+}
+.window.animating { transition: left .16s, top .16s, width .16s, height .16s; }
+.window.dialog { height: auto; }
+
+.win-titlebar {
+  display: flex; align-items: center; flex: none; height: 32px;
+  padding-left: 10px; gap: 8px;
+  background: var(--titlebar-bg);
+  touch-action: none;
+}
+.win-icon { width: 16px; height: 16px; }
+.win-title {
+  flex: 1; min-width: 0; font-size: 12px; opacity: .65;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.window.active .win-title { opacity: 1; }
+.win-controls { display: flex; height: 100%; position: relative; z-index: 3; }
+.win-btn { width: 46px; height: 100%; display: flex; align-items: center; justify-content: center; }
+.win-btn:hover { background: var(--hover); }
+.win-btn.win-close:hover { background: var(--danger); color: #fff; }
+.win-btn svg { width: 10px; height: 10px; stroke-width: 1.4; }
+.win-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+
+/* resize handles are only live once wm_core.exe is repaired */
+.win-resize { position: absolute; z-index: 2; display: none; }
+body.wm-ok .window:not(.maximized) .win-resize { display: block; }
+.win-resize[data-dir="n"]  { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.win-resize[data-dir="s"]  { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.win-resize[data-dir="e"]  { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.win-resize[data-dir="w"]  { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.win-resize[data-dir="ne"] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.win-resize[data-dir="nw"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.win-resize[data-dir="se"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.win-resize[data-dir="sw"] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+
+/* iframes swallow pointer events: switch them off while dragging/resizing */
+body.dragging iframe { pointer-events: none !important; }
+body.dragging { cursor: grabbing; }
+
+/* modal dimming of the parent window only */
+.win-dim { display: none; position: absolute; inset: 0; z-index: 5; background: rgba(0, 0, 0, .28); }
+.window.has-modal .win-dim { display: block; }
+
+/* crash fx */
+.window.not-responding .win-body { filter: grayscale(.6) brightness(1.5); }
+.window.not-responding::after {
+  content: ""; position: absolute; inset: 0; background: rgba(255,255,255,.55); pointer-events: none; z-index: 6;
+}
+
+/* ---------- dialogs ---------- */
+.dlg { display: flex; flex-direction: column; }
+.dlg-main { display: flex; gap: 16px; padding: 22px 22px 18px; align-items: flex-start; }
+.dlg-main > svg { width: 36px; height: 36px; flex: none; }
+.dlg-msg { font-size: 14px; line-height: 1.45; user-select: text; -webkit-user-select: text; min-width: 0; flex: 1; }
+.dlg-msg b { display: block; margin-bottom: 4px; }
+.dlg-buttons {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;
+  background: var(--titlebar-bg); border-top: 1px solid var(--border);
+}
+.dlg-progress { margin-top: 12px; height: 10px; border-radius: 5px; background: var(--hover); overflow: hidden; }
+.dlg-progress > i { display: block; height: 100%; width: 0; background: var(--accent); }
+.dlg-sub { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+.props-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; margin-top: 8px; }
+.props-grid dt { color: var(--text-muted); }
+.props-grid dd { margin: 0; }
+
+/* ad popups */
+.ad { padding: 18px; text-align: center; background: linear-gradient(160deg, #fff7c2, #ffd2e6); color: #2a1030; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.ad h3 { margin: 0; font-size: 22px; color: #c0176a; text-shadow: 1px 1px 0 #fff; }
+.ad p { margin: 0; font-size: 13px; }
+.ad .btn { align-self: center; }
+.ad .btn.primary { background: #19a34a; }

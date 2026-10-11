@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inspect Element (stub)</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
+  main { max-width: 460px; padding: 28px; text-align: center; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  p { margin: 8px 0; line-height: 1.45; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #8883; }
+  button { font: inherit; padding: 8px 22px; margin: 6px; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
+  button.win { background: #19a34a; color: #fff; border-color: transparent; }
+  button.lose { background: #d93025; color: #fff; border-color: transparent; }
+  code { background: #8883; padding: 1px 6px; border-radius: 4px; }
+  #status { font-size: 12px; opacity: .75; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <span class="tag">Part 3 · stub</span>
+  <h1>Inspect Element</h1>
+  <p>Not built yet. Use these buttons to test the shell protocol.</p>
+  <button class="win" id="win">Win</button><button class="lose" id="lose">Lose</button>
+  <p id="sandbox"></p>
+  <p id="status"></p>
+</main>
+<script src="../_shared/sdk.js" data-game="inspect"></script>
+<script>
+  var t0 = performance.now();
+  var statusEl = document.getElementById('status');
+  document.getElementById('win').onclick = function () { System32.won({ timeMs: Math.round(performance.now() - t0), score: 1 }); };
+  document.getElementById('lose').onclick = function () { System32.lost('clicked Lose'); };
+  var sb = document.getElementById('sandbox');
+  try { void window.parent.document.body; sb.textContent = 'Sandbox check: FAILED (parent is reachable!)'; }
+  catch (e) { sb.innerHTML = 'Sandbox check: <code>parent.document</code> is blocked ✔'; }
+  System32.onInit(function (i) { statusEl.textContent = 'INIT: beaten=' + i.beaten + ', best=' + i.bestTimeMs + ', sound=' + i.soundOn; });
+  System32.onPause(function () { statusEl.textContent += ' · paused'; });
+  System32.onResume(function () { statusEl.textContent += ' · resumed'; });
+  System32.ready();
+</script>
+</body>
+</html>
