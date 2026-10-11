@@ -78,6 +78,7 @@
 .ex-nav button {
   width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 4px; font-size: 13px; text-align: left;
 }
+.ex-nav button.sub { padding-left: 30px; }      /* children of This PC (Desktop, Documents) */
 .ex-nav button:hover { background: var(--hover); }
 .ex-nav button.current { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
 .ex-nav svg { width: 18px; height: 18px; }

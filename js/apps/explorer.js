@@ -18,7 +18,9 @@ const NODES = {
   'program-files': { name: 'Program Files', icon: 'a-folder', parent: 'c', children: [] },
   users: { name: 'Users', icon: 'a-folder', parent: 'c', children: [] },
 };
-const NAV = [['home', 'a-home'], ['desktop', 'a-desktop'], ['documents', 'a-folder-blue'], ['this-pc', 'a-pc']];
+const NAV = [['home', 'a-home'], ['this-pc', 'a-pc'], ['desktop', 'a-desktop'], ['documents', 'a-folder-blue']];
+const NAV_IDS = new Set(NAV.map(([n]) => n));
+const navDepth = (n) => (NODES[n].parent && NAV_IDS.has(NODES[n].parent) ? 1 : 0);   // child of another sidebar item => indented
 
 const DOCS = [
   { name: 'taxes_2019_FINAL_final.xlsx', icon: 'a-xlsx' },
@@ -132,8 +134,10 @@ function build(win, startPath) {
       .map((c) => `<button class="ex-crumb" data-go="${c}">${esc(NODES[c].name)}</button>`)
       .join('<span class="sep">›</span>');
 
+    let active = id;                                   // deeper folders (C:, System32...) highlight their nearest sidebar ancestor
+    while (active && !NAV_IDS.has(active)) active = NODES[active].parent;
     nav.innerHTML = NAV.map(([n, ic]) =>
-      `<button data-go="${n}" class="${crumbs(id).includes(n) && (n === id || n === 'this-pc' || id === 'c') ? 'current' : ''}">${icon(ic, 18)}${esc(NODES[n].name)}</button>`
+      `<button data-go="${n}" class="${navDepth(n) ? 'sub' : ''}${n === active ? ' current' : ''}">${icon(ic, 18)}${esc(NODES[n].name)}</button>`
     ).join('') + `<button data-bin>${icon('a-bin-full', 18)}Recycle Bin</button>`;
 
     const { items, drives } = listing(id);
