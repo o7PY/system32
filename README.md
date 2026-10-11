@@ -2,7 +2,7 @@
 
 A fake Windows 11-style desktop that runs in the browser. The OS is corrupted; each of four DOM-abusing
 mini-games you beat repairs one component. This repo is **Part 1: the shell** (see `DESKTOP_SPEC.md`).
-The four games ship as stubs with Win / Lose buttons until Parts 2–5 replace them.
+Part 2 (**DOM-ination**) is built; the other three games ship as stubs with Win / Lose buttons until Parts 3–5 replace them.
 
 No frameworks, no build step: vanilla HTML/CSS/JS (ES modules), all paths relative, deployable to GitHub Pages as-is.
 
@@ -48,7 +48,7 @@ so the game cannot touch the shell and talks to it only through `postMessage`. B
 ```html
 <script src="../_shared/sdk.js" data-game="dom-ination"></script>
 <script>
-  System32.onInit(function (init) { /* { bestTimeMs, beaten, soundOn } */ });
+  System32.onInit(function (init) { /* { bestTimeMs, best, beaten, soundOn } */ });
   System32.onPause(pauseGame); System32.onResume(resumeGame);
   System32.ready();                              // GAME_READY
   System32.progress('wave', '2/3');              // optional, shown as a chip in the toolbar
@@ -59,6 +59,22 @@ so the game cannot touch the shell and talks to it only through `postMessage`. B
 
 Game ids: `dom-ination`, `inspect`, `specificity`, `wm404`. A game can only win for its own id, and the shell
 identifies the sender by `event.source` (a game cannot repair a different component).
+
+## DOM-ination (Part 2, `games/dom-ination/`)
+
+`free_prizes.html` → `popup_guard.sys`. Close pop-ups before they multiply; survive 60 s with fewer than 24 open.
+Three files, no globals (`index.html`, `style.css`, `game.js`). Win is reported only when the player clicks **Install**.
+
+- One `requestAnimationFrame` loop runs a fixed 1/60 s simulation step; every timer is game time, so pause is exact
+  (no `setTimeout`/`setInterval` for game logic).
+- Test hooks (open `games/dom-ination/index.html` directly): `?seed=N` (deterministic spawns), `?speed=N` (game clock
+  multiplier), `?debug=1` (adds `window.__DOMINATION` with `state()`, `spawn(type)`, `autoSpawn(bool)`, `closeAll()`,
+  `forceWin()`, `forceLose()`, and the live mutable `config`).
+- All tuning lives in `CONFIG` at the top of `game.js`. The wave spawn intervals (2.1 / 1.7 / 1.4 s) and weights were
+  tuned with simulated players (a bot that clicks the most urgent pop-up, chases runaways and sometimes falls for bait):
+  about 25 % wins per attempt at 1 click/s, 58 % at 1.6/s, and ~100 % at 2+/s. The spec's starting values (1.6 / 1.2 / 0.9 s)
+  were unwinnable for anything below the skilled bot. Re-check with a real human before shipping.
+- The shell stores a best *score* per game (`bestScores`) and sends it as `best` in INIT ("Best: N closed").
 
 ## Notes on choices the spec left open
 

@@ -3,7 +3,7 @@
  * Classic script on purpose: module scripts need CORS, and sandboxed frames have an opaque origin.
  *
  *   <script src="../_shared/sdk.js" data-game="dom-ination"></script>
- *   System32.onInit(function (init) { ... });   // { bestTimeMs, beaten, soundOn, highScore }
+ *   System32.onInit(function (init) { ... });   // { bestTimeMs, best, beaten, soundOn, highScore }
  *   System32.ready();                           // after your game is loaded
  *   System32.won({ timeMs: 41200, score: 3 });
  *   System32.lost('reason');

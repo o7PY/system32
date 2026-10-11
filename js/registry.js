@@ -92,6 +92,9 @@ export const EGGS = [
   { id: 'forum', name: 'Forum threads' },
   { id: 'delete-system32', name: 'Delete System32' },
   { id: 'did-you-mean', name: 'Did you mean: recursion' },
+  { id: 'dom-rude', name: 'Rude.' },
+  { id: 'dom-claim-all', name: 'Gullible' },
+  { id: 'dom-pacifist', name: 'Bold strategy' },
 ];
 export const EGG_IDS = new Set(EGGS.map((e) => e.id));
 

@@ -10,6 +10,7 @@ const defaults = () => ({
   firstVisit: true,
   repaired: Object.fromEntries(GAME_IDS.map((id) => [id, false])),
   bestTimes: {},                // gameId -> ms
+  bestScores: {},               // gameId -> best score (higher is better), sent to games as `best`
   unlockedBookmarks: [],        // gameIds opened at least once
   iconPositions: {},            // iconId -> {col,row}
   readmeText: README_DEFAULT,
@@ -81,6 +82,17 @@ export function recordTime(gameId, ms) {
   state.bestTimes[gameId] = Math.round(ms);
   save();
   bus.emit('state:change', ['bestTimes']);
+  return true;
+}
+
+/** Records a best (highest) score. Returns true if it is a new best. */
+export function recordScore(gameId, score) {
+  if (!GAME_IDS.includes(gameId) || !Number.isFinite(score) || score < 0) return false;
+  const prev = state.bestScores[gameId];
+  if (prev !== undefined && prev >= score) return false;
+  state.bestScores[gameId] = Math.round(score);
+  save();
+  bus.emit('state:change', ['bestScores']);
   return true;
 }
 

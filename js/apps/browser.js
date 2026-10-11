@@ -1,7 +1,7 @@
 // Edgy: the fake browser. Owns the sandboxed iframes and the game <-> shell postMessage protocol (§9).
 import { bus } from '../events.js';
 import { Window } from '../WindowManager.js';
-import { state, set, repair, recordTime, unlock, foundEgg } from '../state.js';
+import { state, set, repair, recordTime, recordScore, unlock, foundEgg } from '../state.js';
 import { ROUTES, GAMES, GAME_BY_ID, EGG_IDS } from '../registry.js';
 import { icon, esc, wait, fmtTime } from '../ui.js';
 import { toast } from '../notifications.js';
@@ -188,6 +188,7 @@ class Browser {
           type: 'INIT',
           payload: {
             bestTimeMs: gameId ? state.bestTimes[gameId] ?? null : null,
+            best: gameId ? state.bestScores[gameId] ?? null : null,
             beaten: gameId ? !!state.repaired[gameId] : false,
             soundOn: state.soundOn,
             highScore: state.offlineHighScore,
@@ -200,6 +201,7 @@ class Browser {
         if (!gameId || msg.gameId !== gameId) return;       // a game can only win for itself
         const timeMs = Number(msg.payload?.timeMs);
         const newBest = recordTime(gameId, timeMs);
+        recordScore(gameId, Number(msg.payload?.score));
         const first = repair(gameId);
         if (!first) {
           toast({
