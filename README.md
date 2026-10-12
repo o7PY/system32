@@ -9,8 +9,13 @@ No frameworks, no build step: vanilla HTML/CSS/JS (ES modules), all paths relati
 ## Run it
 
 ```sh
-python3 -m http.server 8000     # then open http://localhost:8000
+python3 serve.py                # then open http://127.0.0.1:8000   (python3 serve.py 9000 for another port)
 ```
+
+`serve.py` is a standard-library dev server. Plain `python3 -m http.server` is no longer enough: games run in sandboxed
+iframes with an opaque origin, so their module scripts and `fetch()` calls (3D models, for example) are cross-origin
+requests that only succeed if the server sends `Access-Control-Allow-Origin`. `serve.py` adds that, plus `no-store` so
+edits always reload, and the right MIME types for `.js`, `.mjs`, `.glb`, `.gltf`, `.wasm` and `.bin`. Development only.
 
 Do not open `index.html` via `file://`: ES modules and iframes misbehave there.
 Needs a viewport at least 900px wide. Progress lives in `localStorage['system32.state']`; Settings > Reset progress
@@ -40,8 +45,16 @@ Drop the game into its `games/<name>/index.html`. Edgy loads it in
 `<iframe sandbox="allow-scripts allow-forms allow-pointer-lock">` (no `allow-same-origin`, no `allow-popups`),
 so the game cannot touch the shell and talks to it only through `postMessage`. Because the origin is opaque:
 
-- load sub-resources with classic `<script src>` / `<link>` (module scripts need CORS and will fail),
-- do not use `localStorage`: the shell owns persistence.
+- module scripts (`<script type="module">`, `import`) and `fetch()` work, because `serve.py` and GitHub Pages (which sends
+  `Access-Control-Allow-Origin: *`) both allow cross-origin reads. The four existing games keep their classic
+  `<script src>` and are left as they are,
+- do not use `localStorage` (or cookies): the shell owns persistence,
+- never add `allow-same-origin` to the sandbox,
+- `tests/cors-sandbox/` is the check for the first point: a page in a sandboxed iframe with the exact attributes above that
+  `import`s a module and `fetch`es a `.glb`. Open `tests/cors-sandbox/index.html` under `serve.py` and expect three PASS rows.
+
+Raw asset packs go in `assets/source/` (gitignored, never committed). Only processed, game-ready models, inside the
+game's own folder, are committed. Credits are in `CREDITS.md`.
 
 `games/_shared/sdk.js` wraps the protocol:
 

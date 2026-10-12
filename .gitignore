@@ -1,0 +1,20 @@
+# Raw asset packs (e.g. Quaternius Ultimate Space Kit, ~150 MB). Only processed, game-ready models
+# inside a game's own folder are committed.
+assets/source/
+
+# Local tool state
+.claude/
+.serena/
+
+# Tooling and OS noise
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+
+# Test output. The suites write screenshots, console logs and the Chromium profile to a scratch directory
+# outside the repo, so nothing is produced here today; these guard against runs pointed at the repo.
+test-results/
+screenshots/
+traces/

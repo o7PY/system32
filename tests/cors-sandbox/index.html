@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CORS + sandbox test</title>
+<link rel="icon" href="data:,">
+<style>body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; } .pass { color: #0a7a2f; } .fail { color: #c0281c; } iframe { width: 1px; height: 1px; border: 0; }</style>
+<h1>Sandboxed iframe: module import + fetch(.glb)</h1>
+<p>Open this page from <code>python3 serve.py</code>. The frame below uses exactly the shell's sandbox attributes.</p>
+<ul id="out"><li>running…</li></ul>
+<iframe id="f" sandbox="allow-scripts allow-forms allow-pointer-lock" src="child.html"></iframe>
+<script>
+  window.__corsSandbox = null;
+  addEventListener('message', (e) => {
+    if (e.source !== document.getElementById('f').contentWindow || !e.data || e.data.source !== 'cors-sandbox') return;
+    const r = (window.__corsSandbox = e.data.result);
+    const rows = [['frame origin is opaque (no allow-same-origin)', r.opaque], ['import() of an ES module from the repo', r.import], ['fetch() of a .glb returns the bytes', r.fetch]];
+    document.getElementById('out').innerHTML = rows.map(([t, ok]) => `<li class="${ok ? 'pass' : 'fail'}">${ok ? 'PASS' : 'FAIL'} ${t}</li>`).join('') + (r.notes.length ? `<li class="fail">${r.notes.join(' | ')}</li>` : '');
+    r.all = rows.every(([, ok]) => ok);
+  });
+</script>
