@@ -1,0 +1,88 @@
+/* Trust Bank: cheap 2009 online banking. */
+:root { color-scheme: light; --navy: #0b2d6b; --gold: #e0a800; --ink: #1d2733; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; min-height: 100%; font: 14px/1.45 Tahoma, Verdana, sans-serif; color: var(--ink); }
+body { background: linear-gradient(#dfe9f7, #f4f7fb 260px) fixed; min-height: 100vh; display: flex; flex-direction: column; }
+
+.top {
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 24px;
+  background: linear-gradient(#1b4aa3, var(--navy)); border-bottom: 4px solid var(--gold); color: #fff;
+}
+.brand { font: 700 24px Georgia, serif; letter-spacing: .02em; }
+.brand small { font: 13px Tahoma, sans-serif; color: #bcd0f3; margin-left: 6px; }
+.brand sup { font-size: 11px; }
+.crest { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 6px; border-radius: 50%; background: var(--gold); color: var(--navy); font: 900 15px Arial, sans-serif; vertical-align: 2px; }
+.badge { background: #fff8d6; color: #7a5a00; border: 2px solid var(--gold); border-radius: 14px; padding: 3px 12px; font-weight: 700; font-size: 12px; }
+
+main { flex: 1; display: flex; justify-content: center; padding: 36px 16px 80px; }
+#login-view { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+.card { position: relative; width: min(420px, 100%); padding: 22px 26px 18px; background: #fff; border: 1px solid #b7c6df; border-radius: 6px; box-shadow: 0 3px 0 #b7c6df, 0 10px 24px rgba(11, 45, 107, .15); }
+.card.wide { width: min(560px, 100%); }
+.card h1 { margin: 0 0 14px; font: 700 19px Georgia, serif; color: var(--navy); }
+.card h2 { margin: 18px 0 8px; font: 700 15px Georgia, serif; color: var(--navy); }
+
+label { display: block; margin: 10px 0 3px; font-weight: 700; font-size: 12px; color: #44566f; }
+input[type=text], input[type=password], input:not([type]) {
+  width: 100%; padding: 8px 10px; font: inherit; border: 1px solid #8ea4c8; border-radius: 3px; background: #fbfdff; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+}
+input[readonly] { background: #eef2f8; color: #5a6a82; }
+input:focus { outline: 2px solid #5b8def; outline-offset: 0; }
+.classic { display: block; margin-top: 3px; color: #7a5a00; font-style: italic; font-size: 11px; }
+
+#login-btn {
+  display: block; width: 100%; margin-top: 16px; padding: 10px; font: 700 15px Tahoma, sans-serif; color: #fff; cursor: pointer;
+  background: linear-gradient(#3b82e8, #1a56b8); border: 1px solid #0d3a85; border-radius: 4px; text-shadow: 0 1px 0 #0d3a85;
+}
+#login-btn:disabled { background: #c6ccd6; border-color: #aab2c0; color: #8b94a3; text-shadow: none; cursor: not-allowed; }
+.off-note { margin: 8px 0 0; text-align: center; font-size: 12px; color: #8a6a00; }
+.msg { min-height: 20px; margin: 8px 0 0; font-weight: 700; font-size: 13px; color: #c0281c; }
+.msg.ok { color: #1c6e2c; }
+.forgot { margin: 12px 0 0; font-size: 12px; color: #55657d; }
+.link { border: 0; background: none; padding: 0; font: inherit; color: #1a56b8; text-decoration: underline; cursor: pointer; }
+
+.locks { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; margin: 0; padding: 0; font-size: 13px; color: #55657d; }
+.locks li.lead { font-weight: 700; }
+.locks i { font-style: normal; margin-right: 5px; }
+.locks i::before { content: "○"; }
+.locks li.on { color: #1c6e2c; font-weight: 700; }
+.locks li.on i::before { content: "●"; }
+.locks li.pop { animation: pop .35s ease-out; }
+@keyframes pop { 40% { transform: scale(1.25); } }
+
+.auth { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255, 255, 255, .92); font-weight: 700; color: var(--navy); border-radius: 6px; }
+.spin { width: 18px; height: 18px; border: 3px solid #b7c6df; border-top-color: var(--navy); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* dashboard */
+.bal-label { margin: 0; color: #55657d; font-size: 12px; }
+.bal { margin: 0; font: 700 34px Georgia, serif; color: var(--navy); }
+.bal-note { margin: 0 0 4px; font-size: 12px; color: #55657d; font-style: italic; }
+.rich { margin: 4px 0 0; font-weight: 700; color: #7a5a00; }
+.dl { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f1f5fb; border: 1px solid #c8d5ea; border-radius: 4px; }
+.file { font-weight: 700; }
+#install { padding: 6px 18px; font: 700 13px Tahoma, sans-serif; color: #fff; background: linear-gradient(#37b24d, #1f7a30); border: 1px solid #14591f; border-radius: 4px; cursor: pointer; }
+#install:disabled { background: #9db8a3; border-color: #829c88; cursor: default; }
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 20px; margin: 16px 0 0; padding-top: 12px; border-top: 1px dashed #c8d5ea; font-size: 13px; }
+.stats dt { color: #55657d; } .stats dd { margin: 0; font-weight: 700; text-align: right; }
+
+footer { padding: 10px; text-align: center; font-size: 11px; color: #8795ad; }
+
+/* help */
+.help-btn { position: fixed; right: 16px; bottom: 16px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--gold); background: var(--navy); color: #fff; font: 700 20px Georgia, serif; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); z-index: 10; }
+.help-btn.wiggle { animation: wiggle .7s ease-in-out; }
+@keyframes wiggle { 15% { transform: rotate(-18deg) scale(1.15); } 40% { transform: rotate(16deg) scale(1.15); } 65% { transform: rotate(-10deg); } }
+.help-card { position: fixed; right: 16px; bottom: 64px; width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 90px); overflow: auto; padding: 14px 16px; background: #fffef5; border: 2px solid var(--gold); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); z-index: 10; }
+.help-card h2 { margin: 0 0 6px; font: 700 16px Georgia, serif; color: var(--navy); }
+.help-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--navy); }
+.help-card p { margin: 0 0 6px; } .help-card .small { font-size: 11.5px; color: #66708a; }
+.help-card hr { border: 0; border-top: 1px dashed var(--gold); margin: 10px 0; }
+.help-card ol { margin: 0 0 8px; padding-left: 20px; } .help-card li { margin-bottom: 4px; }
+.hint-btn { padding: 5px 12px; font: 700 12px Tahoma, sans-serif; border: 1px solid #a98a1a; border-radius: 4px; background: #ffe58a; color: #5b4500; cursor: pointer; }
+.hint-btn:disabled { opacity: .5; cursor: default; }
+
+#deleted { position: fixed; left: 0; right: 0; top: 30%; text-align: center; padding: 16px; font: 700 20px Georgia, serif; color: #c0281c; background: rgba(255, 255, 255, .96); border-block: 3px solid var(--gold); z-index: 20; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spin, .help-btn.wiggle, .locks li.pop { animation: none; }
+}

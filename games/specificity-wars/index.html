@@ -3,43 +3,102 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CSS Specificity Wars (stub)</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; font-family: system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
-  main { max-width: 460px; padding: 28px; text-align: center; }
-  h1 { margin: 0 0 6px; font-size: 26px; }
-  p { margin: 8px 0; line-height: 1.45; }
-  .tag { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #8883; }
-  button { font: inherit; padding: 8px 22px; margin: 6px; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
-  button.win { background: #19a34a; color: #fff; border-color: transparent; }
-  button.lose { background: #d93025; color: #fff; border-color: transparent; }
-  code { background: #8883; padding: 1px 6px; border-radius: 4px; }
-  #status { font-size: 12px; opacity: .75; margin-top: 14px; }
-</style>
+<title>styles_FINAL_v2</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="enemy.css">   <!-- the enemies' defenses, readable in DevTools -->
+<style id="player-css"></style>            <!-- the player's rules: after enemy.css, so ties go to the player -->
 </head>
 <body>
-<main>
-  <span class="tag">Part 4 · stub</span>
-  <h1>CSS Specificity Wars</h1>
-  <p>Not built yet. Use these buttons to test the shell protocol.</p>
-  <button class="win" id="win">Win</button><button class="lose" id="lose">Lose</button>
-  <p id="sandbox"></p>
-  <p id="status"></p>
-</main>
+
+<!-- Lose screen sits first so it is visible when the whole page falls back to browser-default styles. -->
+<div id="lose" hidden>
+  <h1>Stylesheet overrun.</h1>
+  <p>Everything is Times New Roman now.</p>
+  <p id="lose-stats"></p>
+  <button type="button" data-do="start">Retry</button>
+</div>
+
+<header id="hud">
+  <span class="brand">theme.dll <b id="hearts">♥♥♥</b></span>
+  <span>WAVE <b id="wv">1/5</b></span>
+  <span>⏱ <b id="tm">0:00</b></span>
+  <button type="button" id="help-btn" class="help-btn" aria-label="Help" aria-expanded="false">?</button>
+</header>
+
+<section class="stage">
+  <div id="backdrop" class="broken" aria-hidden="true">
+    <nav>HOME | ABOUT ME | GUESTBOOK | LINKS</nav>
+    <h1>Welcome to my Homepage!!!</h1>
+    <p>This site is best viewed in Netscape. I made it myself with two stylesheets, and they do not get along.</p>
+    <div class="blurb"><h2>Latest news</h2><p>Nothing has changed since 2009. The marquee is broken. So is the font.</p></div>
+    <p class="small">styles.css · styles_FINAL.css · styles_FINAL_v2.css</p>
+  </div>
+
+  <!-- Only cards live inside #arena: every rule is scoped to it, and the game chrome lives outside. -->
+  <div id="arena"></div>
+  <div id="pv" aria-hidden="true"></div>
+  <div id="fx" aria-hidden="true"></div>
+  <div id="banner" role="status" aria-live="polite"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="tip" hidden></div>
+</section>
+
+<aside class="panel" aria-label="player.css">
+  <h2>player.css</h2>
+  <ul id="rules"></ul>
+  <p id="slots" class="muted">slots 0/6</p>
+  <p class="muted tiny">Rules stay active. A 7th evicts the oldest.</p>
+</aside>
+
+<footer class="bar">
+  <label class="rule" for="sel">
+    <code>:where(#arena) :is(</code>
+    <input id="sel" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="140" placeholder=".your-selector" disabled>
+    <code>) { display: none<b id="imp-txt"></b>; }</code>
+    <button type="button" id="imp" class="imp" hidden aria-pressed="false">!important ×1</button>
+  </label>
+  <p id="preview" class="preview muted">Type a selector, press Enter.</p>
+</footer>
+
+<section id="start" class="screen">
+  <div class="start-card">
+    <h1>CSS Specificity Wars</h1>
+    <p class="tag">Their styles vs. yours. The cascade decides.</p>
+    <pre class="cheat"><b>.class</b>   matches class="…"
+<b>#id</b>      matches id="…"
+<b>tag</b>      matches &lt;tag&gt;
+<b>a.b</b>      both a AND b</pre>
+    <button type="button" id="start-btn" data-do="start">Start</button>
+  </div>
+</section>
+
+<section id="win" class="screen" hidden>
+  <div class="start-card win-card">
+    <h1>theme.dll — conflicts resolved</h1>
+    <dl class="stats"><dt>Time</dt><dd data-stat="time"></dd><dt>Rules used</dt><dd data-stat="rules"></dd><dt>Allies lost</dt><dd data-stat="allies"></dd><dt>Stars</dt><dd data-stat="stars"></dd></dl>
+    <button type="button" id="install" data-do="install">Install</button>
+    <p><a href="#" data-do="start">Play again</a></p>
+  </div>
+</section>
+
+<aside id="help" class="help" hidden aria-label="How it works">
+  <h2>How it works</h2>
+  <p>Type a selector and press <b>Enter</b>. The game adds this rule to <b>player.css</b>:</p>
+  <pre>:where(#arena) :is(<i>your selector</i>) {
+  display: none;
+}</pre>
+  <p><code>:where()</code> adds nothing to specificity, so your rule is exactly as strong as your selector, and it only reaches inside the arena.</p>
+  <p>Specificity is a triple <b>(ids, classes, tags)</b>: <code>#a.b.c div</code> is (1,2,1). Compare left to right; the first bigger number wins. A 🛡 badge shows an enemy's defense.</p>
+  <p><b>Ties go to whoever comes later: you.</b> player.css is loaded after the enemies' stylesheet.</p>
+  <p>Don't hide your allies. Inline <code>style="…"</code> beats any selector; only <code>!important</code> beats inline.</p>
+</aside>
+
+<div id="pause" class="veil" hidden><button type="button" data-do="resume">Paused<small>click to resume</small></button></div>
+<div id="small" class="veil" hidden><p>Maximize the window to play</p><small>This game needs at least 700 × 460.</small></div>
+
+<!-- classic scripts only: module scripts fail on the sandbox's opaque origin -->
 <script src="../_shared/sdk.js" data-game="specificity"></script>
-<script>
-  var t0 = performance.now();
-  var statusEl = document.getElementById('status');
-  document.getElementById('win').onclick = function () { System32.won({ timeMs: Math.round(performance.now() - t0), score: 1 }); };
-  document.getElementById('lose').onclick = function () { System32.lost('clicked Lose'); };
-  var sb = document.getElementById('sandbox');
-  try { void window.parent.document.body; sb.textContent = 'Sandbox check: FAILED (parent is reachable!)'; }
-  catch (e) { sb.innerHTML = 'Sandbox check: <code>parent.document</code> is blocked ✔'; }
-  System32.onInit(function (i) { statusEl.textContent = 'INIT: beaten=' + i.beaten + ', best=' + i.bestTimeMs + ', sound=' + i.soundOn; });
-  System32.onPause(function () { statusEl.textContent += ' · paused'; });
-  System32.onResume(function () { statusEl.textContent += ' · resumed'; });
-  System32.ready();
-</script>
+<script src="game.js"></script>
 </body>
 </html>

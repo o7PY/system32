@@ -95,6 +95,18 @@ export const EGGS = [
   { id: 'dom-rude', name: 'Rude.' },
   { id: 'dom-claim-all', name: 'Gullible' },
   { id: 'dom-pacifist', name: 'Bold strategy' },
+  { id: 'inspect-script-kiddie', name: 'Script kiddie' },
+  { id: 'inspect-deleted-bank', name: 'You deleted the bank' },
+  { id: 'inspect-rich', name: 'The money is fake too' },
+  { id: 'inspect-wrong-door', name: 'A classic' },
+  { id: 'spec-nuke', name: 'The nuclear option' },
+  { id: 'spec-devtools', name: 'Inspect Element veteran' },
+  { id: 'spec-has', name: 'Look at you, using :has()' },
+  { id: 'spec-overkill', name: 'Overkill' },
+  { id: 'wm-offscreen', name: '404: window not found' },
+  { id: 'wm-bin-core', name: 'Absolutely not' },
+  { id: 'wm-hoarder', name: 'Cat pictures' },
+  { id: 'wm-matryoshka', name: 'Folders all the way down' },
 ];
 export const EGG_IDS = new Set(EGGS.map((e) => e.id));
 

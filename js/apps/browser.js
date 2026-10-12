@@ -79,7 +79,7 @@ class Browser {
   #moreMenu(btn) {
     showMenuAt(btn, [
       { label: 'New window', hint: '', onClick: () => openBrowser({ route: 'home' }) },
-      { label: 'Inspect (F12)', onClick: () => showDialog({ title: 'Edgy', kind: 'info', message: 'Press F12. The real one.', parent: this.win }) },
+      { label: 'Inspect (F12)', onClick: () => showDialog({ title: 'Edgy', kind: 'info', message: 'Right-click the page → Inspect. The real one.', parent: this.win }) },
     ]);
   }
 

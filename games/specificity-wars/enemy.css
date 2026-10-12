@@ -1,0 +1,19 @@
+/*
+ * The enemies' defenses: the stylesheet you are fighting.
+ *
+ * Every defense restates `display: block`. Your rule hides an enemy with `display: none`, so the cascade decides:
+ *   1. higher specificity wins            (ids, classes, tags: the triple shown on the 🛡 badge)
+ *   2. on a tie, the later rule wins      (player.css comes after this file, so you win ties)
+ *   3. inline styles beat every selector  (only !important beats inline)
+ *
+ * game.js keeps a copy of these selectors purely for the badges and tooltips; the browser's own cascade
+ * (getComputedStyle) is what actually decides whether an enemy is hidden.
+ */
+
+/* wave 3: armored enemies. Specificity (0,2,1). */
+div.enemy.armored { display: block; }
+
+/* wave 4+: bosses. Specificity (1,1,0). A lone #boss-id (1,0,0) is not enough. */
+#arena .boss { display: block; }
+
+/* wave 5: the final boss also carries style="display:block" inline in the markup. Inline beats any selector. */

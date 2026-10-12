@@ -3,43 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>404: Window Manager (stub)</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; font-family: system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
-  main { max-width: 460px; padding: 28px; text-align: center; }
-  h1 { margin: 0 0 6px; font-size: 26px; }
-  p { margin: 8px 0; line-height: 1.45; }
-  .tag { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #8883; }
-  button { font: inherit; padding: 8px 22px; margin: 6px; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
-  button.win { background: #19a34a; color: #fff; border-color: transparent; }
-  button.lose { background: #d93025; color: #fff; border-color: transparent; }
-  code { background: #8883; padding: 1px 6px; border-radius: 4px; }
-  #status { font-size: 12px; opacity: .75; margin-top: 14px; }
-</style>
+<title>404: Window Manager</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
-  <span class="tag">Part 5 · stub</span>
-  <h1>404: Window Manager</h1>
-  <p>Not built yet. Use these buttons to test the shell protocol.</p>
-  <button class="win" id="win">Win</button><button class="lose" id="lose">Lose</button>
-  <p id="sandbox"></p>
-  <p id="status"></p>
+
+<!-- The play area: mini windows are appended here. -->
+<main id="desk">
+  <div id="banner" role="status" aria-live="polite"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <aside id="help" class="dlg" hidden aria-label="How to play">
+    <header class="tb"><span class="ttl">How to play</span></header>
+    <div class="dlg-body">
+      <p>Drag <b>🧩</b> into <b>Recovery</b> before their window collapses.</p>
+      <p>Junk goes in the bin. Files in your hand are safe.</p>
+      <p class="tiny">Keyboard: Tab to a file, <b>Space</b> picks it up, <b>Tab</b> chooses a window, <b>Space</b> drops, <b>Esc</b> cancels. <b>Enter</b> opens a folder.</p>
+    </div>
+  </aside>
 </main>
+
+<footer id="taskbar">
+  <div id="tasks"></div>
+  <span class="chip" title="Fragments recovered">🧩 <b id="frags">0/4</b></span>
+  <span class="chip" title="System integrity"><b id="hearts">♥♥♥</b></span>
+  <span class="chip" title="Elapsed time">⏱ <b id="clock">0:00</b></span>
+  <button type="button" id="help-btn" class="tbtn" aria-label="Help" aria-expanded="false">?</button>
+</footer>
+
+<div id="drag-layer" aria-hidden="true"></div>
+<div id="live" class="sr" role="status" aria-live="polite"></div>
+
+<section id="start" class="screen term">
+  <pre id="term"></pre>
+  <button type="button" id="begin" data-do="start" hidden>Begin recovery</button>
+</section>
+
+<section id="win" class="screen" hidden>
+  <div class="dlg">
+    <header class="tb"><span class="ttl">wm_core.exe recovered</span></header>
+    <div class="dlg-body">
+      <p class="exe-ic">⚙️</p>
+      <dl class="stats"><dt>Time</dt><dd data-stat="time"></dd><dt>Fragments lost</dt><dd data-stat="lost"></dd><dt>Integrity</dt><dd data-stat="stars"></dd></dl>
+      <p><button type="button" id="install" data-do="install">Install</button></p>
+      <p class="tiny"><a href="#" data-do="start">Play again</a></p>
+    </div>
+  </div>
+</section>
+
+<section id="lose" class="screen" hidden>
+  <div class="big404">404</div>
+  <p>Window manager not found.</p>
+  <p id="lose-stats" class="tiny"></p>
+  <button type="button" data-do="start">Retry</button>
+</section>
+
+<div id="pause" class="veil" hidden><button type="button" data-do="resume">Paused<small>click to resume</small></button></div>
+<div id="small" class="veil" hidden><p>Maximize the window to play</p><small>This game needs at least 760 × 480.</small></div>
+
+<!-- classic scripts only: module scripts fail on the sandbox's opaque origin -->
 <script src="../_shared/sdk.js" data-game="wm404"></script>
-<script>
-  var t0 = performance.now();
-  var statusEl = document.getElementById('status');
-  document.getElementById('win').onclick = function () { System32.won({ timeMs: Math.round(performance.now() - t0), score: 1 }); };
-  document.getElementById('lose').onclick = function () { System32.lost('clicked Lose'); };
-  var sb = document.getElementById('sandbox');
-  try { void window.parent.document.body; sb.textContent = 'Sandbox check: FAILED (parent is reachable!)'; }
-  catch (e) { sb.innerHTML = 'Sandbox check: <code>parent.document</code> is blocked ✔'; }
-  System32.onInit(function (i) { statusEl.textContent = 'INIT: beaten=' + i.beaten + ', best=' + i.bestTimeMs + ', sound=' + i.soundOn; });
-  System32.onPause(function () { statusEl.textContent += ' · paused'; });
-  System32.onResume(function () { statusEl.textContent += ' · resumed'; });
-  System32.ready();
-</script>
+<script src="game.js"></script>
 </body>
 </html>

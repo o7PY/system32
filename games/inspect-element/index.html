@@ -3,43 +3,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inspect Element (stub)</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; font-family: system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
-  main { max-width: 460px; padding: 28px; text-align: center; }
-  h1 { margin: 0 0 6px; font-size: 26px; }
-  p { margin: 8px 0; line-height: 1.45; }
-  .tag { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #8883; }
-  button { font: inherit; padding: 8px 22px; margin: 6px; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
-  button.win { background: #19a34a; color: #fff; border-color: transparent; }
-  button.lose { background: #d93025; color: #fff; border-color: transparent; }
-  code { background: #8883; padding: 1px 6px; border-radius: 4px; }
-  #status { font-size: 12px; opacity: .75; margin-top: 14px; }
-</style>
+<title>Trust Bank Online Banking</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<header class="top">
+  <div class="brand"><span class="crest">TB</span> Trust Bank<sup>™</sup> <small>Online Banking</small></div>
+  <div class="badge" title="Trust us.">🔒 100% Secure*</div>
+</header>
+
 <main>
-  <span class="tag">Part 3 · stub</span>
-  <h1>Inspect Element</h1>
-  <p>Not built yet. Use these buttons to test the shell protocol.</p>
-  <button class="win" id="win">Win</button><button class="lose" id="lose">Lose</button>
-  <p id="sandbox"></p>
-  <p id="status"></p>
+  <!-- The puzzle lives in this static markup on purpose: View Source, Elements and Sources can all find it. -->
+  <section id="login-view">
+    <div id="login-card" class="card">
+      <h1>🔒 Trust Bank Secure Login</h1>
+
+      <!-- TODO: remove debug credentials before launch -->
+      <!-- password: ******** (lol nice try) -->
+      <!-- temp password for previous_user: hunter2 -->
+      <!-- note to self: stop leaving passwords in comments -->
+
+      <form id="login-form" method="dialog" autocomplete="off" novalidate>
+        <label for="username">Username</label>
+        <input id="username" name="username" value="previous_user" readonly>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" spellcheck="false">
+        <small id="classic" class="classic" data-ui hidden>Ah, a classic.</small>
+
+        <input type="hidden" name="role" id="role" value="customer">
+        <div class="dev-note" style="display:none">
+          security review: role check happens client-side. this is fine. 🔥
+        </div>
+
+        <button type="submit" id="login-btn" disabled title="Disabled for your security">Log in</button>
+        <p class="off-note">Login temporarily disabled for your security.</p>
+        <p id="msg" class="msg" role="alert" data-ui></p>
+      </form>
+
+      <p class="forgot"><button type="button" id="forgot" class="link">Forgot password?</button> <span id="forgot-text" data-ui></span></p>
+      <div id="auth" class="auth" data-ui hidden><i class="spin"></i> Authenticating…</div>
+    </div>
+
+    <ol id="lock-row" class="locks" aria-label="Lock status" data-ui>
+      <li class="lead">🔐 Lock status:</li>
+      <li data-lock="password"><i></i>Password</li>
+      <li data-lock="button"><i></i>Button</li>
+      <li data-lock="role"><i></i>Access level</li>
+    </ol>
+  </section>
+
+  <section id="dashboard" hidden>
+    <div class="card wide">
+      <h1 data-ui>Welcome back, <b id="who">admin</b>.</h1>
+      <p class="bal-label">Account balance</p>
+      <p class="bal"><span id="balance">₹0.00</span></p>
+      <p class="bal-note">previous_user spent it on GPUs.</p>
+      <p id="rich" class="rich" data-ui hidden>The money is fake too.</p>
+
+      <h2>Downloads</h2>
+      <div class="dl"><span class="file">📄 admin_access.dll</span><button type="button" id="install" data-ui>Install</button></div>
+
+      <dl class="stats">
+        <dt>Time</dt><dd id="s-time" data-ui>0:00</dd>
+        <dt>Hints used</dt><dd id="s-hints" data-ui>0</dd>
+        <dt>Stars</dt><dd id="s-stars" data-ui>★★★</dd>
+      </dl>
+    </div>
+  </section>
 </main>
+
+<footer>*not secure</footer>
+
+<button type="button" id="help-btn" class="help-btn" aria-label="Help" aria-expanded="false" data-ui>?</button>
+<aside id="help-card" class="help-card" aria-label="Help" data-ui hidden>
+  <h2>How do I hack?</h2>
+  <p>Right-click anywhere on this page and choose <b>Inspect</b>. That's the real DevTools, pointed at this page. Everything you need is in there.</p>
+  <p class="small">Using the Console? Switch its context dropdown from “top” to this page first.</p>
+  <p id="best" class="small" hidden></p>
+  <hr>
+  <h3 id="hint-title">Hints</h3>
+  <ol id="hint-list"></ol>
+  <button type="button" id="hint-btn" class="hint-btn">Show hint</button>
+  <p class="small">Hint 1 is free. Hint 2 costs a star (at most one star per lock).</p>
+</aside>
+
+<!-- classic scripts only: module scripts fail on the sandbox's opaque origin -->
 <script src="../_shared/sdk.js" data-game="inspect"></script>
-<script>
-  var t0 = performance.now();
-  var statusEl = document.getElementById('status');
-  document.getElementById('win').onclick = function () { System32.won({ timeMs: Math.round(performance.now() - t0), score: 1 }); };
-  document.getElementById('lose').onclick = function () { System32.lost('clicked Lose'); };
-  var sb = document.getElementById('sandbox');
-  try { void window.parent.document.body; sb.textContent = 'Sandbox check: FAILED (parent is reachable!)'; }
-  catch (e) { sb.innerHTML = 'Sandbox check: <code>parent.document</code> is blocked ✔'; }
-  System32.onInit(function (i) { statusEl.textContent = 'INIT: beaten=' + i.beaten + ', best=' + i.bestTimeMs + ', sound=' + i.soundOn; });
-  System32.onPause(function () { statusEl.textContent += ' · paused'; });
-  System32.onResume(function () { statusEl.textContent += ' · resumed'; });
-  System32.ready();
-</script>
+<script src="game.js"></script>
 </body>
 </html>
