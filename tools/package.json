@@ -1,0 +1,14 @@
+{
+  "name": "system32-tools",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only build tools (asset pipeline, vendoring). Never needed at runtime. Install with: npm install --prefix tools",
+  "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "esbuild": "0.25.12",
+    "meshoptimizer": "0.25.0",
+    "sharp": "0.34.5"
+  }
+}

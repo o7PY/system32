@@ -1,0 +1,38 @@
+{
+  "_doc": "Which kit models SpaceSaga uses, as which role, at what size. Paths are relative to assets/source/ultimate-space-kit/ (no extension, the GLTF/ folder is implied). fit = largest allowed extent in metres (w = x, h = y, d = z, AFTER rotY); the model is scaled uniformly so it fits every given key. rotY (degrees) turns the model about its feet; the kit faces +z (toward the camera), the runner moves toward -z. clips = animation clips that must survive the build. Output is games/space-saga/models/<out>.glb with the origin at bottom centre.",
+  "budgetBytes": 6000000,
+  "textureMax": 1024,
+  "models": [
+    { "role": "player",      "src": "Characters/GLTF/Astronaut_RaeTheRedPanda", "out": "player",       "fit": { "h": 1.8 }, "rotY": 180 },
+    { "role": "enemy",       "src": "Characters/GLTF/Enemy_Large",               "out": "enemy-walker", "fit": { "h": 1.7 } },
+    { "role": "enemy",       "src": "Characters/GLTF/Enemy_Small",               "out": "enemy-flyer",  "fit": { "h": 1.2 } },
+
+    { "role": "low",         "src": "Items/GLTF/Pickup_Crate",                   "out": "low-crate",    "fit": { "h": 0.9, "w": 2.0, "d": 2.0 } },
+    { "role": "low",         "src": "Environment/GLTF/Rock_2",                   "out": "low-rock",     "fit": { "h": 1.0, "w": 2.0, "d": 2.0 } },
+    { "role": "low",         "src": "Environment/GLTF/SolarPanel_Ground",        "out": "low-solar",    "fit": { "h": 1.1, "w": 2.0, "d": 2.0 } },
+    { "role": "low",         "src": "Environment/GLTF/Roof_Opening",             "out": "low-vent",     "fit": { "h": 1.0, "w": 2.0, "d": 2.0 } },
+
+    { "role": "high",        "src": "Environment/GLTF/Connector",                "out": "high-pipe",    "fit": { "w": 2.6 } },
+    { "role": "high",        "src": "Environment/GLTF/MetalSupport",             "out": "high-truss",   "fit": { "w": 2.6 }, "rotY": 90 },
+
+    { "role": "blocker",     "src": "Vehicles/GLTF/Rover_1",                     "out": "block-rover1", "fit": { "w": 2.2, "h": 2.6, "d": 3.5 } },
+    { "role": "blocker",     "src": "Vehicles/GLTF/Rover_Round",                 "out": "block-rover2", "fit": { "w": 2.2, "h": 2.6, "d": 3.5 }, "rotY": 90 },
+
+    { "role": "pickup",      "src": "Items/GLTF/Pickup_Thunder",                 "out": "pick-bolt",    "fit": { "h": 0.8, "w": 0.8 } },
+    { "role": "pickup",      "src": "Items/GLTF/Pickup_Sphere",                  "out": "pick-orb",     "fit": { "h": 0.8 } },
+
+    { "role": "decor",       "src": "Environment/GLTF/Bush_1",                   "out": "decor-crystals",  "fit": { "h": 2.0 } },
+    { "role": "decor",       "src": "Environment/GLTF/Rock_4",                   "out": "decor-spire",     "fit": { "h": 4.5 } },
+    { "role": "decor",       "src": "Environment/GLTF/Plant_1",                  "out": "decor-plant1",    "fit": { "h": 2.2 } },
+    { "role": "decor",       "src": "Environment/GLTF/Plant_3",                  "out": "decor-plant3",    "fit": { "h": 3.0 } },
+    { "role": "decor",       "src": "Environment/GLTF/Tree_Light_1",             "out": "decor-treelight", "fit": { "h": 4.0 } },
+    { "role": "decor",       "src": "Environment/GLTF/Tree_Swirl_2",             "out": "decor-treeswirl", "fit": { "h": 5.0 } },
+    { "role": "decor",       "src": "Environment/GLTF/Tree_Lava_1",              "out": "decor-treelava",  "fit": { "h": 3.5 } },
+    { "role": "decor",       "src": "Environment/GLTF/Tree_Floating_1",          "out": "decor-treefloat", "fit": { "h": 4.5 } },
+    { "role": "decor",       "src": "Environment/GLTF/Roof_Radar",               "out": "decor-radar",     "fit": { "h": 2.7 } },
+
+    { "role": "backdrop",    "src": "Environment/GLTF/Planet_1",                 "out": "planet-1",     "fit": { "h": 80 } },
+    { "role": "backdrop",    "src": "Environment/GLTF/Planet_7",                 "out": "planet-7",     "fit": { "w": 200 } },
+    { "role": "backdrop",    "src": "Environment/GLTF/Planet_8",                 "out": "planet-8",     "fit": { "h": 120 } }
+  ]
+}

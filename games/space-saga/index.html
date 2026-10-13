@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpaceSaga</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+  { "imports": { "three": "../_shared/vendor/three/three.module.min.js",
+                 "three/addons/": "../_shared/vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="gl" tabindex="-1"></canvas>
+
+<div id="hud" hidden>
+  <div class="hud-l"><div id="dist">0 m</div><div id="score">0</div></div>
+  <div class="hud-r"><div id="pick">0</div><div id="best">BEST 0</div><div id="combo" hidden>x2 COMBO</div></div>
+</div>
+<div id="flash" hidden></div>
+<div id="fps" hidden></div>
+
+<section id="s-loading" class="screen">
+  <h1 class="logo">SpaceSaga</h1>
+  <div class="bar"><i id="bar"></i></div>
+  <p id="flavor">Restoring SpaceSaga.exe from Recycle Bin…</p>
+</section>
+
+<section id="s-title" class="screen" hidden>
+  <h1 class="logo">SpaceSaga</h1>
+  <div class="title-bottom">
+  <p class="cta">Press <kbd>Enter</kbd> to run</p>
+  <p id="title-best" class="dim"></p>
+  <p id="title-sound" class="dim"></p>
+  <ul class="keys">
+    <li><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> lanes</li>
+    <li><kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> jump</li>
+    <li><kbd>S</kbd> / <kbd>↓</kbd> slide</li>
+    <li><kbd>P</kbd> / <kbd>Esc</kbd> pause &nbsp; <kbd>M</kbd> mute</li>
+  </ul>
+  </div>
+</section>
+
+<section id="s-pause" class="screen dim-bg" hidden>
+  <h2>Paused</h2>
+  <div class="btns"><button id="b-resume">Resume</button><button id="b-restart">Restart</button></div>
+  <p class="dim"><kbd>P</kbd> resume · <kbd>R</kbd> restart</p>
+</section>
+
+<section id="s-blur" class="screen dim-bg" hidden>
+  <h2>Click to continue</h2>
+</section>
+
+<section id="s-dead" class="screen dim-bg" hidden>
+  <h2>Run over</h2>
+  <p id="newbest" hidden>NEW BEST</p>
+  <dl class="stats">
+    <dt>Distance</dt><dd id="d-dist"></dd>
+    <dt>Pickups</dt><dd id="d-pick"></dd>
+    <dt>Score</dt><dd id="d-score"></dd>
+    <dt>Best</dt><dd id="d-best"></dd>
+  </dl>
+  <button id="b-again">Run again (Enter)</button>
+</section>
+
+<section id="s-error" class="screen" hidden>
+  <h2 id="err-title">Something went wrong</h2>
+  <p id="err-text"></p>
+</section>
+
+<script src="../_shared/sdk.js" data-game="space-saga"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
