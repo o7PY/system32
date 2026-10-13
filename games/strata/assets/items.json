@@ -1,0 +1,75 @@
+{
+ "size": 32,
+ "w": 256,
+ "h": 96,
+ "items": {
+  "pickaxe_wood": {
+   "x": 0,
+   "y": 0
+  },
+  "pickaxe_stone": {
+   "x": 32,
+   "y": 0
+  },
+  "pickaxe_iron": {
+   "x": 64,
+   "y": 0
+  },
+  "axe_wood": {
+   "x": 96,
+   "y": 0
+  },
+  "axe_stone": {
+   "x": 128,
+   "y": 0
+  },
+  "axe_iron": {
+   "x": 160,
+   "y": 0
+  },
+  "shovel_wood": {
+   "x": 192,
+   "y": 0
+  },
+  "shovel_stone": {
+   "x": 224,
+   "y": 0
+  },
+  "shovel_iron": {
+   "x": 0,
+   "y": 32
+  },
+  "sword_wood": {
+   "x": 32,
+   "y": 32
+  },
+  "sword_stone": {
+   "x": 64,
+   "y": 32
+  },
+  "sword_iron": {
+   "x": 96,
+   "y": 32
+  },
+  "coal": {
+   "x": 128,
+   "y": 32
+  },
+  "raw_iron": {
+   "x": 160,
+   "y": 32
+  },
+  "stick": {
+   "x": 192,
+   "y": 32
+  },
+  "iron_ingot": {
+   "x": 224,
+   "y": 32
+  },
+  "popup": {
+   "x": 0,
+   "y": 64
+  }
+ }
+}

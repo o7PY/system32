@@ -1,0 +1,140 @@
+// Interaction rules, no DOM and no three.js: the voxel ray (DDA), tool and drop rules, mining progress, and the dropped-item entities.
+import { CONFIG } from './config.js';
+import { BLOCKS, B } from './blocks.js';
+import { ITEMS, isTool, stack, maxStack } from './items.js';
+
+/**
+ * Voxel DDA (Amanatides and Woo) from `o` along the unit vector `d`, up to `reach` blocks. Air and water are not targetable.
+ * @returns {{x, y, z, nx, ny, nz, dist, id}|null} the block hit and the normal of the face that was entered (the place-here cell is block + normal)
+ */
+export function raycast(getBlock, o, d, reach = CONFIG.reach) {
+  let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
+  const sx = Math.sign(d.x), sy = Math.sign(d.y), sz = Math.sign(d.z);
+  const tdx = d.x !== 0 ? Math.abs(1 / d.x) : Infinity, tdy = d.y !== 0 ? Math.abs(1 / d.y) : Infinity, tdz = d.z !== 0 ? Math.abs(1 / d.z) : Infinity;
+  let tx = d.x > 0 ? (x + 1 - o.x) * tdx : d.x < 0 ? (o.x - x) * tdx : Infinity;
+  let ty = d.y > 0 ? (y + 1 - o.y) * tdy : d.y < 0 ? (o.y - y) * tdy : Infinity;
+  let tz = d.z > 0 ? (z + 1 - o.z) * tdz : d.z < 0 ? (o.z - z) * tdz : Infinity;
+  let nx = 0, ny = 0, nz = 0, t = 0;
+  for (let i = 0; i < 256; i++) {
+    const id = getBlock(x, y, z);
+    if (id !== B.air && id !== B.water) return { x, y, z, nx, ny, nz, dist: t, id };
+    if (tx <= ty && tx <= tz) { t = tx; if (t > reach) return null; x += sx; tx += tdx; nx = -sx; ny = 0; nz = 0; }
+    else if (ty <= tz) { t = ty; if (t > reach) return null; y += sy; ty += tdy; nx = 0; ny = -sy; nz = 0; }
+    else { t = tz; if (t > reach) return null; z += sz; tz += tdz; nx = 0; ny = 0; nz = -sz; }
+  }
+  return null;
+}
+
+/**
+ * How a block breaks with the held item: time = hardness * base / toolSpeed (the tool's type must match the block's; hand speed is 1), times 3.3 and
+ * nothing dropped when the block needs a better tool than the one held. hardness < 0 = unbreakable.
+ * @returns {{time: number, drops: boolean, speed: number, breakable: boolean}}
+ */
+export function breakInfo(blockId, held) {
+  const b = BLOCKS[blockId], m = CONFIG.mining;
+  if (!b || b.hardness < 0) return { time: Infinity, drops: false, speed: 0, breakable: false };
+  const tool = held && ITEMS[held.id]?.tool;
+  const matches = !!tool && tool.type === b.tool;
+  const ok = !b.need || (!!tool && tool.type === b.need.tool && tool.tierN >= b.need.tier);
+  const speed = matches ? tool.speed : 1;
+  return { time: b.hardness * m.base / speed * (ok ? 1 : m.noToolMul), drops: ok, speed, breakable: true };
+}
+
+/** What a broken block drops: a stack or null. `rand` is a 0..1 source. */
+export function dropFor(blockId, held, rand = Math.random) {
+  const b = BLOCKS[blockId];
+  if (!b?.drop || !breakInfo(blockId, held).drops) return null;
+  const [item, n, chance] = b.drop;
+  return rand() < chance ? stack(item, n) : null;
+}
+
+/** Using a tool costs one durability per block broken (a sword too). Returns the stack to keep (null when it just broke). */
+export function useTool(s) {
+  if (!s || !isTool(s.id)) return { stack: s, broke: false };
+  const dur = (s.dur ?? ITEMS[s.id].tool.durability) - 1;
+  return dur <= 0 ? { stack: null, broke: true } : { stack: { ...s, dur }, broke: false };
+}
+
+/** Mining state: hold the button on a block and the progress fills; look away or let go and it resets. */
+export class Miner {
+  constructor() { this.target = null; this.progress = 0; this.bedrockT = 0; }
+  reset() { this.target = null; this.progress = 0; this.bedrockT = 0; }
+  /**
+   * @param hit   the raycast hit (or null), @param held the selected stack, @param down whether the mine button is held
+   * @returns {'none'|'mining'|'broke'} ; `bedrockT` accumulates while the target is bedrock (the strata-bedrock egg after 10 s)
+   */
+  update(dt, hit, held, down) {
+    if (!down || !hit) { this.reset(); return 'none'; }
+    const same = this.target && this.target.x === hit.x && this.target.y === hit.y && this.target.z === hit.z;
+    if (!same) { this.target = { x: hit.x, y: hit.y, z: hit.z, id: hit.id }; this.progress = 0; this.bedrockT = 0; }
+    const info = breakInfo(hit.id, held);
+    if (!info.breakable) { this.bedrockT += dt; return 'mining'; }
+    this.progress += dt / Math.max(0.02, info.time);
+    if (this.progress >= 1) { this.progress = 0; this.target = null; return 'broke'; }
+    return 'mining';
+  }
+}
+
+// ------------------------------------------------------------------ dropped items
+export class Drops {
+  constructor(world) { this.world = world; this.list = []; this.t = 0; this.nextId = 1; }
+
+  /** A drop with a little hop. `delayS` keeps it from being picked up straight away (a thrown item). */
+  spawn(x, y, z, stk, { vx = (Math.random() - 0.5) * 2, vy = 3, vz = (Math.random() - 0.5) * 2, delayS = 0.35 } = {}) {
+    const d = { id: this.nextId++, x, y, z, vx, vy, vz, stack: { ...stk }, age: 0, delay: delayS };
+    this.list.push(d);
+    return d;
+  }
+  clear() { this.list.length = 0; }
+
+  #solid(x, y, z) { return BLOCKS[this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))]?.solid; }
+
+  /**
+   * Physics, merging, despawn and pickup. `player` = { x, y, z } (feet) and `add(stack)` -> leftover stack or null.
+   * @returns {object[]} the pickups this step, each { id, n, picked } (picked = how many went into the inventory)
+   */
+  update(dt, player, add) {
+    this.t += dt;
+    const R = CONFIG.mining, picks = [];
+    for (const d of this.list) {
+      d.age += dt; d.delay -= dt;
+      const water = this.world.getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) === B.water;
+      d.vy = water ? Math.max(-1.2, d.vy - 6 * dt) + (d.vy < 0.4 ? 5 * dt : 0) : Math.max(-40, d.vy - 22 * dt);
+      const ny = d.y + d.vy * dt;
+      if (this.#solid(d.x, ny - 0.125, d.z)) {                                   // landed
+        if (d.vy < 0) { d.y = Math.floor(ny - 0.125) + 1 + 0.125; }
+        d.vy = 0; d.vx *= 0.7; d.vz *= 0.7;
+      } else d.y = ny;
+      const nx = d.x + d.vx * dt, nz = d.z + d.vz * dt;
+      if (!this.#solid(nx, d.y + 0.1, d.z)) d.x = nx; else d.vx = 0;
+      if (!this.#solid(d.x, d.y + 0.1, nz)) d.z = nz; else d.vz = 0;
+      if (this.#solid(d.x, d.y + 0.1, d.z)) d.y += 1;                             // pushed inside a block (a placed block): pop up
+      // pull toward the player and pick up
+      if (d.delay <= 0) {
+        const px = player.x - d.x, py = player.y + 0.9 - d.y, pz = player.z - d.z, dist = Math.hypot(px, py, pz);
+        if (dist < R.dropRange) {
+          const k = Math.min(1, R.dropPullSpeed * dt / Math.max(dist, 0.01));
+          d.x += px * k; d.y += py * k; d.z += pz * k; d.vy = 0; d.vx = d.vz = 0;
+          if (dist < 0.55) {
+            const left = add({ ...d.stack });
+            const got = d.stack.n - (left?.n ?? 0);
+            if (got > 0) picks.push({ id: d.stack.id, n: d.stack.n, picked: got });
+            if (left) d.stack = left; else d.dead = true;
+          }
+        }
+      }
+    }
+    // merge identical nearby drops (not tools), despawn
+    for (let i = 0; i < this.list.length; i++) {
+      const a = this.list[i];
+      if (a.dead || isTool(a.stack.id)) continue;
+      for (let j = i + 1; j < this.list.length; j++) {
+        const b = this.list[j];
+        if (b.dead || b.stack.id !== a.stack.id || a.stack.n + b.stack.n > maxStack(a.stack.id)) continue;
+        if (Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < R.dropMergeR) { a.stack.n += b.stack.n; b.dead = true; a.age = Math.min(a.age, b.age); }
+      }
+    }
+    this.list = this.list.filter((d) => !d.dead && d.age < R.dropDespawnS && d.y > -20);
+    return picks;
+  }
+}

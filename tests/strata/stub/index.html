@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Strata stub (test fixture)</title>
+<link rel="icon" href="data:,">
+<style>html, body { margin: 0; height: 100%; background: #101418; color: #dfe8ff; font: 14px/1.5 system-ui, sans-serif; } pre { padding: 12px; white-space: pre-wrap; }</style>
+</head>
+<body>
+<pre id="log">waiting for INIT...</pre>
+<!-- Test fixture for the shell's save protocol (Part A of STRATA_SPEC.md): the tests point the registry's Strata entry at this page. -->
+<script src="../../../games/_shared/sdk.js" data-game="strata"></script>
+<script>
+(function () {
+  var s = window.__stub = { init: null, saved: [], inits: 0, eggs: 0, save: null };
+  var log = document.getElementById('log');
+  function show() { log.textContent = 'INIT: ' + JSON.stringify(s.init && { save: s.init.save && s.init.save.length, soundOn: s.init.soundOn }) + '\nsaved replies: ' + JSON.stringify(s.saved); }
+  System32.onInit(function (init) { s.init = init; s.inits++; show(); });
+  System32.onSaved(function (r) { s.saved.push(r); show(); });
+  s.save = function (data) { System32.save(data); };
+  s.egg = function (id) { System32.effect('egg', { egg: id }); };
+  System32.ready();
+})();
+</script>
+</body>
+</html>

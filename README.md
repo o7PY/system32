@@ -32,11 +32,13 @@ js/
   registry.js           games, routes, desktop icons, eggs  launcher.js opens apps/files by id
   WindowManager.js      Window class + manager             dialogs.js  Dialog (modal-to-parent)
   desktop.js            icons, selection, drag, menus      taskbar.js / startMenu.js
-  corruption.js         glitch FX, fake ads, repair sweep, ending
+  corruption.js         glitch FX, fake ads, repair sweep, ending   bonus.js  bonus-game unlock after the ending + ?unlockBonus=1
   easterEggs.js  system.js (BSOD, power)  menu.js  notifications.js  sound.js (WebAudio, no files)
-  apps/                 browser (Edgy), notepad, explorer, recycleBin, settings
+  apps/                 browser (Edgy), notepad, explorer, recycleBin, settings, gameWindow (bonus games)
 pages/                  loaded inside Edgy: search (Goggle), offline (runner), crash (vim)
 games/                  one folder per game + _shared/sdk.js
+tests/                  cors-sandbox (manual), lib/ (headless-Chrome driver + shell helpers), bonus-shell/, space-saga/ and strata/ (see below)
+tools/                  asset pipelines + vendoring for SpaceSaga and Strata (dev-only; tools/strata/ holds Strata's inventory and asset plan)
 ```
 
 ## Building a game (Parts 2–5)
@@ -63,15 +65,125 @@ game's own folder, are committed. Credits are in `CREDITS.md`.
 <script>
   System32.onInit(function (init) { /* { bestTimeMs, best, beaten, soundOn } */ });
   System32.onPause(pauseGame); System32.onResume(resumeGame);
+  System32.onSound(function (p) { /* { soundOn }: the taskbar speaker was toggled while the game is open */ });
   System32.ready();                              // GAME_READY
   System32.progress('wave', '2/3');              // optional, shown as a chip in the toolbar
   System32.won({ timeMs: 41200, score: 3 });     // GAME_WON  -> repairs the component
+  System32.runOver({ score: 12480, distance: 812, pickups: 9, timeMs: 61000 });   // RUN_OVER (bonus games only): keeps the best score
   System32.lost('ran out of time');              // GAME_LOST
 </script>
 ```
 
 Game ids: `dom-ination`, `inspect`, `specificity`, `wm404`. A game can only win for its own id, and the shell
 identifies the sender by `event.source` (a game cannot repair a different component).
+
+## Bonus games (SPACESAGA_SPEC.md, Part A)
+
+Bonus games are `.exe` files that appear in the **Recycle Bin** after the ending. They are listed in `bonusGames` as `BONUS_GAMES` in `js/registry.js`
+(separate from the four core games) and **never** count toward integrity, corruption, repairs or the ending.
+
+- **State:** `state.version` is 2 and gains `bonus: { unlocked, restored, seen, best }`. Version-1 saves are migrated (missing field = empty), garbage in the field is
+  dropped. Settings > Reset progress wipes it too.
+- **Unlock:** when the clean desktop appears after the ending's restart, a bonus game is unlocked at once and 4 s later ONE toast says
+  "🗑 Recycle Bin: 2 items could not be deleted." (click it: the bin opens; the count is however many bonus games were just unlocked). A save that already finished the
+  ending gets any newly added bonus game on its next desktop load, with ONE toast ("1 item"), never again. The bin shows `SpaceSaga.exe` (`C:\Games\`, deleted `03-03-2023`, highlighted the first
+  time; Properties shows `binLore`). **Open** (double-click / Enter) launches it; **Restore** (right-click, or the toolbar button) moves it to the desktop and the
+  Start menu's pinned grid. "Empty Recycle Bin" never deletes it (the "emotionally attached" joke still plays). Deleting the restored desktop icon puts the game back in the bin.
+  Debug: `?unlockBonus=1` on the shell URL unlocks every bonus game without playing the ending.
+- **Game window** (`js/apps/gameWindow.js`): a plain `Window` whose content is one iframe (no address bar), 1280x760 clamped to the desktop, resizable. Same sandbox as
+  Edgy (the string is exported from `apps/browser.js`: `allow-scripts allow-forms allow-pointer-lock`, never `allow-same-origin`), sender identified by `event.source`,
+  PAUSE on minimize or blur and RESUME on restore, `iframe.focus()` whenever the window is focused (and after a title-bar drag).
+- **Protocol:** a bonus game does not win, it ends runs: `System32.runOver({ score, distance, pickups, timeMs })` sends `RUN_OVER`. The shell keeps the best `score` in
+  `bonus.best[gameId]`, sends it as `best` in INIT, and shows "SpaceSaga: new best — 12,480" on a new best. Scores from games are never trusted (finite, >= 0, clamped
+  to 1e9; a forged `gameId` is ignored). `won()` / `lost()` / `progress()` from a bonus game are ignored (a warning is logged with `?debug=1`).
+  A bonus game can only report easter eggs with its own prefix (`saga-`): `saga-404`, `saga-popup`, `saga-afk` are in the registry (they count toward "Secrets: n/36"). Strata's are `strata-adblock`, `strata-bedrock`, `strata-cloud`.
+- **World saves** (STRATA_SPEC.md Part A, `js/saves.js`): a bonus game with `saves: true` in the registry (Strata) can keep a world. `System32.save(data)` sends `SAVE` (data is a
+  string); the shell answers `SAVED { ok, bytes, error? }` (`System32.onSaved`), and INIT carries the last string as `save` (or `null`). It is stored under its OWN localStorage key,
+  `system32.save.<gameId>`, never inside `system32.state`. Hard cap 1.5 MB per game (`too-large`, nothing written); a localStorage failure answers `quota` and keeps the old save;
+  a non-string answers `invalid`. Games without `saves: true`, or a forged `gameId`, are ignored (no reply). Settings gets a "Bonus game saves" row per unlocked saving game with
+  its size and a confirmed **Delete save**; Reset progress deletes every `system32.save.*` key. Tests: `node tests/strata/shell.mjs` (against `tests/strata/stub/`).
+- **Tests:** `node tests/bonus-shell/run.mjs [filter]` drives real headless Chrome with real mouse/keyboard events over the DevTools protocol (no dependencies; starts
+  `serve.py` and Chrome on free ports, scratch profile outside the repo; set `CHROME=` to use another binary): migration, the ending -> toast -> bin -> Open/Restore flow,
+  sandbox + focus + pause, `RUN_OVER` bests and INIT, Empty Recycle Bin, `?unlockBonus=1`, Reset, core games unchanged, forged ids and eggs.
+- The shell tests run against a stub page (`tests/bonus-shell/stub/`, a "Send RUN_OVER" button): after boot the registry's SpaceSaga `src` is pointed at it. The real game
+  has its own shell test (`tests/space-saga/shell.mjs`).
+
+## SpaceSaga (bonus game 1, SPACESAGA_SPEC.md Part B, `games/space-saga/`)
+
+A three-lane endless runner in space (three.js). Run, jump and slide past rocks, wreckage and aliens, grab pickups, go as far as you can: one hit ends the run and the shell
+keeps your best score. `A`/`D` or arrows change lane, `W`/`Up`/`Space` jump, `S`/`Down` slide (in the air: fast-fall, then slide), `P`/`Esc` pause, `M` mute, `Enter` starts.
+
+- **Code** (`src/`): `main.js` boot, fixed 1/60 s step loop (game clock, so pause is exact) and state machine; `config.js` every tunable number and the obstacle patterns as data;
+  `patterns.js` the pure pattern rules (also used by the tests); `world.js` track, decor, stars, planets, lights, pop-up ad debris; `player.js` lanes / jump / slide / input
+  buffer; `spawner.js` pooled pattern spawning; `collision.js` logical boxes; `assets.js` GLB loading and clip mapping (with the spec's fallbacks); `hud.js`; `audio.js` WebAudio synth (music and effects); `curve.js` the planet bend.
+  `patterns.js` is an addition to the spec's file list, so the validator test can import the rules without a DOM.
+- **A round planet:** the track runs over a small planet (`CONFIG.planet.radius`, 380 m). `curve.js` patches the material shader so every vertex drops by distance^2 / 2R: the track,
+  the ground and everything on them bend away over the horizon and obstacles rise into view from below it. It is visual only (collision and spawning stay flat). The surface is a
+  textured ground with craters; the kit decor stands on it out to 55 m either side of the track. Long meshes are cut every 2.5 m because the bend works per vertex.
+- **Sound** (WebAudio synth, no files; plays only when the shell's sound is on, `M` mutes): a four-chord loop in A minor that gets denser at 400 m and 1000 m and faster with speed
+  (bass, pad, arpeggio, lead, drums), a calmer title theme, wind that follows speed, and effects for footsteps (alternating), lane switches (panned), jump, landing, slide, bolts
+  (pitch rises with the combo), orbs, combo x2, side clips, crashes, pop-up shattering, aliens, tier-ups, game over and a new-best fanfare. The shell tells a running game when the
+  taskbar speaker is toggled (`SOUND` message / `System32.onSound`); the title screen says whether sound is on.
+- **Fair by construction:** obstacles are never random per lane; they come from hand-authored patterns (`PATTERNS` in `config.js`; `L` low = jump, `H` high = slide, `B` blocker,
+  `E>`/`E<` enemy walking, `P` pickup). Rows are at least `reactionS` (0.7 s) apart at any speed, tiers unlock at 0 / 400 / 1000 m, a pattern never repeats back to back, and
+  `tests/space-saga/static.mjs` proves every row has a survivable action and that the next row is reachable.
+- **Models:** 25 processed GLBs (1.1 MB of the 6 MB budget) in `models/`, committed. The raw Quaternius pack stays in `assets/source/` (gitignored). To rebuild them:
+  `npm install --prefix tools`, then `node tools/build-assets.mjs` (reads `tools/assets.json`; keeps every animation clip and fails the build if one is lost or the budget is exceeded).
+  `node tools/inventory-assets.mjs` regenerates `ASSET_MANIFEST.md`; `ASSET_PICKS_PROPOSAL.md` records why each model was picked.
+- **three.js** v0.186.1 is vendored in `games/_shared/vendor/three/` (so later bonus games reuse it) by `node tools/vendor-three.mjs`. That release ships no `three.module.min.js`, so the
+  script minifies `three.module.js` and `three.core.js` once with esbuild. Game pages use an import map (`three`, `three/addons/`), which works because `serve.py` and GitHub Pages
+  send CORS headers.
+- **Debug URLs:** `?seed=N` deterministic patterns and decor, `?speed=N` game clock multiplier, `?god=1` no death, `?quality=low`, `?debug=1` FPS / draw-call overlay and
+  `window.__SPACESAGA` (`state()`, `setDistance(m)`, `spawnPattern(id)`, `kill()`, `config`, and test helpers). Quality drops to low by itself if the average frame time stays above 22 ms for 3 s.
+- **Tests:** `node tests/space-saga/static.mjs` (patterns, config, model budget, vendor files), `node tests/space-saga/run.mjs [filter]` (headless Chrome: lanes, jump arc, slide hitbox,
+  input buffer, side clip, enemies, pickups and combo, speed ramp, tiers, a bot that survives 2,000 m on five seeds, RUN_OVER once per run, pause and focus, context loss, quality, audio, eggs,
+  no-WebGL error screen) and `node tests/space-saga/shell.mjs` (inside the real shell: sandbox, modules over the opaque origin, INIT best, new-best toast, pause on minimize, eggs reaching the shell).
+  Headless Chrome renders with software WebGL, so the tests check logic, not frame rate.
+- **Eggs:** `saga-404` (cross 404 m: "Distance not found"), `saga-popup` (jump through a floating pop-up ad), `saga-afk` (60 s on the title screen: the player sits down).
+
+## Strata (bonus game 2, STRATA_SPEC.md, `games/strata/`)
+
+A survival-lite block game: a seeded 1024 x 1024 x 128 world of plains, forests, deserts, snowy mountains, beaches and oceans, with caves and ores underneath. Punch trees, craft tools,
+dig down through the strata, smelt iron, build. No mobs, no hunger, no health. The shell saves your world (`system32.save.strata`). Found in the Recycle Bin as `Strata.exe` after the
+ending (`Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."`). Our own game: no other game's names, textures, sounds, fonts or characters.
+
+| | |
+|---|---|
+| Move | `W A S D`, `Space` jump / swim up, `Shift` or double-tap `W` sprint, `C` sneak (hold; no falling off edges) |
+| Mine / place / use | left mouse (hold) / right mouse (also opens the crafting table and furnace) / middle mouse picks the block |
+| Hotbar, inventory | `1`-`9` or the wheel, `E` inventory, `Q` drop one, `Esc` pause, `F3` debug overlay |
+
+There is no binding with `Ctrl` anywhere (`Ctrl+W` closes the browser tab and a page cannot stop it), and the context menu and the wheel are blocked on the game.
+
+- **Code** (`src/`): `config.js` every number and the recipes; `blocks.js` the block registry (also builds the table the worker gets); `worker.js` noise, terrain, features and meshing with ambient
+  occlusion (SELF-CONTAINED: no `import`); `world.js` chunk streaming, edits and the two backends; `renderer.js` three.js scene (chunk shader with fog and day / night, sky, sun and moon drawn in code,
+  clouds, outline, crack stages, border grid, drops); `player.js` AABB physics; `interact.js` voxel ray, break rules, mining progress, dropped items; `items.js`, `inventory.js`, `crafting.js`
+  the item registry, click rules and furnace; `ui.js` all the DOM; `save.js` the save format; `audio.js` samples + ambient synth; `main.js` boot, input and the state machine.
+- **Worker from a Blob URL:** a sandboxed page has an opaque origin, so `new Worker('worker.js')` throws. `createBackend()` fetches `worker.js`, wraps it in a Blob and starts a classic worker from the
+  Blob URL. If that fails (or with `?noWorker=1`) the very same file is loaded with a `<script>` tag and generation runs on the main thread in time-sliced batches (6 ms per frame). The tests check
+  that both paths produce byte-identical chunks, and that the Blob worker starts inside the real sandboxed game window.
+- **Generation** is a pure function of (seed, chunk x, chunk z): chunks can be made in any order. Trees and ore veins that cross a border are written by both neighbours from the same seeded list.
+  Terrain is 2D noise (continents, hills, ridged mountains, temperature and moisture -> six biomes), caves are 3D noise (cheese and tunnels, open to the surface only at some entrances), coal
+  (y 20-90) and iron (y 5-60) are small veins, water fills below sea level (48) with no flow, bedrock at y = 0 with noise up to y = 3. Chunks load nearest-first and unload when far away; unloaded
+  chunks come back from the seed plus the edits.
+- **Meshing** emits only visible faces, bakes vertex ambient occlusion and flips the quad diagonal to avoid artefacts; opaque, cutout (leaves, glass) and water are separate meshes. Setting a block
+  remeshes its chunk, plus the neighbours when it sits on a border (and corners, for AO).
+- **Saves** (`save.js`): `STRATA1:z:` + base64 of a deflate-raw compressed container (`CompressionStream`; `r` = uncompressed when it is not available): a JSON header (seed, size, spawn, player,
+  inventory with durability, furnaces, time of day, settings) and the edits: only blocks that differ from the generator, as (index, id) pairs per chunk. An unedited world is about 250 bytes.
+  Loading validates everything and rejects garbage with a message instead of loading half. Autosave every 60 s, on pause, on the shell's PAUSE and on Save & Quit. The shell caps a save at 1.5 MB
+  and answers `SAVED { ok:false, error:'too-large' }`: the game shows "World too big to save: 1.6 MB / 1.5 MB. Try removing some builds."
+- **Assets** (`assets/`, 350 KB of the 3 MB budget; Kenney, CC0): `tools/strata/inventory-assets.mjs` -> `STRATA_ASSET_MANIFEST.md` -> approved picks in `tools/strata/assets.json`
+  (`STRATA_ASSET_PICKS_PROPOSAL.md`) -> `node tools/strata/build-assets.mjs` makes the 32x32 atlas with 2 px edge padding, the item sheet, 62 mono Ogg sounds, and the font. Roles with no match in
+  the pack (bedrock, stick, iron ingot, crafting table side and front, the Ad Block ore, the pop-up item) are drawn in code, reproducibly. The hotbar block icons are rendered at startup from the atlas.
+- **Sound:** Kenney samples per material group (dig every 0.25 s while mining, break, footsteps with the rate following speed and none while sneaking, place, pickup, UI, furnace, tool break, the
+  jingle for the first iron tool), panned and attenuated by position, plus a synthesized ambient pad every few minutes. Plays only while the shell's sound is on (`System32.onSound`).
+- **Eggs:** `strata-adblock` (mine the rare Ad Block ore, about one per four chunks deep underground: "Ad Block enabled."), `strata-bedrock` (10 s on bedrock), `strata-cloud` (place a block at y = 127).
+- **Debug URLs:** `?seed=N`, `?flat=1` (superflat), `?worldSize=N`, `?quality=low` (view distance 5, no clouds, no water wave), `?noWorker=1`, `?debug=1` (adds `window.__STRATA` with `state()`,
+  `getBlock`, `setBlock`, `give`, `tp`, `setTime`, `save`, `load` and test helpers).
+- **Tests:** `node tests/strata/world.mjs` (noise, determinism, trees and ores across borders, meshing face counts, AO), `node tests/strata/logic.mjs` (ray, physics, mining and tool tables, drops,
+  crafting, furnace, inventory), `node tests/strata/run.mjs` (headless Chrome with real key and mouse events: boot, worker and fallback, movement, mining, placing, inventory and crafting through the
+  DOM, saving, menus, day / night, audio, eggs, border, streaming), `node tests/strata/shell.mjs` (Part A in the real shell) and `node tests/strata/shell-game.mjs` (the real game in the sandboxed
+  window: worker, SAVE / INIT, PAUSE, eggs, sound). Headless Chrome renders with software WebGL, so these check logic, not frame rate.
 
 ## DOM-ination (Part 2, `games/dom-ination/`)
 

@@ -1,0 +1,292 @@
+{
+ "$comment": "PROPOSAL (Step 0): nothing is built yet. Roles -> source files under assets/source/. 'generate' = no good match, drawn in code. Approve or change, then build-assets.mjs reads this file.",
+ "budget": {
+  "totalBytes": 3145728,
+  "soundBytes": 1572864
+ },
+ "tile": {
+  "size": 32,
+  "padding": 2,
+  "filter": "nearest"
+ },
+ "tiles": {
+  "grass_top": {
+   "src": "kenney_voxel-pack/PNG/Tiles/grass_top.png"
+  },
+  "grass_side": {
+   "src": "kenney_voxel-pack/PNG/Tiles/dirt_grass.png"
+  },
+  "dirt": {
+   "src": "kenney_voxel-pack/PNG/Tiles/dirt.png"
+  },
+  "stone": {
+   "src": "kenney_voxel-pack/PNG/Tiles/stone.png"
+  },
+  "cobblestone": {
+   "src": "kenney_voxel-pack/PNG/Tiles/greystone.png",
+   "note": "darker hex pattern, clearly different from stone"
+  },
+  "sand": {
+   "src": "kenney_voxel-pack/PNG/Tiles/sand.png"
+  },
+  "gravel": {
+   "src": "kenney_voxel-pack/PNG/Tiles/gravel_stone.png",
+   "alt": "kenney_voxel-pack/PNG/Tiles/gravel_dirt.png"
+  },
+  "log_top": {
+   "src": "kenney_voxel-pack/PNG/Tiles/trunk_top.png"
+  },
+  "log_side": {
+   "src": "kenney_voxel-pack/PNG/Tiles/trunk_side.png"
+  },
+  "planks": {
+   "src": "kenney_voxel-pack/PNG/Tiles/wood.png"
+  },
+  "leaves": {
+   "src": "kenney_voxel-pack/PNG/Tiles/leaves_transparent.png",
+   "cutout": true
+  },
+  "glass": {
+   "src": "kenney_voxel-pack/PNG/Tiles/glass.png",
+   "cutout": true
+  },
+  "water": {
+   "src": "kenney_voxel-pack/PNG/Tiles/water.png",
+   "translucent": true
+  },
+  "coal_ore": {
+   "src": "kenney_voxel-pack/PNG/Tiles/stone_coal.png"
+  },
+  "iron_ore": {
+   "src": "kenney_voxel-pack/PNG/Tiles/stone_browniron.png",
+   "alt": "kenney_voxel-pack/PNG/Tiles/stone_iron.png"
+  },
+  "bedrock": {
+   "generate": "darken greystone to 45%, add dark and light speckle noise (seeded)",
+   "base": "kenney_voxel-pack/PNG/Tiles/greystone.png"
+  },
+  "crafting_table_top": {
+   "src": "kenney_voxel-pack/PNG/Tiles/table.png"
+  },
+  "crafting_table_side": {
+   "generate": "planks with a darker frame and a saw outline",
+   "base": "kenney_voxel-pack/PNG/Tiles/wood.png"
+  },
+  "crafting_table_front": {
+   "generate": "planks with a hammer and a chisel outline",
+   "base": "kenney_voxel-pack/PNG/Tiles/wood.png"
+  },
+  "furnace_front": {
+   "composite": [
+    "kenney_voxel-pack/PNG/Tiles/greystone.png",
+    "kenney_voxel-pack/PNG/Tiles/oven.png"
+   ],
+   "note": "oven arch over a cobblestone square"
+  },
+  "furnace_side": {
+   "src": "kenney_voxel-pack/PNG/Tiles/greystone.png"
+  },
+  "furnace_top": {
+   "src": "kenney_voxel-pack/PNG/Tiles/greystone.png"
+  },
+  "snow": {
+   "src": "kenney_voxel-pack/PNG/Tiles/snow.png"
+  },
+  "snow_side": {
+   "src": "kenney_voxel-pack/PNG/Tiles/dirt_snow.png"
+  },
+  "cactus_side": {
+   "src": "kenney_voxel-pack/PNG/Tiles/cactus_side.png"
+  },
+  "cactus_top": {
+   "src": "kenney_voxel-pack/PNG/Tiles/cactus_top.png"
+  },
+  "ad_block": {
+   "generate": "a tiny pop-up window (title bar + x) on stone, drawn in code (spec B11)",
+   "base": "kenney_voxel-pack/PNG/Tiles/stone.png"
+  }
+ },
+ "items": {
+  "pickaxe_wood": {
+   "src": "kenney_voxel-pack/PNG/Items/pick_bronze.png"
+  },
+  "pickaxe_stone": {
+   "src": "kenney_voxel-pack/PNG/Items/pick_iron.png"
+  },
+  "pickaxe_iron": {
+   "src": "kenney_voxel-pack/PNG/Items/pick_silver.png"
+  },
+  "axe_wood": {
+   "src": "kenney_voxel-pack/PNG/Items/axe_bronze.png"
+  },
+  "axe_stone": {
+   "src": "kenney_voxel-pack/PNG/Items/axe_iron.png"
+  },
+  "axe_iron": {
+   "src": "kenney_voxel-pack/PNG/Items/axe_silver.png"
+  },
+  "shovel_wood": {
+   "src": "kenney_voxel-pack/PNG/Items/shovel_bronze.png"
+  },
+  "shovel_stone": {
+   "src": "kenney_voxel-pack/PNG/Items/shovel_iron.png"
+  },
+  "shovel_iron": {
+   "src": "kenney_voxel-pack/PNG/Items/shovel_silver.png"
+  },
+  "sword_wood": {
+   "src": "kenney_voxel-pack/PNG/Items/sword_bronze.png"
+  },
+  "sword_stone": {
+   "src": "kenney_voxel-pack/PNG/Items/sword_iron.png"
+  },
+  "sword_iron": {
+   "src": "kenney_voxel-pack/PNG/Items/sword_silver.png"
+  },
+  "coal": {
+   "src": "kenney_voxel-pack/PNG/Items/ore_coal.png"
+  },
+  "raw_iron": {
+   "src": "kenney_voxel-pack/PNG/Items/ore_ironAlt.png",
+   "alt": "kenney_voxel-pack/PNG/Items/ore_iron.png"
+  },
+  "stick": {
+   "generate": "16x16 pixel-art brown diagonal stick"
+  },
+  "iron_ingot": {
+   "generate": "16x16 pixel-art light-grey bar with a highlight (no ingot in the pack)"
+  },
+  "popup": {
+   "generate": "tiny pop-up window icon, the Ad Block drop (egg strata-adblock)"
+  }
+ },
+ "itemSize": 32,
+ "sounds": {
+  "dig.stone": [
+   "kenney_impact-sounds/Audio/impactMining_000.ogg",
+   "kenney_impact-sounds/Audio/impactMining_001.ogg",
+   "kenney_impact-sounds/Audio/impactMining_002.ogg"
+  ],
+  "break.stone": [
+   "kenney_impact-sounds/Audio/impactPlate_heavy_000.ogg",
+   "kenney_impact-sounds/Audio/impactPlate_heavy_001.ogg",
+   "kenney_impact-sounds/Audio/impactPlate_heavy_002.ogg"
+  ],
+  "step.stone": [
+   "kenney_impact-sounds/Audio/footstep_concrete_000.ogg",
+   "kenney_impact-sounds/Audio/footstep_concrete_001.ogg",
+   "kenney_impact-sounds/Audio/footstep_concrete_002.ogg"
+  ],
+  "dig.dirt": [
+   "kenney_impact-sounds/Audio/impactSoft_medium_000.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_medium_001.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_medium_002.ogg"
+  ],
+  "break.dirt": [
+   "kenney_impact-sounds/Audio/impactSoft_heavy_000.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_heavy_001.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_heavy_002.ogg"
+  ],
+  "step.dirt": [
+   "kenney_rpg-audio/Audio/footstep00.ogg",
+   "kenney_rpg-audio/Audio/footstep01.ogg",
+   "kenney_rpg-audio/Audio/footstep02.ogg"
+  ],
+  "dig.grass": [
+   "kenney_impact-sounds/Audio/impactSoft_medium_003.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_medium_004.ogg"
+  ],
+  "break.grass": [
+   "kenney_impact-sounds/Audio/impactSoft_heavy_003.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_heavy_004.ogg"
+  ],
+  "step.grass": [
+   "kenney_impact-sounds/Audio/footstep_grass_000.ogg",
+   "kenney_impact-sounds/Audio/footstep_grass_001.ogg",
+   "kenney_impact-sounds/Audio/footstep_grass_002.ogg"
+  ],
+  "dig.wood": [
+   "kenney_impact-sounds/Audio/impactWood_light_000.ogg",
+   "kenney_impact-sounds/Audio/impactWood_light_001.ogg",
+   "kenney_impact-sounds/Audio/impactWood_light_002.ogg"
+  ],
+  "break.wood": [
+   "kenney_impact-sounds/Audio/impactWood_heavy_000.ogg",
+   "kenney_impact-sounds/Audio/impactWood_heavy_001.ogg",
+   "kenney_impact-sounds/Audio/impactWood_heavy_002.ogg"
+  ],
+  "step.wood": [
+   "kenney_impact-sounds/Audio/footstep_wood_000.ogg",
+   "kenney_impact-sounds/Audio/footstep_wood_001.ogg",
+   "kenney_impact-sounds/Audio/footstep_wood_002.ogg"
+  ],
+  "dig.sand": [
+   "kenney_impact-sounds/Audio/impactSoft_medium_000.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_medium_001.ogg"
+  ],
+  "break.sand": [
+   "kenney_impact-sounds/Audio/impactSoft_heavy_000.ogg",
+   "kenney_impact-sounds/Audio/impactSoft_heavy_001.ogg"
+  ],
+  "step.sand": [
+   "kenney_impact-sounds/Audio/footstep_snow_000.ogg",
+   "kenney_impact-sounds/Audio/footstep_snow_001.ogg",
+   "kenney_impact-sounds/Audio/footstep_snow_002.ogg"
+  ],
+  "dig.glass": [
+   "kenney_impact-sounds/Audio/impactGlass_light_000.ogg",
+   "kenney_impact-sounds/Audio/impactGlass_light_001.ogg",
+   "kenney_impact-sounds/Audio/impactGlass_light_002.ogg"
+  ],
+  "break.glass": [
+   "kenney_impact-sounds/Audio/impactGlass_heavy_000.ogg",
+   "kenney_impact-sounds/Audio/impactGlass_heavy_001.ogg",
+   "kenney_impact-sounds/Audio/impactGlass_heavy_002.ogg"
+  ],
+  "step.glass": [
+   "kenney_impact-sounds/Audio/footstep_concrete_003.ogg",
+   "kenney_impact-sounds/Audio/footstep_concrete_004.ogg"
+  ],
+  "place": [
+   "kenney_impact-sounds/Audio/impactGeneric_light_000.ogg",
+   "kenney_impact-sounds/Audio/impactGeneric_light_001.ogg",
+   "kenney_impact-sounds/Audio/impactGeneric_light_002.ogg"
+  ],
+  "pickup": [
+   "kenney_interface-sounds/Audio/pluck_001.ogg",
+   "kenney_interface-sounds/Audio/pluck_002.ogg"
+  ],
+  "ui.click": [
+   "kenney_ui-audio/Audio/click1.ogg",
+   "kenney_ui-audio/Audio/click3.ogg"
+  ],
+  "ui.open": [
+   "kenney_rpg-audio/Audio/bookOpen.ogg"
+  ],
+  "ui.close": [
+   "kenney_rpg-audio/Audio/bookClose.ogg"
+  ],
+  "furnace.done": [
+   "kenney_interface-sounds/Audio/confirmation_002.ogg"
+  ],
+  "tool.break": [
+   "kenney_impact-sounds/Audio/impactMetal_heavy_000.ogg"
+  ],
+  "jingle.iron": [
+   "kenney_music-jingles/Audio/8-Bit jingles/jingles_NES00.ogg"
+  ],
+  "splash": [
+   "kenney_impact-sounds/Audio/impactSoft_heavy_004.ogg"
+  ]
+ },
+ "sky": {
+  "sun": "kenney_voxel-pack/PNG/Other/sun.png",
+  "moon": "kenney_voxel-pack/PNG/Other/moon.png",
+  "clouds": "kenney_voxel-pack/PNG/Other/clouds.png",
+  "note": "optional: the pack ships sun, moon and cloud art; the spec asks for quads and flat clouds"
+ },
+ "font": {
+  "src": "kenney_kenney-fonts/Fonts/Kenney Pixel.ttf",
+  "alt": "kenney_kenney-fonts/Fonts/Kenney Mini Square.ttf"
+ }
+}

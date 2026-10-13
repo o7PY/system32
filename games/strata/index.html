@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strata</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{"imports":{"three":"../_shared/vendor/three/three.module.min.js","three/addons/":"../_shared/vendor/three/addons/"}}
+</script>
+</head>
+<body>
+<canvas id="gl" tabindex="-1"></canvas>
+
+<div id="underwater" hidden></div>
+<div id="hud" hidden>
+  <div id="crosshair"></div>
+  <div id="itemname"></div>
+  <div id="subtitle"></div>
+  <div id="hotbar"></div>
+  <div id="saved"></div>
+</div>
+<pre id="f3" hidden></pre>
+<div id="cursor" hidden></div>
+<div id="tip" hidden></div>
+
+<section class="screen dim-bg" id="s-loading">
+  <h1 class="logo">Strata</h1>
+  <div class="bar"><i id="load-bar"></i></div>
+  <p id="load-text" class="dim">Restoring Strata.exe… recovering 400 hours of digging…</p>
+</section>
+
+<section class="screen" id="s-title" hidden>
+  <h1 class="logo">Strata</h1>
+  <p class="dim tagline">Dig down. Find what is buried. Build something.</p>
+  <div class="menu">
+    <button class="btn" data-act="continue" id="b-continue">Continue</button>
+    <button class="btn" data-act="new">New World</button>
+    <button class="btn" data-act="settings">Settings</button>
+  </div>
+  <p id="title-note" class="dim small"></p>
+</section>
+
+<section class="screen dim-bg" id="s-newworld" hidden>
+  <div class="panel narrow">
+    <h2>New World</h2>
+    <label class="field">Seed <input id="seed-input" type="text" maxlength="40" placeholder="leave blank for a random world" autocomplete="off" spellcheck="false"></label>
+    <p id="overwrite-note" class="warn" hidden>This replaces your saved world. It cannot be undone.</p>
+    <div class="row">
+      <button class="btn" data-act="start-new" id="b-start-new">Create World</button>
+      <button class="btn" data-act="back-title">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section class="screen dim-bg" id="s-pause" hidden>
+  <div class="panel narrow">
+    <h2>Paused</h2>
+    <div class="menu">
+      <button class="btn" data-act="resume">Resume</button>
+      <button class="btn" data-act="settings">Settings</button>
+      <button class="btn" data-act="quit">Save &amp; Quit to Title</button>
+    </div>
+    <p id="pause-note" class="dim small"></p>
+  </div>
+</section>
+
+<section class="screen dim-bg" id="s-settings" hidden>
+  <div class="panel narrow">
+    <h2>Settings</h2>
+    <label class="field">Mouse sensitivity <input type="range" id="set-sens" min="0.2" max="3" step="0.05"><output></output></label>
+    <label class="field">Field of view <input type="range" id="set-fov" min="60" max="100" step="1"><output></output></label>
+    <label class="field">View distance <input type="range" id="set-view" min="4" max="12" step="1"><output></output></label>
+    <label class="field">Sound volume <input type="range" id="set-vol" min="0" max="1" step="0.05"><output></output></label>
+    <label class="field check"><input type="checkbox" id="set-invert"> Invert Y</label>
+    <label class="field check"><input type="checkbox" id="set-music"> Music</label>
+    <button class="btn" data-act="back-settings">Done</button>
+  </div>
+</section>
+
+<section class="screen dim-bg" id="s-inv" hidden></section>
+
+<section class="screen dim-bg" id="s-error" hidden>
+  <div class="panel narrow">
+    <h2 id="err-title">Something went wrong</h2>
+    <p id="err-text" class="dim"></p>
+    <div class="menu"><button class="btn" data-act="new">New World</button><button class="btn" data-act="back-title">OK</button></div>
+  </div>
+</section>
+
+<script src="../_shared/sdk.js" data-game="strata"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

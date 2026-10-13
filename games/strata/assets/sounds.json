@@ -1,0 +1,118 @@
+{
+ "dig.stone": [
+  "dig.stone.0.ogg",
+  "dig.stone.1.ogg",
+  "dig.stone.2.ogg"
+ ],
+ "break.stone": [
+  "break.stone.0.ogg",
+  "break.stone.1.ogg",
+  "break.stone.2.ogg"
+ ],
+ "step.stone": [
+  "step.stone.0.ogg",
+  "step.stone.1.ogg",
+  "step.stone.2.ogg"
+ ],
+ "dig.dirt": [
+  "dig.dirt.0.ogg",
+  "dig.dirt.1.ogg",
+  "dig.dirt.2.ogg"
+ ],
+ "break.dirt": [
+  "break.dirt.0.ogg",
+  "break.dirt.1.ogg",
+  "break.dirt.2.ogg"
+ ],
+ "step.dirt": [
+  "step.dirt.0.ogg",
+  "step.dirt.1.ogg",
+  "step.dirt.2.ogg"
+ ],
+ "dig.grass": [
+  "dig.grass.0.ogg",
+  "dig.grass.1.ogg"
+ ],
+ "break.grass": [
+  "break.grass.0.ogg",
+  "break.grass.1.ogg"
+ ],
+ "step.grass": [
+  "step.grass.0.ogg",
+  "step.grass.1.ogg",
+  "step.grass.2.ogg"
+ ],
+ "dig.wood": [
+  "dig.wood.0.ogg",
+  "dig.wood.1.ogg",
+  "dig.wood.2.ogg"
+ ],
+ "break.wood": [
+  "break.wood.0.ogg",
+  "break.wood.1.ogg",
+  "break.wood.2.ogg"
+ ],
+ "step.wood": [
+  "step.wood.0.ogg",
+  "step.wood.1.ogg",
+  "step.wood.2.ogg"
+ ],
+ "dig.sand": [
+  "dig.sand.0.ogg",
+  "dig.sand.1.ogg"
+ ],
+ "break.sand": [
+  "break.sand.0.ogg",
+  "break.sand.1.ogg"
+ ],
+ "step.sand": [
+  "step.sand.0.ogg",
+  "step.sand.1.ogg",
+  "step.sand.2.ogg"
+ ],
+ "dig.glass": [
+  "dig.glass.0.ogg",
+  "dig.glass.1.ogg",
+  "dig.glass.2.ogg"
+ ],
+ "break.glass": [
+  "break.glass.0.ogg",
+  "break.glass.1.ogg",
+  "break.glass.2.ogg"
+ ],
+ "step.glass": [
+  "step.glass.0.ogg",
+  "step.glass.1.ogg"
+ ],
+ "place": [
+  "place.0.ogg",
+  "place.1.ogg",
+  "place.2.ogg"
+ ],
+ "pickup": [
+  "pickup.0.ogg",
+  "pickup.1.ogg"
+ ],
+ "ui.click": [
+  "ui.click.0.ogg",
+  "ui.click.1.ogg"
+ ],
+ "ui.open": [
+  "ui.open.0.ogg"
+ ],
+ "ui.close": [
+  "ui.close.0.ogg"
+ ],
+ "furnace.done": [
+  "furnace.done.0.ogg"
+ ],
+ "tool.break": [
+  "tool.break.0.ogg"
+ ],
+ "jingle.iron": [
+  "jingle.iron.0.ogg"
+ ],
+ "splash": [
+  "splash.0.ogg"
+ ]
+}
