@@ -3,7 +3,7 @@
 import { bus } from './events.js';
 
 export const SAVE_PREFIX = 'system32.save.';
-export const SAVE_CAP = 1.5 * 1024 * 1024;                       // string length, per game
+export const SAVE_CAP = 1.5 * 1024 * 1024;                       // default string length, per game (a game can declare its own `saveCap` in the registry)
 export const saveKey = (id) => SAVE_PREFIX + id;
 
 export function readGameSave(id) {
@@ -14,10 +14,10 @@ export function readGameSave(id) {
 }
 
 /** @returns {{ok: boolean, bytes: number, error?: 'invalid'|'too-large'|'quota'}} nothing is written unless ok */
-export function writeGameSave(id, data) {
+export function writeGameSave(id, data, cap = SAVE_CAP) {
   if (typeof data !== 'string') return { ok: false, bytes: 0, error: 'invalid' };
   const bytes = data.length;
-  if (bytes > SAVE_CAP) return { ok: false, bytes, error: 'too-large' };
+  if (bytes > cap) return { ok: false, bytes, error: 'too-large' };
   try {
     localStorage.setItem(saveKey(id), data);                      // a failed setItem leaves the old save intact
   } catch { return { ok: false, bytes, error: 'quota' }; }

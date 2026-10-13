@@ -129,6 +129,12 @@
 }
 .d-icon.done .d-check { display: flex; }
 .d-check svg { width: 12px !important; height: 12px !important; stroke-width: 3; filter: none !important; }
+/* the same green check on a finished bonus game in the Start menu and the Recycle Bin (small icons) */
+.pin-art { position: relative; display: inline-flex; max-width: none !important; overflow: visible !important; }
+.pin-art .d-check { width: 14px; height: 14px; border-width: 1.5px; right: -5px; bottom: -3px; max-width: none; overflow: visible; }
+.pin-art .d-check svg { width: 8px !important; height: 8px !important; }
+.pin-item.done .d-check { display: flex; }
+.rb-table .pin-art .d-check { display: flex; }
 
 #selection-box {
   position: absolute; display: none; z-index: 3; pointer-events: none;

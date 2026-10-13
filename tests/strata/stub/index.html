@@ -16,6 +16,7 @@
   var log = document.getElementById('log');
   function show() { log.textContent = 'INIT: ' + JSON.stringify(s.init && { save: s.init.save && s.init.save.length, soundOn: s.init.soundOn }) + '\nsaved replies: ' + JSON.stringify(s.saved); }
   System32.onInit(function (init) { s.init = init; s.inits++; show(); });
+  s.complete = function (p) { System32.complete(p); };
   System32.onSaved(function (r) { s.saved.push(r); show(); });
   s.save = function (data) { System32.save(data); };
   s.egg = function (id) { System32.effect('egg', { egg: id }); };

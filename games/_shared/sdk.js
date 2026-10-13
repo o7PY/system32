@@ -3,15 +3,16 @@
  * Classic script on purpose: module scripts need CORS, and sandboxed frames have an opaque origin.
  *
  *   <script src="../_shared/sdk.js" data-game="dom-ination"></script>
- *   System32.onInit(function (init) { ... });   // { bestTimeMs, best, beaten, soundOn, highScore, save }  (save: the last saved string or null, bonus games with `saves` only)
+ *   System32.onInit(function (init) { ... });   // { bestTimeMs, best, beaten, soundOn, highScore, save, completed }  (save: the last saved string or null, bonus games with `saves` only; completed: the stored completion or null)
  *   System32.ready();                           // after your game is loaded
  *   System32.won({ timeMs: 41200, score: 3 });
  *   System32.lost('reason');
  *   System32.progress('wave', '2/3');
+ *   System32.complete({ timeMs, deaths, difficulty });        // BONUS games with `completes: true` only (Strata): difficulty 'peaceful'|'normal'|'hard'; the shell keeps the best time per difficulty
  *   System32.runOver({ score, distance, pickups, timeMs });   // BONUS games only (they end runs, they never win): the shell keeps the best score
  *   System32.onPause(fn); System32.onResume(fn);
 
- *   System32.save(data);                         // BONUS games with `saves: true` only (Strata): data is a string, at most 1.5 MB
+ *   System32.save(data);                         // BONUS games with `saves: true` only (Strata): data is a string, at most the game's `saveCap` (Strata: 2.5 MB)
  *   System32.onSaved(function (r) { ... });      // { ok, bytes, error? } error: 'too-large' | 'quota' | 'invalid'
  *   System32.onSound(function (p) { ... });      // { soundOn }: the taskbar speaker was toggled while the game is open
  */
@@ -38,6 +39,7 @@
   window.System32 = {
     gameId: gameId,
     ready: function () { send('GAME_READY'); },
+    complete: function (payload) { send('GAME_COMPLETE', { payload: payload || {} }); },
     runOver: function (payload) { send('RUN_OVER', { payload: payload || {} }); },
     won: function (payload) { send('GAME_WON', { payload: payload || {} }); },
     lost: function (reason) { send('GAME_LOST', { payload: { reason: reason || '' } }); },

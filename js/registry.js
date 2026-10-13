@@ -39,7 +39,7 @@ export const BONUS_GAMES = [
   },
   {
     id: 'strata', file: 'Strata.exe', title: 'Strata', icon: 'a-pickaxe',
-    src: 'games/strata/index.html', unlock: 'ending', saves: true, eggPrefix: 'strata-',
+    src: 'games/strata/index.html', unlock: 'ending', saves: true, saveCap: 2.5 * 1024 * 1024, completes: true, completeToast: 'Strata.exe: kernel restored.', eggPrefix: 'strata-',
     binLore: 'Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."',
     binFrom: 'C:\\Games\\', binDate: '11-11-2011 11:11 AM', size: '38.2 MB', width: 1280, height: 760,
     restoredLore: 'Restored from the Recycle Bin. Please come up for air.',
@@ -47,6 +47,8 @@ export const BONUS_GAMES = [
 ];
 export const BONUS_IDS = BONUS_GAMES.map((g) => g.id);
 export const BONUS_BY_ID = Object.fromEntries(BONUS_GAMES.map((g) => [g.id, g]));
+/** Only games that declare `completes: true` may send GAME_COMPLETE (the shell stores the best time per difficulty). */
+export const DIFFICULTIES = ['peaceful', 'normal', 'hard'];
 /** The desktop icon of a restored bonus game. */
 export const bonusDesktopIcon = (g) => ({ id: g.id, label: g.file, icon: g.icon, type: 'Application', size: g.size, lore: g.restoredLore, bonus: g.id });
 
@@ -141,6 +143,10 @@ export const EGGS = [
   { id: 'strata-adblock', name: 'Ad Block enabled' },
   { id: 'strata-bedrock', name: "It's called bedrock" },
   { id: 'strata-cloud', name: 'Saved to cloud storage' },
+  { id: 'strata-complete', name: 'Garbage collection complete' },
+  { id: 'strata-popup-adblock', name: 'Ad Block worked as intended' },
+  { id: 'strata-sleep-underlayer', name: 'Something is compiling' },
+  { id: 'strata-recycle', name: 'Protected by the previous user' },
 ];
 export const EGG_IDS = new Set(EGGS.map((e) => e.id));
 

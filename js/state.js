@@ -1,6 +1,6 @@
 // Single progress store, persisted to localStorage (falls back to memory if storage is unavailable).
 import { bus } from './events.js';
-import { GAME_IDS, README_DEFAULT, EGG_IDS, BONUS_IDS } from './registry.js';
+import { GAME_IDS, README_DEFAULT, EGG_IDS, BONUS_IDS, DIFFICULTIES } from './registry.js';
 import { deleteAllGameSaves } from './saves.js';
 
 const KEY = 'system32.state';
@@ -26,7 +26,8 @@ const defaults = () => ({
   theme: 'system',              // system | light | dark
   // Bonus games never touch repaired/integrity/ending. unlocked: in the Recycle Bin or restored; restored: on the desktop + Start;
   // seen: the bin row has been shown highlighted once; best: gameId -> best score (sent to the game as `best`).
-  bonus: { unlocked: [], restored: [], seen: [], best: {} },
+  // completed: gameId -> { timeMs, deaths, difficulty, at, byDifficulty: { <difficulty>: { timeMs, deaths, at } } } (the fastest overall + the best per difficulty)
+  bonus: { unlocked: [], restored: [], seen: [], best: {}, completed: {} },
 });
 
 function read() {
@@ -42,6 +43,18 @@ function read() {
 }
 
 const idList = (v) => (Array.isArray(v) ? v.filter((x) => BONUS_IDS.includes(x)) : []);
+const cleanRun = (r) => (r && Number.isFinite(r.timeMs) && r.timeMs >= 0 && Number.isFinite(r.deaths) && r.deaths >= 0 && Number.isFinite(r.at) ? { timeMs: Math.round(r.timeMs), deaths: Math.floor(r.deaths), at: r.at } : null);
+const cleanCompleted = (v) => {
+  const out = {};
+  for (const [k, c] of Object.entries(v && typeof v === 'object' ? v : {})) {
+    if (!BONUS_IDS.includes(k) || !c || typeof c !== 'object') continue;
+    const by = {};
+    for (const d of DIFFICULTIES) { const r = cleanRun(c.byDifficulty?.[d]); if (r) by[d] = r; }
+    const top = cleanRun(c);
+    if (top && DIFFICULTIES.includes(c.difficulty)) out[k] = { ...top, difficulty: c.difficulty, byDifficulty: by };
+  }
+  return out;
+};
 const cleanBest = (v) => Object.fromEntries(Object.entries(v && typeof v === 'object' ? v : {}).filter(([k, n]) => BONUS_IDS.includes(k) && Number.isFinite(n) && n >= 0));
 
 function merge(saved) {
@@ -51,7 +64,7 @@ function merge(saved) {
   return {
     ...base, ...saved, version: VERSION,
     repaired: { ...base.repaired, ...(saved.repaired ?? {}) },
-    bonus: { unlocked: idList(b.unlocked), restored: idList(b.restored), seen: idList(b.seen), best: cleanBest(b.best) },
+    bonus: { unlocked: idList(b.unlocked), restored: idList(b.restored), seen: idList(b.seen), best: cleanBest(b.best), completed: cleanCompleted(b.completed) },
   };
 }
 
@@ -98,6 +111,25 @@ export function recordTime(gameId, ms) {
   return true;
 }
 
+/**
+ * A bonus game was beaten. Keeps the best (fastest) time per difficulty and the fastest overall.
+ * @returns {{first: boolean, improved: boolean}|null} null when the report is invalid
+ */
+export function recordBonusComplete(id, { timeMs, deaths, difficulty }) {
+  if (!BONUS_IDS.includes(id) || !DIFFICULTIES.includes(difficulty) || !Number.isFinite(timeMs) || timeMs < 1 || !Number.isFinite(deaths) || deaths < 0) return null;
+  const run = { timeMs: Math.round(timeMs), deaths: Math.floor(deaths), at: Date.now() };
+  const prev = state.bonus.completed[id];
+  const byDifficulty = { ...(prev?.byDifficulty ?? {}) };
+  const improved = !byDifficulty[difficulty] || run.timeMs < byDifficulty[difficulty].timeMs;
+  if (improved) byDifficulty[difficulty] = run;
+  const top = !prev || run.timeMs < prev.timeMs ? { ...run, difficulty } : { timeMs: prev.timeMs, deaths: prev.deaths, at: prev.at, difficulty: prev.difficulty };
+  state.bonus.completed[id] = { ...top, byDifficulty };
+  save();
+  bus.emit('state:change', ['bonus']);
+  bus.emit('bonus:completed', id);
+  return { first: !prev, improved };
+}
+
 /** Records a best (highest) score. Returns true if it is a new best. */
 export function recordScore(gameId, score) {
   if (!GAME_IDS.includes(gameId) || !Number.isFinite(score) || score < 0) return false;
@@ -111,6 +143,7 @@ export function recordScore(gameId, score) {
 
 /* ---------- bonus games ---------- */
 export const isBonusUnlocked = (id) => state.bonus.unlocked.includes(id);
+export const isBonusCompleted = (id) => !!state.bonus.completed[id];
 export const isBonusRestored = (id) => state.bonus.restored.includes(id);
 
 /** Unlock a bonus game (it appears in the Recycle Bin). Returns true only the first time. */

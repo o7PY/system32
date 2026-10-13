@@ -26,7 +26,7 @@ function pinnedMarkup() {
   const ids = pinnedIds().filter((id) => !q || LAUNCH_ITEMS[id].label.toLowerCase().includes(q));
   if (!ids.length) return `<div class="start-empty">No pinned apps match “${esc(query)}”.</div>`;
   return ids.map((id) =>
-    `<button class="pin-item" data-launch="${id}" aria-label="${esc(LAUNCH_ITEMS[id].label)}">${icon(LAUNCH_ITEMS[id].icon, 32)}<span>${esc(LAUNCH_ITEMS[id].label)}</span></button>`
+    `<button class="pin-item${state.bonus.completed[id] ? ' done' : ''}" data-launch="${id}" aria-label="${esc(LAUNCH_ITEMS[id].label)}"><span class="pin-art">${icon(LAUNCH_ITEMS[id].icon, 32)}<span class="d-check">${icon('check', 10)}</span></span><span>${esc(LAUNCH_ITEMS[id].label)}</span></button>`
   ).join('');
 }
 

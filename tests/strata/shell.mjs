@@ -9,7 +9,7 @@ const SAGA = 'tests/bonus-shell/stub/index.html';
 const s = suite('Strata in the shell (Part A)');
 const { test } = s;
 const KEY = 'system32.save.strata';
-const CAP = 1.5 * 1024 * 1024;
+const CAP = 2.5 * 1024 * 1024;                  // Strata's saveCap (Part 2: two dimensions)
 
 async function boot(page, state, url = '/') {
   await bootShell(page, state, url);
@@ -22,6 +22,7 @@ const openStrata = async (page) => {
   await page.waitFor(`!!document.querySelector('#game-strata iframe')`, { what: 'Strata window' });
   await page.waitForFrame(GAME, `!!window.__stub && __stub.inits === 1`, { timeout: 20000 });
 };
+const stateOf2 = (page) => page.eval(`JSON.parse(localStorage.getItem('system32.state') ?? 'null')`);
 const close = (page) => page.eval(`document.querySelector('#game-strata [data-act="close"]')?.click()`);
 const doSave = async (page, data, n = 1) => {                                       // call System32.save in the frame, wait for the nth reply
   await stub(page, `__stub.save(${JSON.stringify(data)}); 1`);
@@ -34,7 +35,7 @@ test('registry: Strata is a bonus game with saves, its own egg prefix, and a rea
   const r = await page.eval(`import('/js/registry.js').then((m) => { const g = m.BONUS_BY_ID.strata; return { g, eggs: m.EGGS.filter((e) => e.id.startsWith('strata-')).map((e) => e.id), icon: !!document.getElementById(g.icon), total: m.EGGS.length }; })`);
   if (r.g.file !== 'Strata.exe' || r.g.title !== 'Strata' || r.g.unlock !== 'ending' || r.g.saves !== true || r.g.eggPrefix !== 'strata-') throw new Error(JSON.stringify(r.g));
   if (r.g.binLore !== 'Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."') throw new Error(r.g.binLore);
-  if (JSON.stringify(r.eggs) !== JSON.stringify(['strata-adblock', 'strata-bedrock', 'strata-cloud']) || r.total !== 36) throw new Error(JSON.stringify(r));
+  if (JSON.stringify(r.eggs) !== JSON.stringify(['strata-adblock', 'strata-bedrock', 'strata-cloud', 'strata-complete', 'strata-popup-adblock', 'strata-sleep-underlayer', 'strata-recycle']) || r.total !== 40) throw new Error(JSON.stringify(r));
   const hasSprite = await page.eval(`fetch('/assets/icons.svg').then((x) => x.text()).then((t) => t.includes('id="${r.g.icon}"'))`);
   if (!hasSprite) throw new Error(`no sprite ${r.g.icon}`);
 });
@@ -162,6 +163,82 @@ test('Settings: a "Bonus game saves" row with the size and a confirmed Delete sa
   const left = await page.eval(`Object.keys(localStorage).filter((k) => k.startsWith('system32.save.'))`);
   if (left.length) throw new Error('reset left ' + JSON.stringify(left));
   if ((await ls(page, 'unrelated')) !== 'z') throw new Error('reset removed an unrelated key');
+});
+
+// ---------------------------------------------------------------- Part 2, section 1.1: GAME_COMPLETE
+const done = (page, o) => stub(page, `__stub.complete(${JSON.stringify(o)}); 1`);
+const completed = async (page) => (await live(page)).bonus.completed.strata ?? null;
+
+test('GAME_COMPLETE: stores the run, one toast, the egg, a green check on the desktop icon, the Start item and the bin row; INIT carries `completed`', async (page) => {
+  await boot(page, st({ endingSeen: true, bonus: { unlocked: ['space-saga', 'strata'], restored: ['strata'], seen: ['strata'], best: {} } }));
+  await openStrata(page);
+  if ((await stub(page, `__stub.init.completed`)) !== null) throw new Error('INIT.completed should be null before the first win');
+  await done(page, { timeMs: 3600000, deaths: 2, difficulty: 'normal' });
+  await page.waitFor(`import('/js/state.js').then((m) => !!m.state.bonus.completed.strata)`, { what: 'completion stored' });
+  const c = await completed(page);
+  if (c.timeMs !== 3600000 || c.deaths !== 2 || c.difficulty !== 'normal' || !(c.at > 1e12) || c.byDifficulty.normal.timeMs !== 3600000) throw new Error(JSON.stringify(c));
+  const sv = await live(page);
+  if (!sv.eggsFound.includes('strata-complete')) throw new Error('egg not counted');
+  const toasts = (await toastTexts(page)).filter((t) => t.includes('kernel restored'));
+  if (toasts.length !== 1 || !toasts[0].includes('Strata.exe: kernel restored.')) throw new Error(JSON.stringify(await toastTexts(page)));
+  if (JSON.stringify(sv.repaired) !== JSON.stringify(ALL)) throw new Error('a bonus completion changed the repairs');
+  const ui = await page.eval(`(() => { const d = document.querySelector('.d-icon[data-id="strata"]'); const sd = document.querySelector('.d-icon[data-id="space-saga"]');
+    return { desk: d && d.classList.contains('done') && getComputedStyle(d.querySelector('.d-check')).display !== 'none', other: !!sd && sd.classList.contains('done') }; })()`);
+  if (!ui.desk) throw new Error('no check on the desktop icon');
+  await page.eval(`document.getElementById('start-btn').click(); 0`);
+  await page.waitFor(`!!document.querySelector('.pin-item[data-launch="strata"]')`, { what: 'start menu' });
+  const start = await page.eval(`(() => { const p = document.querySelector('.pin-item[data-launch="strata"]'); return p.classList.contains('done') && getComputedStyle(p.querySelector('.d-check')).display !== 'none'; })()`);
+  if (!start) throw new Error('no check in the Start menu');
+  // reopen: INIT now carries it
+  await close(page);
+  await openStrata(page);
+  const init = await stub(page, `__stub.init.completed`);
+  if (!init || init.timeMs !== 3600000 || init.difficulty !== 'normal') throw new Error(JSON.stringify(init));
+});
+
+test('GAME_COMPLETE keeps the best time per difficulty; slower runs and bad payloads change nothing', async (page) => {
+  await boot(page, st({ endingSeen: true, bonus: { unlocked: ['space-saga', 'strata'], restored: ['strata'], seen: ['strata'], best: {} } }));
+  await openStrata(page);
+  const settle = () => sleep(350);
+  await done(page, { timeMs: 5000, deaths: 1, difficulty: 'hard' }); await settle();
+  await done(page, { timeMs: 9000, deaths: 0, difficulty: 'hard' }); await settle();         // slower on the same difficulty
+  let c = await completed(page);
+  if (c.byDifficulty.hard.timeMs !== 5000 || c.timeMs !== 5000) throw new Error(JSON.stringify(c));
+  await done(page, { timeMs: 4000, deaths: 3, difficulty: 'hard' }); await settle();         // faster: replaces
+  c = await completed(page);
+  if (c.byDifficulty.hard.timeMs !== 4000 || c.byDifficulty.hard.deaths !== 3 || c.timeMs !== 4000) throw new Error(JSON.stringify(c));
+  await done(page, { timeMs: 8000, deaths: 0, difficulty: 'peaceful' }); await settle();     // another difficulty is its own best, the overall stays the fastest
+  c = await completed(page);
+  if (c.byDifficulty.peaceful.timeMs !== 8000 || c.timeMs !== 4000 || c.difficulty !== 'hard') throw new Error(JSON.stringify(c));
+  const before = JSON.stringify(c);
+  for (const bad of [{ timeMs: -1, deaths: 0, difficulty: 'normal' }, { timeMs: 'x', deaths: 0, difficulty: 'normal' }, { timeMs: 1, deaths: 0, difficulty: 'nightmare' }, { timeMs: 1, deaths: -5, difficulty: 'normal' }, {}, { timeMs: NaN, deaths: 0, difficulty: 'normal' }]) { await done(page, bad); await sleep(120); }
+  await settle();
+  if (JSON.stringify(await completed(page)) !== before) throw new Error('an invalid GAME_COMPLETE changed the stored run');
+  // persisted, and cleaned on load (garbage in the saved state is not trusted)
+  const saved = (await stateOf2(page)).bonus.completed.strata;
+  if (!saved || saved.byDifficulty.hard.timeMs !== 4000) throw new Error('not persisted');
+  await boot(page, st({ endingSeen: true, bonus: { unlocked: ['strata'], restored: [], seen: [], best: {}, completed: { strata: { timeMs: 'x', deaths: 1, difficulty: 'normal', at: 1 }, evil: { timeMs: 1, deaths: 0, difficulty: 'normal', at: 1 }, 'space-saga': { timeMs: 5, deaths: 0, difficulty: 'normal', at: 2, byDifficulty: { normal: { timeMs: 5, deaths: 0, at: 2 }, bogus: { timeMs: 1, deaths: 0, at: 1 } } } } } }));
+  const cleaned = (await live(page)).bonus.completed;
+  if (Object.keys(cleaned).join() !== 'space-saga' || Object.keys(cleaned['space-saga'].byDifficulty).join() !== 'normal') throw new Error(JSON.stringify(cleaned));
+});
+
+test('only a game with `completes: true` may send GAME_COMPLETE (SpaceSaga is ignored), and it cannot complete for another game', async (page) => {
+  await boot(page, st({ endingSeen: true, bonus: { unlocked: ['space-saga', 'strata'], restored: [], seen: [], best: {} } }));
+  await page.eval(`import('/js/events.js').then((m) => m.launch('space-saga'))`);
+  await page.waitForFrame(SAGA, `!!window.__stub && !!__stub.init`, { timeout: 20000 });
+  await page.evalInFrame(SAGA, `System32.complete({ timeMs: 1, deaths: 0, difficulty: 'normal' }); window.parent.postMessage({ source: 'system32-game', gameId: 'strata', type: 'GAME_COMPLETE', payload: { timeMs: 1, deaths: 0, difficulty: 'normal' } }, '*'); 1`);
+  await sleep(500);
+  const sv = await live(page);
+  if (Object.keys(sv.bonus.completed).length || sv.eggsFound.includes('strata-complete')) throw new Error(JSON.stringify(sv.bonus.completed));
+});
+
+test('the bin row of a finished (not restored) Strata also shows the green check', async (page) => {
+  await boot(page, st({ endingSeen: true, bonus: { unlocked: ['space-saga', 'strata'], restored: [], seen: [], best: {}, completed: { strata: { timeMs: 1000, deaths: 0, difficulty: 'normal', at: 5, byDifficulty: { normal: { timeMs: 1000, deaths: 0, at: 5 } } } } } }));
+  await page.eval(`import('/js/events.js').then((m) => m.launch('recycle-bin'))`);
+  await page.waitFor(`!!document.querySelector('#recycle-bin .rb-table')`);
+  const r = await page.eval(`[...document.querySelectorAll('#recycle-bin tr[data-i]')].map((tr) => ({ n: tr.textContent, check: !!tr.querySelector('.d-check') && getComputedStyle(tr.querySelector('.d-check')).display !== 'none' }))`);
+  const strata = r.find((x) => x.n.includes('Strata.exe')), saga = r.find((x) => x.n.includes('SpaceSaga.exe'));
+  if (!strata?.check || saga?.check) throw new Error(JSON.stringify(r));
 });
 
 s.run();

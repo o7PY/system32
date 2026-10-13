@@ -121,6 +121,7 @@ function clearSelection() { selected.clear(); syncSelection(); }
 function syncRepaired() {
   for (const it of items) {
     if (it.game) it.el.classList.toggle('done', !!state.repaired[it.game]);
+    else if (it.bonus) it.el.classList.toggle('done', !!state.bonus.completed[it.bonus]);
   }
 }
 

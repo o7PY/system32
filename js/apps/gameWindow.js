@@ -1,10 +1,11 @@
 // Game window for BONUS games (SpaceSaga ...): a plain Window whose whole content is one sandboxed iframe (no address bar, no favorites).
 // Same trust model as Edgy: sandbox without allow-same-origin, the sender is identified by event.source, and the game only talks through postMessage.
 // Bonus games do not win: they end runs (RUN_OVER). The shell keeps the best score and sends it back as `best` in INIT.
+// A bonus game with an ending (`completes: true`, Strata) sends GAME_COMPLETE once per win; the shell keeps the best time per difficulty (`completed` in INIT).
 import { bus } from '../events.js';
 import { Window } from '../WindowManager.js';
-import { state, recordBonusBest, foundEgg, isBonusUnlocked } from '../state.js';
-import { BONUS_BY_ID, EGG_IDS } from '../registry.js';
+import { state, recordBonusBest, recordBonusComplete, foundEgg, isBonusUnlocked } from '../state.js';
+import { BONUS_BY_ID, EGG_IDS, DIFFICULTIES } from '../registry.js';
 import { toast } from '../notifications.js';
 import { SANDBOX } from './browser.js';
 import { readGameSave, writeGameSave } from '../saves.js';
@@ -13,7 +14,7 @@ const open = new Map();            // gameId -> GameWindow
 const debug = () => new URLSearchParams(location.search).has('debug');
 const warn = (...a) => { if (debug()) console.warn('[game window]', ...a); };
 /** A finite, non-negative number clamped to `max`, else null (games are untrusted: never store what they send as-is). */
-const num = (v, max) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.min(n, max) : null; };
+const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : null);       // numbers only: Number(null) would be 0
 
 class GameWindow {
   constructor(game) {
@@ -55,6 +56,11 @@ class GameWindow {
     this.frame?.contentWindow?.postMessage({ source: 'system32-shell', ...msg }, '*');
   }
 
+  #initPayload() {
+    const { game } = this;
+    return { bestTimeMs: null, best: state.bonus.best[game.id] ?? null, beaten: false, soundOn: state.soundOn, highScore: 0, save: game.saves ? readGameSave(game.id) : null, completed: state.bonus.completed[game.id] ?? null };
+  }
+
   /** PAUSE when the window is minimized or loses focus, RESUME when it is shown and active again. */
   #updateLive() {
     if (!this.ready || this.win.closed) return;
@@ -72,10 +78,7 @@ class GameWindow {
       case 'GAME_READY':
         this.ready = true;
         this.live = null;
-        this.post({
-          type: 'INIT',
-          payload: { bestTimeMs: null, best: state.bonus.best[game.id] ?? null, beaten: false, soundOn: state.soundOn, highScore: 0, save: game.saves ? readGameSave(game.id) : null },
-        });
+        this.post({ type: 'INIT', payload: this.#initPayload() });
         this.#updateLive();
         break;
 
@@ -93,8 +96,20 @@ class GameWindow {
 
       case 'SAVE': {                                           // world saves: only games with `saves: true`, only for themselves, always answered
         if (!game.saves || msg.gameId !== game.id) { warn('SAVE ignored'); return; }
-        const r = writeGameSave(game.id, msg.payload?.data);
+        const r = writeGameSave(game.id, msg.payload?.data, game.saveCap);
         this.post({ type: 'SAVED', payload: r });
+        break;
+      }
+
+      case 'GAME_COMPLETE': {                                  // a bonus game with an ending (Strata): stores the best time per difficulty
+        if (!game.completes || msg.gameId !== game.id) { warn('GAME_COMPLETE ignored'); return; }
+        const p = msg.payload ?? {};
+        const timeMs = num(p.timeMs, 1e10), deaths = num(p.deaths, 1e6);
+        if (timeMs === null || deaths === null || !DIFFICULTIES.includes(p.difficulty)) { warn('GAME_COMPLETE without valid fields ignored'); return; }
+        const r = recordBonusComplete(game.id, { timeMs, deaths, difficulty: p.difficulty });
+        if (!r) return;
+        foundEgg(`${game.eggPrefix}complete`);
+        toast({ title: game.title, kind: 'ok', emoji: '🏆', text: game.completeToast ?? `${game.title}: complete.` });
         break;
       }
 

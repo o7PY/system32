@@ -55,12 +55,12 @@ test('old saves migrate (version 1, no bonus field): everything is kept, bonus s
   await page.eval(`import('/js/state.js').then((m) => m.set({ accent: 1 }))`);          // any write persists the migrated state
   const saved = await stateOf(page);
   if (saved.version !== 2) throw new Error(`version ${saved.version}`);
-  if (JSON.stringify(saved.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {} })) throw new Error(`bonus ${JSON.stringify(saved.bonus)}`);
+  if (JSON.stringify(saved.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {}, completed: {} })) throw new Error(`bonus ${JSON.stringify(saved.bonus)}`);
   if (saved.repaired.wm404 !== false || saved.repaired.inspect !== true || saved.eggsFound[0] !== 'clock' || saved.bestScores['dom-ination'] !== 7 || saved.bestTimes.inspect !== 9000) throw new Error('old progress lost');
   // garbage in the bonus field is cleaned, not trusted
   await boot(page, st({ bonus: { unlocked: ['space-saga', 'nope'], restored: 'x', best: { 'space-saga': 12, evil: 99, 'space-saga2': -1 } } }));
   const b = (await live(page)).bonus;
-  if (JSON.stringify(b) !== JSON.stringify({ unlocked: ['space-saga'], restored: [], seen: [], best: { 'space-saga': 12 } })) throw new Error(`cleaned bonus ${JSON.stringify(b)}`);
+  if (JSON.stringify(b) !== JSON.stringify({ unlocked: ['space-saga'], restored: [], seen: [], best: { 'space-saga': 12 }, completed: {} })) throw new Error(`cleaned bonus ${JSON.stringify(b)}`);
 });
 
 test('the ending: restart, 4 s later ONE toast, the bin has SpaceSaga.exe, nothing before the restart', async (page) => {
@@ -224,7 +224,7 @@ test('?unlockBonus=1 unlocks without the ending; bonus games never count toward 
   await nav;
   await sleep(1200);
   const after = await stateOf(page);
-  if (JSON.stringify(after.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {} }) || after.endingSeen) throw new Error(`after reset ${JSON.stringify(after)}`);
+  if (JSON.stringify(after.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {}, completed: {} }) || after.endingSeen) throw new Error(`after reset ${JSON.stringify(after)}`);
 });
 
 test('core games are unchanged: Edgy iframe, INIT with best, GAME_WON repairs; RUN_OVER from a core game is ignored', async (page) => {
