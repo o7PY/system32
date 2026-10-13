@@ -114,5 +114,76 @@
  ],
  "splash": [
   "splash.0.ogg"
+ ],
+ "hit.melee": [
+  "hit.melee.0.ogg",
+  "hit.melee.1.ogg",
+  "hit.melee.2.ogg"
+ ],
+ "hit.heavy": [
+  "hit.heavy.0.ogg",
+  "hit.heavy.1.ogg",
+  "hit.heavy.2.ogg"
+ ],
+ "player.hurt": [
+  "player.hurt.0.ogg",
+  "player.hurt.1.ogg"
+ ],
+ "player.death": [
+  "player.death.0.ogg"
+ ],
+ "sword.swing": [
+  "sword.swing.0.ogg",
+  "sword.swing.1.ogg"
+ ],
+ "bow.draw": [
+  "bow.draw.0.ogg",
+  "bow.draw.1.ogg"
+ ],
+ "bow.shoot": [
+  "bow.shoot.0.ogg",
+  "bow.shoot.1.ogg"
+ ],
+ "arrow.hit": [
+  "arrow.hit.0.ogg",
+  "arrow.hit.1.ogg",
+  "arrow.hit.2.ogg"
+ ],
+ "eat": [
+  "eat.0.ogg",
+  "eat.1.ogg",
+  "eat.2.ogg"
+ ],
+ "chest.open": [
+  "chest.open.0.ogg",
+  "chest.open.1.ogg"
+ ],
+ "chest.close": [
+  "chest.close.0.ogg",
+  "chest.close.1.ogg"
+ ],
+ "bed.use": [
+  "bed.use.0.ogg",
+  "bed.use.1.ogg",
+  "bed.use.2.ogg"
+ ],
+ "vault.open": [
+  "vault.open.0.ogg",
+  "vault.open.1.ogg"
+ ],
+ "armor.equip": [
+  "armor.equip.0.ogg",
+  "armor.equip.1.ogg"
+ ],
+ "boss.stomp": [
+  "boss.stomp.0.ogg",
+  "boss.stomp.1.ogg"
+ ],
+ "boss.crystal": [
+  "boss.crystal.0.ogg",
+  "boss.crystal.1.ogg"
+ ],
+ "jingle.win": [
+  "jingle.win.0.ogg"
  ]
 }

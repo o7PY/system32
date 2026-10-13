@@ -1,7 +1,7 @@
 {
  "size": 32,
- "w": 256,
- "h": 96,
+ "w": 320,
+ "h": 224,
  "items": {
   "pickaxe_wood": {
    "x": 0,
@@ -36,40 +36,228 @@
    "y": 0
   },
   "shovel_iron": {
-   "x": 0,
-   "y": 32
+   "x": 256,
+   "y": 0
   },
   "sword_wood": {
-   "x": 32,
-   "y": 32
+   "x": 288,
+   "y": 0
   },
   "sword_stone": {
-   "x": 64,
+   "x": 0,
    "y": 32
   },
   "sword_iron": {
-   "x": 96,
+   "x": 32,
    "y": 32
   },
   "coal": {
-   "x": 128,
+   "x": 64,
    "y": 32
   },
   "raw_iron": {
-   "x": 160,
+   "x": 96,
    "y": 32
   },
   "stick": {
-   "x": 192,
+   "x": 128,
    "y": 32
   },
   "iron_ingot": {
-   "x": 224,
+   "x": 160,
    "y": 32
   },
   "popup": {
+   "x": 192,
+   "y": 32
+  },
+  "pickaxe_cobalt": {
+   "x": 224,
+   "y": 32
+  },
+  "axe_cobalt": {
+   "x": 256,
+   "y": 32
+  },
+  "shovel_cobalt": {
+   "x": 288,
+   "y": 32
+  },
+  "sword_cobalt": {
    "x": 0,
    "y": 64
+  },
+  "raw_cobalt": {
+   "x": 32,
+   "y": 64
+  },
+  "apple": {
+   "x": 64,
+   "y": 64
+  },
+  "bowl": {
+   "x": 96,
+   "y": 64
+  },
+  "glowcap_stew": {
+   "x": 128,
+   "y": 64
+  },
+  "wheat": {
+   "x": 160,
+   "y": 64
+  },
+  "bow": {
+   "x": 192,
+   "y": 64
+  },
+  "arrow": {
+   "x": 224,
+   "y": 64
+  },
+  "cobalt_ingot": {
+   "x": 256,
+   "y": 64
+  },
+  "bread": {
+   "x": 288,
+   "y": 64
+  },
+  "berries": {
+   "x": 0,
+   "y": 96
+  },
+  "shears": {
+   "x": 32,
+   "y": 96
+  },
+  "raw_pork": {
+   "x": 64,
+   "y": 96
+  },
+  "raw_beef": {
+   "x": 96,
+   "y": 96
+  },
+  "raw_mutton": {
+   "x": 128,
+   "y": 96
+  },
+  "raw_chicken": {
+   "x": 160,
+   "y": 96
+  },
+  "cooked_pork": {
+   "x": 192,
+   "y": 96
+  },
+  "cooked_beef": {
+   "x": 224,
+   "y": 96
+  },
+  "cooked_mutton": {
+   "x": 256,
+   "y": 96
+  },
+  "cooked_chicken": {
+   "x": 288,
+   "y": 96
+  },
+  "leather": {
+   "x": 0,
+   "y": 128
+  },
+  "feather": {
+   "x": 32,
+   "y": 128
+  },
+  "string": {
+   "x": 64,
+   "y": 128
+  },
+  "bone": {
+   "x": 96,
+   "y": 128
+  },
+  "flint": {
+   "x": 128,
+   "y": 128
+  },
+  "rotten_flesh": {
+   "x": 160,
+   "y": 128
+  },
+  "kernel_shard": {
+   "x": 192,
+   "y": 128
+  },
+  "kernel_key": {
+   "x": 224,
+   "y": 128
+  },
+  "tracer": {
+   "x": 256,
+   "y": 128
+  },
+  "ash_dust": {
+   "x": 288,
+   "y": 128
+  },
+  "cobalt_nugget": {
+   "x": 0,
+   "y": 160
+  },
+  "glitch_dust": {
+   "x": 32,
+   "y": 160
+  },
+  "leather_helmet": {
+   "x": 64,
+   "y": 160
+  },
+  "leather_chestplate": {
+   "x": 96,
+   "y": 160
+  },
+  "leather_leggings": {
+   "x": 128,
+   "y": 160
+  },
+  "leather_boots": {
+   "x": 160,
+   "y": 160
+  },
+  "iron_helmet": {
+   "x": 192,
+   "y": 160
+  },
+  "iron_chestplate": {
+   "x": 224,
+   "y": 160
+  },
+  "iron_leggings": {
+   "x": 256,
+   "y": 160
+  },
+  "iron_boots": {
+   "x": 288,
+   "y": 160
+  },
+  "cobalt_helmet": {
+   "x": 0,
+   "y": 192
+  },
+  "cobalt_chestplate": {
+   "x": 32,
+   "y": 192
+  },
+  "cobalt_leggings": {
+   "x": 64,
+   "y": 192
+  },
+  "cobalt_boots": {
+   "x": 96,
+   "y": 192
   }
  }
 }
