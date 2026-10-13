@@ -10,10 +10,11 @@ const ICONS = {
 };
 
 /**
- * @param {{title?: string, text: string, kind?: 'ok'|'warn'|'err'|'info', emoji?: string, duration?: number, silent?: boolean}} o
+ * @param {{title?: string, text: string, kind?: 'ok'|'warn'|'err'|'info', emoji?: string, duration?: number, silent?: boolean, onClick?: () => void}} o
+ * `onClick` (optional): clicking the toast (not its X) runs it and dismisses the toast.
  * All text is inserted with textContent, so strings coming from games can never inject markup.
  */
-export function toast({ title = 'System32', text, kind = 'info', emoji = null, duration = 5000, silent = false }) {
+export function toast({ title = 'System32', text, kind = 'info', emoji = null, duration = 5000, silent = false, onClick = null }) {
   const host = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = 'toast';
@@ -51,6 +52,14 @@ export function toast({ title = 'System32', text, kind = 'info', emoji = null, d
     setTimeout(() => el.remove(), 260);
   };
   x.addEventListener('click', dismiss);
+  if (onClick) {
+    el.classList.add('clickable');
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.toast-x')) return;
+      dismiss();
+      try { onClick(); } catch (err) { console.error('[toast] onClick failed', err); }
+    });
+  }
   if (duration > 0) timer = setTimeout(dismiss, duration);
   while (host.children.length > 5) host.firstElementChild.remove();
   return { el, dismiss };

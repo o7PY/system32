@@ -151,3 +151,9 @@
 .secret-list li { padding: 2px 0; break-inside: avoid; }
 .secret-list li.found { color: var(--text); }
 .btn.danger { background: var(--danger); color: #fff; border-color: transparent; }
+
+/* ---------- Bonus games (Recycle Bin row, game window) ---------- */
+.rb-table tbody tr.rb-new { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); animation: rb-pulse 1.3s ease-in-out 3; }
+@keyframes rb-pulse { 50% { background: color-mix(in srgb, var(--accent) 30%, transparent); } }
+.gw { position: relative; flex: 1; min-height: 0; background: #05060d; }
+.gw iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #05060d; display: block; }

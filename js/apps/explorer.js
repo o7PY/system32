@@ -2,7 +2,7 @@
 import { bus, launch } from '../events.js';
 import { Window } from '../WindowManager.js';
 import { state, integrity, repairedCount } from '../state.js';
-import { GAMES, GAME_IDS, DESKTOP_ICONS, THANK_YOU_ICON } from '../registry.js';
+import { GAMES, GAME_IDS, DESKTOP_ICONS, THANK_YOU_ICON, BONUS_GAMES, bonusDesktopIcon } from '../registry.js';
 import { icon, esc, meterColor } from '../ui.js';
 import { showDialog } from '../dialogs.js';
 
@@ -82,7 +82,7 @@ function build(win, startPath) {
           { key: 'bin', name: 'Recycle Bin', icon: 'a-bin-full', open: () => launch('recycle-bin') },
         ] };
       case 'desktop': {
-        const defs = [...DESKTOP_ICONS, ...(state.endingSeen ? [THANK_YOU_ICON] : [])];
+        const defs = [...DESKTOP_ICONS, ...(state.endingSeen ? [THANK_YOU_ICON] : []), ...BONUS_GAMES.filter((g) => state.bonus.restored.includes(g.id)).map(bonusDesktopIcon)];
         return { items: defs.map((d) => ({
           key: d.id, name: d.label, icon: d.icon,
           open: () => launch(d.id),

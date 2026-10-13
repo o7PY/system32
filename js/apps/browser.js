@@ -10,7 +10,7 @@ import { showMenuAt } from '../menu.js';
 import { bsod } from '../system.js';
 
 const browsers = new Set();
-const SANDBOX = 'allow-scripts allow-forms allow-pointer-lock';   // deliberately NO allow-same-origin, NO allow-popups
+export const SANDBOX = 'allow-scripts allow-forms allow-pointer-lock';   // deliberately NO allow-same-origin, NO allow-popups
 const short = (v, n) => String(v ?? '').slice(0, n);
 
 class Browser {

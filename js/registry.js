@@ -25,6 +25,31 @@ export const GAMES = [
 export const GAME_IDS = GAMES.map((g) => g.id);
 export const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 
+/**
+ * Bonus games: .exe files hidden in the Recycle Bin after the ending. They open in a plain game window (not Edgy) and NEVER count
+ * toward integrity, corruption, repairs or the ending. `icon` is a sprite id (a-rocket), like every other icon in the shell.
+ */
+export const BONUS_GAMES = [
+  {
+    id: 'space-saga', file: 'SpaceSaga.exe', title: 'SpaceSaga', icon: 'a-rocket',
+    src: 'games/space-saga/index.html', unlock: 'ending', eggPrefix: 'saga-',
+    binLore: 'Deleted 03-03-2023. Reason: "too fun, employees stopped working."',
+    binFrom: 'C:\\Games\\', binDate: '03-03-2023 04:20 PM', size: '4.7 MB', width: 1280, height: 760,
+    restoredLore: 'Restored from the Recycle Bin. Productivity will suffer.',
+  },
+  {
+    id: 'strata', file: 'Strata.exe', title: 'Strata', icon: 'a-pickaxe',
+    src: 'games/strata/index.html', unlock: 'ending', saves: true, eggPrefix: 'strata-',
+    binLore: 'Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."',
+    binFrom: 'C:\\Games\\', binDate: '11-11-2011 11:11 AM', size: '38.2 MB', width: 1280, height: 760,
+    restoredLore: 'Restored from the Recycle Bin. Please come up for air.',
+  },
+];
+export const BONUS_IDS = BONUS_GAMES.map((g) => g.id);
+export const BONUS_BY_ID = Object.fromEntries(BONUS_GAMES.map((g) => [g.id, g]));
+/** The desktop icon of a restored bonus game. */
+export const bonusDesktopIcon = (g) => ({ id: g.id, label: g.file, icon: g.icon, type: 'Application', size: g.size, lore: g.restoredLore, bonus: g.id });
+
 const gameRoute = (id, url, src) => ({
   game: id,
   url: () => url,
@@ -59,6 +84,7 @@ export const LAUNCH_ITEMS = {
   readme: { label: 'README.txt', icon: 'a-text' },
   'thank-you': { label: 'thank_you.txt', icon: 'a-text' },
   ...Object.fromEntries(GAMES.map((g) => [g.id, { label: g.file, icon: 'a-html' }])),
+  ...Object.fromEntries(BONUS_GAMES.map((g) => [g.id, { label: g.file, icon: g.icon }])),
 };
 
 export const DESKTOP_ICONS = [
@@ -107,6 +133,14 @@ export const EGGS = [
   { id: 'wm-bin-core', name: 'Absolutely not' },
   { id: 'wm-hoarder', name: 'Cat pictures' },
   { id: 'wm-matryoshka', name: 'Folders all the way down' },
+  // SpaceSaga (bonus game), reported with SHELL_EFFECT effect:'egg'
+  { id: 'saga-404', name: 'Distance not found' },
+  { id: 'saga-popup', name: 'popup_guard.sys would be proud' },
+  { id: 'saga-afk', name: 'Taking a seat' },
+  // Strata (bonus game)
+  { id: 'strata-adblock', name: 'Ad Block enabled' },
+  { id: 'strata-bedrock', name: "It's called bedrock" },
+  { id: 'strata-cloud', name: 'Saved to cloud storage' },
 ];
 export const EGG_IDS = new Set(EGGS.map((e) => e.id));
 

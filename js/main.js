@@ -9,6 +9,8 @@ import { initBrowser } from './apps/browser.js';
 import { initLauncher } from './launcher.js';
 import { initCorruption, scheduleEnding } from './corruption.js';
 import { initEggs } from './easterEggs.js';
+import { initGameWindows } from './apps/gameWindow.js';
+import { announceBonus, debugUnlock } from './bonus.js';
 import { closeMenu, closeFlyout } from './menu.js';
 import { toast } from './notifications.js';
 import { launch } from './events.js';
@@ -84,6 +86,7 @@ function enterDesktop() {
     }, 1500);
   }
   scheduleEnding(3000);          // finished all four but never restarted? offer again
+  announceBonus();               // the ending is complete (clean desktop after the restart): the Recycle Bin has one more item
 }
 
 let booting = false;
@@ -118,11 +121,13 @@ async function boot({ skipLock = false } = {}) {
 }
 
 function init() {
+  debugUnlock();                 // ?unlockBonus=1: unlock the bonus games without playing the ending
   WM.init();
   initTaskbar();
   initStartMenu();
   initDesktop();
   initBrowser();
+  initGameWindows();
   initLauncher();
   initCorruption();
   initEggs();

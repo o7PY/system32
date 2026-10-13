@@ -253,3 +253,6 @@ body:not([data-phase="desktop"]) #desktop { visibility: hidden; }
 /* ---------- misc fx ---------- */
 #desktop.konami .d-icon { transition: none; }
 .scrambling { font-family: var(--mono); color: #ff7a9c; }
+
+.toast.clickable { cursor: pointer; }
+.toast.clickable:hover { filter: brightness(1.06); }

@@ -1,7 +1,7 @@
 // Start menu: search, pinned grid, recent items, power menu.
 import { bus, launch } from './events.js';
 import { state } from './state.js';
-import { LAUNCH_ITEMS, GAMES } from './registry.js';
+import { LAUNCH_ITEMS, GAMES, BONUS_GAMES } from './registry.js';
 import { icon, esc } from './ui.js';
 import { showMenuAt, closeMenu } from './menu.js';
 import { sleep, shutdown, restart } from './system.js';
@@ -11,7 +11,11 @@ const startBtn = () => document.getElementById('start-btn');
 
 const BASE_PINNED = ['edgy', 'explorer', 'notepad', 'recycle-bin', 'settings'];
 
-const pinnedIds = () => [...BASE_PINNED, ...GAMES.filter((g) => state.unlockedBookmarks.includes(g.id)).map((g) => g.id)];
+const pinnedIds = () => [
+  ...BASE_PINNED,
+  ...GAMES.filter((g) => state.unlockedBookmarks.includes(g.id)).map((g) => g.id),
+  ...BONUS_GAMES.filter((g) => state.bonus.restored.includes(g.id)).map((g) => g.id),      // restored from the Recycle Bin
+];
 
 let query = '';
 

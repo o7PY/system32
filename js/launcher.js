@@ -2,13 +2,14 @@
 import { bus } from './events.js';
 import { WM } from './WindowManager.js';
 import { state, addRecent } from './state.js';
-import { GAME_BY_ID, GAMES, LAUNCH_ITEMS, EGGS } from './registry.js';
+import { GAME_BY_ID, GAMES, LAUNCH_ITEMS, EGGS, BONUS_BY_ID } from './registry.js';
 import { fmtTime } from './ui.js';
 import { openBrowser } from './apps/browser.js';
 import { openNotepad } from './apps/notepad.js';
 import { openExplorer } from './apps/explorer.js';
 import { openRecycleBin } from './apps/recycleBin.js';
 import { openSettings } from './apps/settings.js';
+import { openGameWindow } from './apps/gameWindow.js';
 import { openCorruptedFolder } from './desktop.js';
 
 function thankYouText() {
@@ -47,6 +48,7 @@ function open(id, opts) {
     case 'settings': openSettings(); break;
     case 'new-folder': openCorruptedFolder(); break;
     default:
+      if (BONUS_BY_ID[id]) { openGameWindow(id); break; }       // bonus .exe: a plain game window, not Edgy
       if (GAME_BY_ID[id]) {
         const existing = WM.windows.find((w) => w.meta.game === id);
         if (existing) existing.focus(); else openBrowser({ route: id });

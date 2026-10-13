@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bonus game stub (test fixture)</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #05060d; color: #dfe8ff; font: 14px/1.5 system-ui, sans-serif; }
+  body { display: grid; place-items: center; }
+  main { width: min(560px, 92vw); }
+  h1 { margin: 0 0 4px; letter-spacing: .08em; }
+  button { font: inherit; padding: 8px 14px; margin: 4px 6px 4px 0; cursor: pointer; }
+  pre { background: #0d1226; padding: 10px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bonus game stub</h1>
+  <p>Test fixture for the shell's bonus-game flow (Part A of SPACESAGA_SPEC.md): the tests point the registry's SpaceSaga entry at this page.</p>
+  <button id="run-over">Send RUN_OVER</button>
+  <button id="won">Send won() (must be ignored)</button>
+  <pre id="log">waiting for INIT...</pre>
+</main>
+<script src="../../../games/_shared/sdk.js" data-game="space-saga"></script>
+<script>
+(function () {
+  var s = window.__stub = { init: null, pauses: 0, resumes: 0, keys: [], runs: 0, state: 'unknown' };
+  var log = document.getElementById('log');
+  function show() {
+    log.textContent = 'INIT: ' + JSON.stringify(s.init) + '\nstate: ' + s.state + '  pauses: ' + s.pauses + '  resumes: ' + s.resumes +
+      '\nlast keys: ' + s.keys.slice(-5).join(' ') + '\nruns sent: ' + s.runs + '  hasFocus: ' + document.hasFocus();
+  }
+  System32.onInit(function (init) { s.init = init; show(); });
+  System32.onPause(function () { s.pauses++; s.state = 'paused'; show(); });
+  System32.onResume(function () { s.resumes++; s.state = 'running'; show(); });
+  window.addEventListener('keydown', function (e) { s.keys.push(e.key); show(); if (e.key === 'r') send(); });
+  function send() { s.runs++; System32.runOver({ score: 1000 * s.runs, distance: 100 * s.runs, pickups: s.runs, timeMs: 5000 * s.runs }); show(); }
+  document.getElementById('run-over').addEventListener('click', send);
+  document.getElementById('won').addEventListener('click', function () { System32.won({ timeMs: 1, score: 1 }); System32.lost('nope'); });
+  System32.ready();
+})();
+</script>
+</body>
+</html>

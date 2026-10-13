@@ -1,7 +1,7 @@
 // Desktop icons: grid layout, selection, rubber-band, drag + snap, context menus, drag-to-bin.
 import { bus, launch } from './events.js';
-import { state, set, save, foundEgg, allRepaired } from './state.js';
-import { DESKTOP_ICONS, THANK_YOU_ICON, ACCENTS } from './registry.js';
+import { state, set, save, foundEgg, allRepaired, binBonus } from './state.js';
+import { DESKTOP_ICONS, THANK_YOU_ICON, ACCENTS, BONUS_GAMES, bonusDesktopIcon } from './registry.js';
 import { icon, esc, rand, reducedMotion } from './ui.js';
 import { showMenu } from './menu.js';
 import { showDialog, confirmDialog } from './dialogs.js';
@@ -23,6 +23,7 @@ function wantedItems() {
   return [
     ...DESKTOP_ICONS,
     ...(state.endingSeen ? [THANK_YOU_ICON] : []),
+    ...BONUS_GAMES.filter((g) => state.bonus.restored.includes(g.id)).map(bonusDesktopIcon),     // restored from the Recycle Bin
     ...state.extraIcons.map((x) => ({
       id: x.id, label: x.label, icon: 'a-folder', type: 'File folder', size: '—', extra: true,
       lore: 'It was empty. Now it is corrupted.',
@@ -255,6 +256,12 @@ async function deleteItem(it) {
     if (!ok) return;
     foundEgg('bin-pc');
     await bsod({ reboot: true });
+    return;
+  }
+  if (it.bonus) {                // a restored bonus game goes back to the bin (where "Empty" can never delete it)
+    binBonus(it.bonus);
+    play('crumple');
+    toast({ title: 'Recycle Bin', kind: 'info', text: `${it.label} was moved to the Recycle Bin.` });
     return;
   }
   if (it.game) {
