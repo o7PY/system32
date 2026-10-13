@@ -79,6 +79,9 @@ export const CONFIG = {
   settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true, difficulty: 'normal', keepInventory: false, compass: true, subtitles: false },
   // mobs (STRATA_PART2_SPEC 5): animals come with the chunk (40 % of grassy chunks, 2 to 4 of one kind), one more every 2 minutes near you, at most 20 loaded
   mobs: { chunkChance: 0.4, perChunk: [2, 4], respawnS: 120, passiveCap: 20, deathS: 0.9, hearRange: 24 },
+  // hostiles (STRATA_PART2_SPEC 5.2): spawn on a solid block with light 7 or less, 24-64 blocks from you, cap 30 (Hard x1.5), gone when 64+ blocks away for 30 s,
+  // surface ones crumble over 3 s at sunrise; pathsPerStep = A* searches allowed per simulation step for ALL monsters together
+  hostiles: { cap: 30, hardMul: 1.5, everyS: 1.5, tries: 8, minDist: 24, maxDist: 64, maxLight: 7, despawnDist: 64, despawnS: 30, lagS: 3, lagDaylight: 0.45, pathRange: 40, pathsPerStep: 2 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 
@@ -101,6 +104,8 @@ export const RECIPES = [
     { id: `sword_${tier}`, pattern: ['M', 'M', 'S'], key: { M: mat, S: 'stick' }, out: [`sword_${tier}`, 1] },
   ]),
   // Part 2: storage, bed, food, shears
+  { id: 'bow', pattern: ['.SB', 'S.B', '.SB'], key: { S: 'stick', B: 'string' }, out: ['bow', 1] },
+  { id: 'arrow', pattern: ['F', 'S', 'P'], key: { F: 'flint', S: 'stick', P: 'feather' }, out: ['arrow', 4] },
   { id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' }, out: ['chest', 1] },
   { id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, out: ['bed', 1] },
   { id: 'bowl', pattern: ['P.P', '.P.'], key: { P: 'planks' }, out: ['bowl', 4] },

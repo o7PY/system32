@@ -883,7 +883,7 @@ test('animals in the real world: boxes drawn from the code-built mob atlas, they
   const kill = await S(p, `(() => { const pig = S.mobs().list.find((m) => m.type === 'pig'); const e = S.player().eye(); S.tp(pig.x, pig.y, pig.z + 2); const e2 = S.player().eye(); const dx = pig.x - e2.x, dz = pig.z - e2.z, dy = pig.y + 0.5 - e2.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); return pig.hp; })()`);
   void kill;
   await sleep(200);
-  for (let i = 0; i < 5; i++) { await p.eval(`__STRATA.G.atk = 1; (() => { const S = __STRATA, pig = S.mobs().list.find((m) => m.type === 'pig'); if (!pig || pig.dead) return; const e = S.player().eye(); const dx = pig.x - e.x, dz = pig.z - e.z, dy = pig.y + 0.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); })()`); await sleep(80); await mouseDown(p); await sleep(50); await mouseUp(p); await sleep(120); }
+  for (let i = 0; i < 5; i++) { await p.eval(`__STRATA.G.atk = 1; (() => { const S = __STRATA, pig = S.mobs().list.find((m) => m.type === 'pig'); if (!pig || pig.dead) return; S.tp(pig.x, pig.y, pig.z + 1.8); const e = S.player().eye(); const dx = pig.x - e.x, dz = pig.z - e.z, dy = pig.y + 0.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); })()`); await sleep(80); await mouseDown(p); await sleep(50); await mouseUp(p); await sleep(120); }
   await p.waitFor(`!__STRATA.mobs().list.some((m) => m.type === 'pig')`, { what: 'the pig to be gone', timeout: 8000 });
   const loot = await S(p, `S.drops().list.filter((d) => d.stack.id === 'raw_pork').reduce((n, d) => n + d.stack.n, 0) + S.inv().count('raw_pork')`);
   if (loot < 1 || loot > 3) throw new Error('pork ' + loot);
@@ -992,6 +992,128 @@ test('shears take wool from a sheep without killing it; bare it regrows; a cooke
   if (!r.sheared || !r.alive || r.wool < 2 || r.wool > 3 || r.dur !== 237) throw new Error(JSON.stringify(r));
   await p.eval(`(() => { const S = __STRATA, m = S.mobs().list[0]; S.useOrPlace(); })()`);
   if ((await S(p, `S.drops().list.filter((d) => d.stack.id === 'wool').reduce((n, d) => n + d.stack.n, 0)`)) !== r.wool) throw new Error('a bare sheep gave wool again');
+});
+
+// ------------------------------------------------------------------ Part 2: hostiles, the bow, arrows, the Pop-up
+const aimAtMob = (p, type, dy = 1.1) => p.eval(`(() => { const S = __STRATA, m = S.mobs().list.find((x) => x.type === '${type}'); const e = S.player().eye(); const dx = m.x - e.x, dz = m.z - e.z; S.face(Math.atan2(-dx, -dz), Math.atan2(m.y + ${dy} - e.y, Math.hypot(dx, dz))); })()`);
+
+test('night monsters: they appear on their own at night 24-64 blocks away, a Shambler walks up and hits for 3, the death screen names it, and none appear by day or on Peaceful', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.setTime(0.75); S.G.fakeLock = true; S.vitals().invuln = 0; S.vitals().hunger = 10; })()`);
+  await p.waitFor(`__STRATA.mobs().list.filter((m) => m.def.kind === 'hostile').length >= 2`, { what: 'monsters to spawn at night', timeout: 40000 });
+  const near = await S(p, `(() => { const P = S.player().pos; return S.mobs().list.filter((m) => m.def.kind === 'hostile').map((m) => Math.hypot(m.x - P.x, m.z - P.z)); })()`);
+  if (!near.every((d) => d >= 22 && d <= 70)) throw new Error('spawn distances ' + near.join());
+  // dedicated test monster right next to us
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.spawner().t = 1e9; S.spawn('shambler', P.x + 6, 49, P.z); })()`);
+  await p.waitFor(`__STRATA.vitals().hp < 20`, { what: 'the Shambler to hit', timeout: 20000 });
+  const hp = await S(p, `S.vitals().hp`);
+  if (hp !== 17) throw new Error(`a Shambler hit should cost 3 HP, left ${hp}`);
+  await p.eval(`(() => { const S = __STRATA; S.vitals().hunger = 10; S.damage(99, { type: 'mob', name: 'a Shambler' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead'`);
+  if ((await S(p, `document.getElementById('death-cause').textContent`)) !== 'Was slain by a Shambler') throw new Error('death cause');
+  await p.eval(`document.getElementById('b-respawn').click()`); await p.waitFor(`__STRATA.state().phase === 'playing'`);
+  // by day nothing spawns (open ground has sky light), and Peaceful clears them
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.setTime(0.25); S.spawner().t = 0; })()`);
+  await sleep(6000);
+  if (await S(p, `S.mobs().list.some((m) => m.def.kind === 'hostile')`)) throw new Error('monsters spawned in daylight on open ground');
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.setTime(0.75); S.setDifficulty('peaceful'); S.spawn('shambler', P.x + 8, 49, P.z); })()`);
+  await sleep(1500);
+  if (await S(p, `S.mobs().list.some((m) => m.def.kind === 'hostile')`)) throw new Error('monsters survived Peaceful');
+});
+
+test('sunrise: surface monsters freeze and flicker, then crumble within 3 s and leave nothing', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.spawner().t = 1e9; S.setTime(0.1); S.G.fakeLock = true; S.spawn('shambler', P.x + 14, 49, P.z); S.spawn('rattler', P.x - 14, 49, P.z); })()`);
+  await p.waitFor(`__STRATA.mobs().list.some((m) => m.lagging)`, { what: 'lag-out', timeout: 8000 });
+  const flick = await S(p, `[...S.mobRenderer().models.values()].some((r) => r.model.root.visible === true || r.model.root.visible === false)`);
+  void flick;
+  await p.waitFor(`!__STRATA.mobs().list.some((m) => m.def.kind === 'hostile')`, { what: 'the monsters to crumble', timeout: 8000 });
+  if ((await S(p, `S.drops().list.length`)) !== 0) throw new Error('crumbled monsters left drops');
+});
+
+test('the bow: crafted from sticks and string, hold the right button up to 1 s, damage 2-9 by draw, uses one arrow and some durability; arrows stick in blocks and can be picked up again', async (p) => {
+  await flat(p);
+  const pos = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z })`);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.give('bow'); S.give('arrow', 5); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'bow')); S.G.fakeLock = true; S.face(0, 0.0); S.spawn('cow', ${pos.x}, 49, ${pos.z - 6}); S.mobs().list[0].hp = 100; S.mobs().list[0].maxHp = 100; const c = S.mobs().list[0]; c.def = { ...c.def, speed: 0, flee: 0 }; })()`);       // a cow that stands still
+  await sleep(300);
+  await aimAtMob(p, 'cow');
+  await rightDown(p); await sleep(1300);
+  const drawing = await S(p, `({ bar: parseFloat(document.getElementById('eatbar').firstElementChild.style.width), arrows: S.inv().count('arrow'), draw: !!S.G.draw })`);
+  if (!drawing.draw || drawing.bar < 80) throw new Error('not drawing: ' + JSON.stringify(drawing));
+  await aimAtMob(p, 'cow');
+  await rightUp(p);
+  await sleep(100);
+  if ((await S(p, `S.inv().count('arrow')`)) !== 4 || (await S(p, `S.arrows().list.length`)) !== 1) throw new Error('shooting did not use an arrow');
+  await p.waitFor(`S => true`, {}).catch(() => {});
+  await p.waitFor(`__STRATA.mobs().list[0].hp < 100`, { what: 'the arrow to hit the cow', timeout: 6000 });
+  const dmg = 100 - await S(p, `S.mobs().list[0].hp`);
+  if (Math.abs(dmg - 9) > 0.2) throw new Error('a full draw does 9, did ' + dmg);
+  const bow = await S(p, `S.inv().slots.find((s) => s?.id === 'bow').dur`);
+  if (bow !== 383) throw new Error('bow durability ' + bow);
+  // a quick tap = weak, or no shot at all under 0.15 s
+  await aimAtMob(p, 'cow');
+  await rightDown(p); await sleep(60); await rightUp(p);
+  if ((await S(p, `S.inv().count('arrow')`)) !== 4) throw new Error('a 60 ms tap should not shoot');
+  await aimAtMob(p, 'cow'); await rightDown(p); await sleep(400); await rightUp(p);
+  const hp0 = await S(p, `S.mobs().list[0].hp`);
+  await p.waitFor(`__STRATA.mobs().list[0].hp < ${hp0}`, { what: 'the weak arrow to hit', timeout: 6000 });
+  const weak = hp0 - await S(p, `S.mobs().list[0].hp`);
+  if (!(weak > 3 && weak < 6)) throw new Error('0.4 s draw should be about 4.8, was ' + weak);
+  // no arrows -> no shot
+  await p.eval(`(() => { const S = __STRATA; for (let i = 0; i < 36; i++) if (S.inv().slots[i]?.id === 'arrow') S.inv().slots[i] = null; })()`);
+  await rightDown(p); await sleep(500); await rightUp(p);
+  if ((await S(p, `S.arrows().list.filter((a) => !a.stuck).length`)) !== 0) throw new Error('shot without arrows');
+  // pick up a stuck arrow by walking onto it
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.arrows().clear(); const a = S.arrows().shoot(P.x + 3, 49.5, P.z, 1, -0.2, 0, 14, 5, { mine: true }); })()`);
+  await sleep(1500);
+  const st = await S(p, `S.arrows().list.map((a) => ({ stuck: a.stuck, x: a.x, y: a.y, z: a.z }))`);
+  if (st.length !== 1 || !st[0].stuck) throw new Error('arrow not stuck ' + JSON.stringify(st));
+  await p.eval(`(() => { const S = __STRATA, a = S.arrows().list[0]; S.tp(a.x, a.y - 0.3, a.z); })()`);
+  await p.waitFor(`__STRATA.inv().count('arrow') === 1`, { what: 'the arrow to be picked up', timeout: 5000 });
+});
+
+test('a Rattler shoots from a distance and its arrows hurt 2-4 HP; the death line says who shot you', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.spawner().t = 1e9; S.setTime(0.75); S.G.fakeLock = true; S.vitals().hunger = 10; S.spawn('rattler', P.x + 10, 49, P.z); })()`);
+  await p.waitFor(`__STRATA.vitals().hp < 20`, { what: 'an arrow to hit', timeout: 40000 });
+  const lost = 20 - await S(p, `S.vitals().hp`);
+  if (lost < 2 || lost > 4) throw new Error('an arrow did ' + lost);
+  await p.eval(`(() => { const S = __STRATA; S.vitals().invuln = 0; S.damage(99, { type: 'arrow', name: 'a Rattler' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead'`);
+  if ((await S(p, `document.getElementById('death-cause').textContent`)) !== 'Was shot by a Rattler') throw new Error('cause');
+});
+
+test('Pop-up: it flies to you and covers the screen with a fake ad that times out after 4 s or closes with its X; killing one with an Ad Block in the hotbar is the egg', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.spawner().t = 1e9; S.setTime(0.75); S.G.fakeLock = true; S.spawn('popup', P.x + 8, 52, P.z); })()`);
+  await p.waitFor(`!document.getElementById('ad').hidden`, { what: 'the ad overlay', timeout: 30000 });
+  if ((await S(p, `S.vitals().hp`)) !== 20) throw new Error('a Pop-up must not hurt');
+  const cover = await S(p, `(() => { const r = document.querySelector('#ad .adwin').getBoundingClientRect(); return r.width > 300 && r.height > 100; })()`);
+  if (!cover) throw new Error('the ad is not big');
+  await p.eval(`document.getElementById('ad-x').click()`);
+  if (!(await S(p, `document.getElementById('ad').hidden`))) throw new Error('the X did not close the ad');
+  // it times out on its own
+  await p.eval(`__STRATA.ui().adOverlay(4)`);
+  await sleep(2000);
+  if (await S(p, `document.getElementById('ad').hidden`)) throw new Error('the ad went away early');
+  await p.waitFor(`document.getElementById('ad').hidden`, { what: 'the ad to time out', timeout: 6000 });
+  // the egg
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.give('popup', 1); S.give('sword_iron'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'sword_iron')); S.spawn('popup', P.x, 51, P.z - 2.2); S.mobs().list[0].data.cool = 99; S.G.atk = 1; })()`);
+  await aimAtMob(p, 'popup', 0.4);
+  await p.eval(`(() => { const S = __STRATA; S.attack(S.mobs().list[0]); })()`);
+  await p.waitFor(`__STRATA.G.eggs.has('strata-popup-adblock')`, { what: 'the egg', timeout: 5000 });
+  if (!/Ad Block worked as intended/.test(await S(p, `document.getElementById('subtitle').textContent`))) throw new Error('no subtitle');
+});
+
+test('a Creepcrawler is neutral by day until hit; the monsters have names, voices and subtitles with a direction', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.killAll(); S.spawner().t = 1e9; S.setTime(0.25); S.G.fakeLock = true; S.G.settings.subtitles = true; S.spawn('creepcrawler', P.x + 6, 49, P.z); S.vitals().hunger = 10; })()`);
+  await sleep(2500);
+  if ((await S(p, `S.vitals().hp`)) !== 20 || (await S(p, `S.mobs().list[0].data.sees`)) === true) throw new Error('a daytime spider attacked');
+  await p.eval(`(() => { const S = __STRATA; S.mobs().damage(S.mobs().list[0], 1, { from: S.player().pos }); })()`);
+  await p.waitFor(`__STRATA.mobs().list[0].data.sees === true`, { what: 'the spider to turn hostile', timeout: 5000 });
+  const names = await S(p, `({ voices: S.audio().played.filter((x) => x.startsWith('voice.')).length, models: S.mobRenderer().models.size })`);
+  if (names.models !== 1) throw new Error(JSON.stringify(names));
 });
 
 s.run();

@@ -5,6 +5,8 @@ import { ITEMS, stack, blockItem, isTool, hasDurability, durabilityOf } from './
 import { World, createBackend } from './world.js';
 import { Renderer } from './renderer.js';
 import { Mobs } from './entities.js';
+import { installHostiles, Spawner } from './hostile.js';
+import { Arrows, bowDamage, bowSpeed } from './projectiles.js';
 import { MobRenderer } from './mobmodel.js';
 import { Player } from './player.js';
 import { raycast, Miner, Drops, dropsFor, useTool } from './interact.js';
@@ -46,7 +48,7 @@ const G = {
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
-let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, backendInfo = { kind: '?', reason: '' };
+let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, arrows, spawner, arrowMesh, backendInfo = { kind: '?', reason: '' };
 let chests = new Map();                       // 'x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
 
@@ -91,6 +93,7 @@ async function boot() {
   backendInfo = made.info;
   world = new World({ backend: made.backend, atlas, size: G.worldSize });
   mobs = new Mobs({ world }); mobRenderer = new MobRenderer(renderer);
+  arrows = new Arrows({ world, mobs }); installHostiles(mobs, arrows); spawner = new Spawner(mobs);
   world.onMesh = (c, m) => renderer.addChunk(c, m);
   world.onUnload = (c) => { renderer.removeChunk(c); if (G.mobsOn) mobs.chunkUnloaded(c.cx, c.cz, G.seed); };
   world.onGenerated = (c) => { if (G.mobsOn) mobs.chunkLoaded(c, G.seed); };
@@ -107,7 +110,7 @@ async function boot() {
 }
 
 async function startTitleWorld() {
-  G.phase = 'loading'; G.mobsOn = false; mobs.clear(); mobRenderer.clear();
+  G.phase = 'loading'; G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear();
   world.setSize(CONFIG.worldSize);
   renderer.setWorldSize(CONFIG.worldSize);
   await world.setSeed(0, { flat: false });
@@ -137,7 +140,7 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   Object.assign(G.settings, save?.settings ?? {});
   G.settings.viewDistance = Math.min(G.settings.viewDistance, OPT.low ? CONFIG.view.low : CONFIG.view.max);
   applySettings();
-  G.mobsOn = false; mobs.clear(); mobRenderer.clear();
+  G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); G.draw = null; ui.adOverlay(0);
   await world.setSeed(seed, { flat, edits: save?.edits ?? new Map() });
   G.seed = seed; G.flat = flat;
   mobs.load(save?.animals ?? []);
@@ -308,10 +311,10 @@ function bindInput() {
     if (G.phase !== 'playing' || G.menu) return;
     if (!isLocked()) { canvas.requestPointerLock?.(); return; }
     if (e.button === 0) { G.mouseLeft = true; G.attackClick = true; }
-    else if (e.button === 2) { G.mouseRight = true; useOrPlace(); }
+    else if (e.button === 2) { G.mouseRight = true; if (inv.held()?.id === 'bow') startDraw(); else useOrPlace(); }
     else if (e.button === 1) { e.preventDefault(); pickBlock(); }
   });
-  addEventListener('mouseup', (e) => { if (e.button === 0) G.mouseLeft = false; if (e.button === 2) { G.mouseRight = false; G.eat = null; ui.eating(null); } });
+  addEventListener('mouseup', (e) => { if (e.button === 0) G.mouseLeft = false; if (e.button === 2) { G.mouseRight = false; G.eat = null; if (G.draw) releaseBow(); else ui.eating(null); } });
   document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas && G.phase === 'playing' && !G.menu && !G.fakeLock) pauseGame(); });
   addEventListener('blur', () => { G.keys.clear(); G.mouseLeft = false; G.sprintLatch = false; });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.phase === 'playing') pauseGame('shell'); });
@@ -500,6 +503,27 @@ function useOrPlace() {
   if (y === CONFIG.height - 1) { eggOnce('strata-cloud'); ui.subtitle('Saved to cloud storage.'); }
 }
 
+// ---------------------------------------------------------------- the bow
+/** Hold the right button with a bow in hand and an arrow somewhere in the inventory: the string draws for up to 1 s, letting go shoots (damage 2 to 9 by draw). */
+function startDraw() {
+  const ammo = inv.slots.findIndex((s) => s?.id === 'arrow');
+  if (ammo < 0) { ui.subtitle('You have no arrows.', 1800); return; }
+  G.draw = { t: 0 };
+  audio.play('bow.draw', { vol: 0.8 });
+}
+function releaseBow() {
+  const d = G.draw; G.draw = null; ui.eating(null);
+  if (!d || d.t < 0.15 || inv.held()?.id !== 'bow') return;
+  const ammo = inv.slots.findIndex((s) => s?.id === 'arrow');
+  if (ammo < 0) return;
+  inv.takeOne(ammo);
+  const e = player.eye(), v = player.dir(), dmg = bowDamage(d.t);
+  arrows.shoot(e.x + v.x * 0.5, e.y - 0.15 + v.y * 0.5, e.z + v.z * 0.5, v.x, v.y, v.z, bowSpeed(d.t), dmg, { mine: true });
+  audio.play('bow.shoot', { vol: 0.9 });
+  wear(inv.selected, 1);
+  vitals.addExhaustion(0.05);
+}
+
 // ---------------------------------------------------------------- mobs: targeting, melee, shearing
 const mobTarget = () => mobs.raycast(player.eye(), player.dir(), CONFIG.attack.reach);
 
@@ -537,6 +561,48 @@ function attack(m) {
   vitals.addExhaustion(0.1);
 }
 
+/** What the monsters need to know about the world and you; hurt() is how they reach your health. */
+function hostileCtx() {
+  return {
+    player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, w: CONFIG.player.width, h: CONFIG.player.height, dead: vitals.dead }, dayT: G.dayT, now: G.now, peaceful: vitals.peaceful,
+    surfaceRules: G.dim === 'overworld', lightAt: (x, y, z) => world.lightAt(x, y, z),
+    hurt: (amount, o) => vitals.damage(amount, o),
+    knock: (dx, dz, k) => { const d = Math.hypot(dx, dz) || 1; player.vel.x += dx / d * k; player.vel.z += dz / d * k; player.vel.y = Math.max(player.vel.y, 3.2); },
+  };
+}
+/** Where a monster may appear: the first standable cell (solid below, two free above) going down from y0. */
+function groundAt(x, z, y0) {
+  if (!world.has(x, z)) return null;
+  for (let y = Math.min(CONFIG.height - 3, y0); y > 1; y--) {
+    if (isSolid(world.getBlock(x, y - 1, z)) && world.getBlock(x, y, z) === B.air && world.getBlock(x, y + 1, z) === B.air) return y;
+  }
+  return null;
+}
+function spawnEnv(ctx) {
+  const e = player.eye(), d = player.dir();
+  return {
+    player: ctx.player, dayT: G.dayT, peaceful: vitals.peaceful, difficulty: vitals.difficulty, lightAt: ctx.lightAt, ground: groundAt,
+    inView: (x, y, z) => { const dx = x - e.x, dy = y - e.y, dz = z - e.z, l = Math.hypot(dx, dy, dz) || 1; return (dx * d.x + dy * d.y + dz * d.z) / l > 0.5; },
+  };
+}
+
+/** Arrows landing: a hit on you, on a mob, a stick in a block, or one picked up again. */
+function arrowEvents() {
+  for (const ev of arrows.takeEvents()) {
+    const a = ev.arrow, at = { x: a.x, y: a.y, z: a.z };
+    if (ev.type === 'hit-player') {
+      const from = a.shooter ? { x: a.shooter.x, z: a.shooter.z } : null;
+      vitals.damage(a.damage, { type: 'arrow', name: `a ${a.shooter?.def?.name ?? 'Rattler'}`, from });
+      audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
+    } else if (ev.type === 'hit-mob') {
+      mobs.damage(ev.mob, a.damage, { from: player.pos, knockback: 2.5, type: 'player' });
+      audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
+      if (ev.mob.def.kind === 'hostile') ev.mob.data.angry = true;
+    } else if (ev.type === 'stick') audio.play('arrow.hit', { at, listener: listener(), vol: 0.5 });
+    else if (ev.type === 'pickup') { const left = inv.add(stack('arrow', 1)); if (left) drops.spawn(player.pos.x, player.pos.y + 1, player.pos.z, left); audio.play('pickup', { vol: 0.6 }); }
+  }
+}
+
 /** What the mobs did this step: sounds, drops, smoke. */
 function mobEvents() {
   const L = listener(), range = CONFIG.mobs.hearRange;
@@ -544,15 +610,22 @@ function mobEvents() {
     const m = ev.mob, at = { x: m.x, y: m.y + m.h * 0.5, z: m.z }, dist = Math.hypot(at.x - L.x, at.z - L.z);
     if (ev.type === 'voice') { if (dist < range) { audio.voice(m.def.voice, 'idle', { at, listener: L, vol: 0.8 }); subtitle(`${m.def.name} ${VOICE_VERB[m.def.voice] ?? 'calls'}`, at); } }
     else if (ev.type === 'hurt') { audio.voice(m.def.voice, 'hurt', { at, listener: L }); subtitle(`${m.def.name} hurt`, at); }
+    else if (ev.type === 'crumble') { mobRenderer.puff(m.x, m.y + 0.8, m.z, 12, 0xbbbbbb); }
+    else if (ev.type === 'draw') { audio.play('bow.draw', { at, listener: L, vol: 0.7 }); subtitle(`${m.def.name} draws a bow`, at); }
+    else if (ev.type === 'shoot') audio.play('bow.shoot', { at, listener: L, vol: 0.8 });
+    else if (ev.type === 'swing') audio.play('sword.swing', { at, listener: L, vol: 0.7 });
+    else if (ev.type === 'pounce') { audio.voice(m.def.voice, 'hurt', { at, listener: L, vol: 0.9 }); subtitle(`${m.def.name} pounces`, at); }
+    else if (ev.type === 'overlay') { ui.adOverlay(ev.seconds); audio.voice('popup', 'idle', { vol: 1 }); subtitle('Pop-up beeps', at); }
     else if (ev.type === 'die') {
       audio.voice(m.def.voice, 'die', { at, listener: L });
+      if (m.type === 'popup' && ev.by === 'player' && inv.slots.slice(0, 9).some((s) => s?.id === 'popup')) { eggOnce('strata-popup-adblock'); ui.subtitle('Ad Block worked as intended.', 4500); }
       for (const d of ev.drops) drops.spawn(m.x, m.y + 0.4, m.z, stack(d.id, d.n));
       mobRenderer.puff(m.x, m.y + 0.3, m.z, 8);
       if (ev.by === 'player') vitals.stats.mobs++;
     }
   }
 }
-const VOICE_VERB = { pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks' };
+const VOICE_VERB = { pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks', shambler: 'groans', rattler: 'rattles', crawler: 'hisses', popup: 'beeps' };
 /** "Pig oinks (left)": the direction of a sound relative to where you look. */
 function subtitle(text, at) {
   if (!G.settings.subtitles) return;
@@ -624,6 +697,7 @@ function simulate(dt) {
   } else if (state === 'broke') { G.mineTick = 0; breakBlock(hit); }
   else G.mineTick = 0;
 
+  if (G.draw) { G.draw.t += dt; if (!(G.mouseRight && locked && !open && inv.held()?.id === 'bow')) releaseBow(); else ui.eating(Math.min(1, G.draw.t)); }
   // eating: hold the right button with food in hand (1.6 s), only while hungry
   const heldNow = inv.held(), food = heldNow && ITEMS[heldNow.id].food;
   if (G.mouseRight && locked && !open && food && vitals.hunger < CONFIG.survival.maxHunger && !vitals.dead) {
@@ -635,7 +709,12 @@ function simulate(dt) {
 
   // drops, furnaces, time, autosave, music
   if (G.mobsOn) {
-    mobs.update(dt, { player: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, now: G.now });
+    const ctx = hostileCtx();
+    spawner.update(dt, spawnEnv(ctx));
+    mobs.update(dt, ctx);
+    arrows.update(dt, ctx.player);
+    arrows.pickup({ x: player.pos.x, y: player.pos.y, z: player.pos.z });
+    arrowEvents();
     mobs.trickle(dt, player.pos, grassNear);
     for (const m of mobs.list) { const dx = player.pos.x - m.x, dz = player.pos.z - m.z; m.look.yaw = Math.max(-0.9, Math.min(0.9, Math.atan2(-dx, -dz) - m.yaw)) * (Math.hypot(dx, dz) < 8 ? 1 : 0); }
     mobEvents();
@@ -655,6 +734,7 @@ function simulate(dt) {
   G.saveTimer += dt;
   if (G.saveTimer >= CONFIG.save.autosaveS) { G.saveTimer = 0; saveNow('autosave'); }
   audio.tick(dt);
+  if (ui.adLeft > 0) { ui.adLeft -= dt; if (ui.adLeft <= 0) ui.adOverlay(0); }
   ui.renderHotbar(inv);
   ui.mobBars(mobBarsNow());
   ui.renderVitals(vitals);
@@ -823,7 +903,7 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
-    mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
+    arrows: () => arrows, spawner: () => spawner, mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
     vitals: () => vitals, die, respawn, hold: (on) => { G.mouseRight = !!on; },
     setHealth: (n) => { vitals.hp = n; }, setHunger: (n) => { vitals.hunger = n; }, damage: (n, o) => vitals.damage(n, o),
     setDifficulty: (d) => { G.settings.difficulty = d; applySettings(); },

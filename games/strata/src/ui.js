@@ -164,6 +164,14 @@ export class UI {
   attackBar(p) { const e = $('atkbar'); e.hidden = p === null || p >= 1; if (!e.hidden) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   /** Fade to black and back (sleeping through the night). */
   sleepFade() { const e = $('sleep'); e.hidden = false; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); setTimeout(() => { e.hidden = true; e.classList.remove('on'); }, 2400); }
+  /** The Pop-up's ad: shows for `seconds` (the game clears it by calling adOverlay(0)); returns nothing. onClose is called when the player clicks the X. */
+  adOverlay(seconds, onClose) {
+    const e = $('ad');
+    e.hidden = seconds <= 0;
+    this.adLeft = seconds;
+    if (!this.adBound) { this.adBound = true; $('ad-x').addEventListener('click', () => { this.adLeft = 0; $('ad').hidden = true; this.onAdClose?.(); }); }
+    this.onAdClose = onClose;
+  }
   burning(on) { $('burning').hidden = !on; }
   eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }

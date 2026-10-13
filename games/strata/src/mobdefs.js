@@ -6,6 +6,8 @@
 //   limb?: { pivot: 'top'|'centre', swing: axis, amp: radians, phase: 0|1 }, head?: true (looks at the target), flap?: true (a wing) }
 // model.tex[key]: { base, alt?, pattern: 'solid'|'spots'|'stripes'|'wool'|'plates'|'grid', face?: 'pig'|'cow'|'sheep'|'chicken'|'zombie'|'skull'|'spider'|'ad'|'imp'|'glitch'|'bin'|'core' }
 
+import { HOSTILE } from './hostiledefs.js';
+
 const q = (x, y, z, w, h, d, tex, extra = {}) => ({ size: [w, h, d], at: [x, y, z], tex, ...extra });
 const leg = (n, x, z, tex, phase, h = 6, w = 3, y = h) => ({ n, size: [w, h, w], at: [x, y, z], tex, limb: { pivot: 'top', swing: 'x', amp: 0.7, phase } });
 
@@ -79,5 +81,6 @@ export const MOBS = {
   },
 };
 
+Object.assign(MOBS, HOSTILE);                           // the overworld monsters live in hostiledefs.js
 export const PASSIVE = Object.keys(MOBS).filter((k) => MOBS[k].kind === 'passive');
 export const mobDef = (type) => MOBS[type] ?? null;

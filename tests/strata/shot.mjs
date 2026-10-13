@@ -24,5 +24,8 @@ s.test('night with torches; day terrain', async (p) => {
   await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setHealth(20); S.setHunger(20); S.killAll(); const x = pl.pos.x, z = pl.pos.z, y = (() => { let yy = pl.pos.y + 4; while (yy > 0 && S.getBlock(Math.floor(x), Math.floor(yy), Math.floor(z - 4)) === 0) yy--; return yy + 1; })(); S.tp(x, pl.pos.y, z); for (const [t, dx, dz] of [['pig', -2, -4], ['cow', 1, -5], ['sheep', 3, -4], ['chicken', 0, -3]]) { let yy = pl.pos.y + 6; while (yy > 0 && S.getBlock(Math.floor(x + dx), Math.floor(yy), Math.floor(z + dz)) === 0) yy--; S.spawn(t, x + dx, yy + 1, z + dz); } S.face(0, -0.12); })()`);
   await sleep(1800);
   await p.screenshot(`${out}/mobs.png`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.killAll(); S.spawner().t = 1e9; S.setTime(0.74); const x = pl.pos.x, z = pl.pos.z; for (const [t, dx, dz] of [['shambler', -2, -5], ['shambler', 1.5, -6], ['rattler', 4, -8], ['creepcrawler', -4, -4], ['popup', 0, -3.2]]) { let yy = pl.pos.y + 6; while (yy > 0 && S.getBlock(Math.floor(x + dx), Math.floor(yy), Math.floor(z + dz)) === 0) yy--; const m = S.spawn(t, x + dx, yy + 1 + (t === 'popup' ? 1.5 : 0), z + dz); m.def = { ...m.def, speed: 0, sight: 0 }; } S.give('torch', 2); S.selectSlot(4); S.face(0, -0.08); })()`);
+  await sleep(2500);
+  await p.screenshot(`${out}/monsters.png`);
 });
 s.run();

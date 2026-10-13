@@ -125,11 +125,14 @@ export class MobRenderer {
     rec.lit = light(m.x, m.y + d.h * 0.5, m.z); rec.hurt = clamp(m.hurtT / 0.35, 0, 1) * 0.75;
     if (m.dead) { const t = clamp(m.deadT / 0.55, 0, 1); root.rotation.z = t * Math.PI / 2; root.position.y += t * 0.15; const fade = clamp(1 - (m.deadT - 0.4) / 0.4, 0, 1); root.scale.setScalar(Math.max(0.01, fade)); rec.hurt = 0.6; }
     else root.scale.setScalar(1);
+    root.visible = !m.lagging || Math.sin(now * 38) > -0.2;                              // a monster in the sun flickers
     for (const p of parts) {
       const s = p.spec, l = s.limb;
       if (s.wool && p.bareGeo) p.mesh.geometry = m.sheared ? p.bareGeo : p.geo;
       p.group.rotation.set(0, 0, 0);
       if (l) {
+        if (s.chase !== undefined && m.state === 'chase' && !m.lagging) { p.group.rotation.x = s.chase * (m.data.windup !== undefined ? 1.15 : 1); continue; }       // arms out in front
+        if (s.aim !== undefined && m.data.draw !== undefined) { p.group.rotation.x = s.aim; continue; }                                                                // a bow drawn
         if (s.flap) { const open = m.onGround ? 0.15 : 0.6 + Math.sin(now * 32 + m.id) * 0.5; p.group.rotation.z = (l.amp > 0 ? 1 : -1) * open * Math.abs(l.amp); }
         else { const ang = Math.sin(m.walk * 1.7 + l.phase * Math.PI + m.id) * l.amp * k * (m.dead ? 0 : 1); p.group.rotation[l.swing] = ang; }
       }

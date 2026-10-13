@@ -161,7 +161,8 @@ export class Mobs {
     m.inWater = g(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)) === B.water;
     const inLava = g(Math.floor(m.x), Math.floor(m.y + 0.2), Math.floor(m.z)) === B.lava;
     if (inLava && !m.dead) { m.lavaT = (m.lavaT ?? 0) + dt; if (m.lavaT >= 0.5) { m.lavaT = 0; this.damage(m, 4, { type: 'lava' }); } }
-    if (m.inWater) m.vy = Math.max(-1.5, m.vy - 8 * dt) + (m.vy < 1.2 ? 14 * dt : 0);       // floats up
+    if (m.def.flying && !m.dead) m.vy = Math.max(-6, Math.min(6, m.vy));                      // a flyer is steered by its AI, gravity does not apply
+    else if (m.inWater) m.vy = Math.max(-1.5, m.vy - 8 * dt) + (m.vy < 1.2 ? 14 * dt : 0);       // floats up
     else m.vy = Math.max(-40, m.vy - 28 * dt);
     if (m.def.flutter && m.vy < -2.4) m.vy = -2.4;                                              // a chicken flaps and drops slowly
     const p = m, dx = m.vx * dt, dz = m.vz * dt;
@@ -173,20 +174,23 @@ export class Mobs {
     } else m.stuck = Math.max(0, m.stuck - dt);
     const hitY = moveAxis(g, p, w, h, 'y', m.vy * dt);
     m.onGround = hitY && m.vy < 0;
+    if (m.def.flying && !m.dead) m.onGround = false;
     if (hitY) m.vy = 0;
-    if (m.onGround) { m.vx *= 0.82; m.vz *= 0.82; }
+    if (m.onGround && !m.driven) { m.vx *= 0.82; m.vz *= 0.82; }                              // friction only while nothing pushes it
+    m.driven = false;
     const sp = Math.hypot(m.vx, m.vz);
     m.moveSpeed = sp; m.walk += dt * (2 + sp * 4);
   }
 
   /** Walk toward (x, z) at `speed`, turning to face the way it goes. Returns the distance left. */
-  #steer(m, tx, tz, speed, dt, turn = 7) {
+  steer(m, tx, tz, speed, dt, turn = 7) {
     const dx = tx - m.x, dz = tz - m.z, d = Math.hypot(dx, dz);
     if (d > 0.05) {
       const want = Math.atan2(-dx, -dz);                                                         // yaw 0 faces -z
       m.yaw += angDiff(m.yaw, want) * Math.min(1, turn * dt);
       const k = 1 - Math.min(0.9, Math.abs(angDiff(m.yaw, want)) / 2);                         // slows down while turning
       m.vx = lerp(m.vx, -Math.sin(m.yaw) * speed * k, Math.min(1, 10 * dt)); m.vz = lerp(m.vz, -Math.cos(m.yaw) * speed * k, Math.min(1, 10 * dt));
+      m.driven = true;
     }
     return d;
   }
@@ -212,7 +216,7 @@ export class Mobs {
       if (m.fleeFrom) {
         const ax = m.x - m.fleeFrom.x, az = m.z - m.fleeFrom.z, d2 = Math.hypot(ax, az) || 1;
         if (!this.safeAhead(m, 0.9)) m.yaw += 1.2 * dt * 8;                                      // do not run off a cliff
-        this.#steer(m, m.x + ax / d2 * 4, m.z + az / d2 * 4, d.flee, dt, 9);
+        this.steer(m, m.x + ax / d2 * 4, m.z + az / d2 * 4, d.flee, dt, 9);
       }
       if (m.t <= 0 || m.stuck > 1.5) { m.state = 'idle'; m.t = 1 + r() * 3; m.stuck = 0; }
       return;
@@ -229,7 +233,7 @@ export class Mobs {
     if (m.state === 'wander') {
       m.t -= dt;
       if (!this.safeAhead(m, 0.9)) { m.goal = null; m.state = 'idle'; m.t = 1 + r() * 2; m.yaw += Math.PI * (0.5 + r()); return; }
-      const left = m.goal ? this.#steer(m, m.goal.x, m.goal.z, d.speed, dt) : 0;
+      const left = m.goal ? this.steer(m, m.goal.x, m.goal.z, d.speed, dt) : 0;
       if (!m.goal || left < 0.6 || m.t <= 0 || m.stuck > 1.2) { m.state = 'idle'; m.t = 2 + r() * 5; m.goal = null; m.stuck = 0; }
     }
     void ctx;
@@ -242,7 +246,7 @@ export class Mobs {
    */
   damage(m, amount, opts = {}) {
     if (m.dead || amount <= 0) return { killed: false, drops: [] };
-    m.hp -= amount; m.hurtT = 0.35; m.barT = 3;
+    m.hp -= amount; m.hurtT = 0.35; m.barT = 3; m.data.angry = true;
     this.events.push({ type: 'hurt', mob: m });
     if (opts.from) {
       const dx = m.x - opts.from.x, dz = m.z - opts.from.z, d = Math.hypot(dx, dz) || 1, k = opts.knockback ?? 0;
