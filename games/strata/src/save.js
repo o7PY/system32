@@ -5,7 +5,7 @@
 // A world nobody has built in saves in a few hundred bytes. Loading validates everything: a corrupt save is rejected with a SaveError, never half-loaded.
 import { CONFIG } from './config.js';
 import { BLOCKS } from './blocks.js';
-import { ITEMS } from './items.js';
+import { ITEMS, durabilityOf } from './items.js';
 
 export const MAGIC = 'STRATA1';
 export class SaveError extends Error {}
@@ -77,7 +77,7 @@ export async function serialize(s, { compress = true } = {}) {
   return `${MAGIC}:${z ? 'z' : 'r'}:${toBase64(z ? await pipe(box, new CompressionStream('deflate-raw')) : box)}`;
 }
 
-const validStack = (s) => s === null || (s && typeof s.id === 'string' && ITEMS[s.id] && Number.isInteger(s.n) && s.n >= 1 && s.n <= ITEMS[s.id].stack && (s.dur === undefined || (Number.isFinite(s.dur) && s.dur >= 1 && s.dur <= (ITEMS[s.id].tool?.durability ?? 0))));
+const validStack = (s) => s === null || (s && typeof s.id === 'string' && ITEMS[s.id] && Number.isInteger(s.n) && s.n >= 1 && s.n <= ITEMS[s.id].stack && (s.dur === undefined || (Number.isFinite(s.dur) && s.dur >= 1 && s.dur <= durabilityOf(s.id))));
 
 /** Parse and validate. Throws SaveError for anything that is not a sane save (wrong magic, garbage, impossible numbers). */
 export async function deserialize(str) {

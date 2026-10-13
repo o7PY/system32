@@ -2,9 +2,9 @@
 // real generator. Chunks are Uint8Array(16 * 16 * 128), index = (y << 8) | (z << 4) | x. Generation and meshing run in a Web Worker (started from a
 // Blob URL, see createBackend) or, if that is not possible, on the main thread in time-sliced batches: same code, same bytes.
 import { CONFIG } from './config.js';
-import { B, workerTable } from './blocks.js';
+import { B, BLOCKS, workerTable } from './blocks.js';
 
-const CS = CONFIG.chunk, H = CONFIG.height, PW = CS + 2;
+const CS = CONFIG.chunk, H = CONFIG.height, RW = CS * 3;
 export const chunkKey = (cx, cz) => (cz << 16) | cx;
 export const localIndex = (lx, y, lz) => (y << 8) | (lz << 4) | lx;
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -16,7 +16,7 @@ export class InlineBackend {
   #job(run, urgent) { return new Promise((resolve, reject) => { this.pending++; (urgent ? this.queue.unshift.bind(this.queue) : this.queue.push.bind(this.queue))({ run, resolve, reject }); }); }
   init(cfg) { this.gen.init(cfg); return Promise.resolve(true); }
   generate(cx, cz) { return this.#job(() => this.gen.generate(cx, cz)); }
-  mesh(padded, urgent = false) { return this.#job(() => this.gen.mesh(padded), urgent); }
+  meshRegion(region, opts, urgent = false) { return this.#job(() => this.gen.meshRegion(region, opts), urgent); }
   spawn() { return this.#job(() => this.gen.spawn()); }
   column(x, z) { return Promise.resolve(this.gen.columnInfo(x, z)); }
   /** Run queued jobs until the budget is used (at least one, so work always moves). Returns how many ran. */
@@ -51,7 +51,7 @@ export class WorkerBackend {
   }
   init(cfg) { return this.#call({ t: 'init', cfg }); }
   generate(cx, cz) { return this.#call({ t: 'gen', cx, cz }).then((r) => ({ data: r.data, biomes: r.biomes })); }
-  mesh(padded) { return this.#call({ t: 'mesh', padded }, [padded.buffer]).then((r) => r.mesh); }
+  meshRegion(region, opts) { return this.#call({ t: 'meshR', region, opts }, [region.buffer]).then((r) => r.mesh); }
   spawn() { return this.#call({ t: 'spawn' }).then((r) => r.spawn); }
   column(x, z) { return this.#call({ t: 'column', x, z }).then((r) => r.info); }
   pump() { return 0; }
@@ -82,7 +82,7 @@ export async function createBackend({ noWorker = false, base = 'src/', timeoutMs
 }
 
 // ------------------------------------------------------------------ the world
-/** @typedef {{cx: number, cz: number, data: Uint8Array|null, base: Uint8Array|null, biomes: Uint8Array|null, ver: number, meshVer: number, meshing: boolean, requested: boolean, urgent: boolean}} Chunk */
+/** @typedef {{cx: number, cz: number, data: Uint8Array|null, base: Uint8Array|null, biomes: Uint8Array|null, light: Uint8Array|null, ver: number, meshVer: number, meshing: boolean, requested: boolean, urgent: boolean}} Chunk */
 export class World {
   /**
    * @param backend  InlineBackend | WorkerBackend
@@ -96,7 +96,7 @@ export class World {
     this.chunks = new Map();
     this.edits = new Map();             // chunkKey -> Map(localIndex -> block id): only blocks that differ from the generator
     this.view = CONFIG.view.default;
-    this.seed = 0; this.flat = false;
+    this.seed = 0; this.flat = false; this.noSky = false;                // noSky: a dimension without a sky (the Underlayer, the Kernel)
     this.onMesh = null;                 // (chunk, mesh) the renderer uploads it
     this.onUnload = null;               // (chunk)
     this.uploads = [];
@@ -133,20 +133,42 @@ export class World {
     return c?.data ? c.data[localIndex(x & 15, y, z & 15)] : B.stone;
   }
 
-  /** Change a block of a loaded chunk. Records the edit (or forgets it if the block is back to what the generator made) and queues the remesh. */
+  /**
+   * Light (sky and block, 0..15 each) of a cell from its chunk's last meshing, or null when that chunk has none yet. The light of a chunk is computed from the blocks
+   * of the 3 x 3 chunks around it by the worker, so it is the same after a save and a load.
+   */
+  lightAt(x, y, z) {
+    if (y < 0 || y >= H) return y >= H && !this.noSky ? { sky: 15, blk: 0 } : { sky: 0, blk: 0 };
+    const c = this.chunks.get(chunkKey(x >> 4, z >> 4));
+    if (!c?.light) return null;
+    const v = c.light[localIndex(x & 15, y, z & 15)];
+    return { sky: v >> 4, blk: v & 15 };
+  }
+
+  /**
+   * Change a block of a loaded chunk. Records the edit (or forgets it if the block is back to what the generator made) and queues the remesh. A change that can
+   * alter light (what it emits, whether it blocks light, or any change where there is light around) remeshes the chunk and all 8 around it, because their light
+   * is computed from this one; any other change only touches the neighbours across a border (their faces and AO).
+   */
   setBlock(x, y, z, id) {
     if (y < 0 || y >= H) return false;
     const cx = x >> 4, cz = z >> 4, c = this.chunkAt(cx, cz);
     if (!c?.data) return false;
-    const lx = x & 15, lz = z & 15, i = localIndex(lx, y, lz);
-    if (c.data[i] === id) return false;
+    const lx = x & 15, lz = z & 15, i = localIndex(lx, y, lz), old = c.data[i];
+    if (old === id) return false;
+    const o = BLOCKS[old], n = BLOCKS[id];
+    let lightChange = o.emit !== n.emit || o.opaque !== n.opaque || o.dim !== n.dim;
+    if (lightChange && o.emit === n.emit) {                                                    // only the shape of the light could change: is there any light here?
+      const near = [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([dx, dy, dz]) => { const l = this.lightAt(x + dx, y + dy, z + dz); return !l || l.sky || l.blk; });
+      lightChange = near;
+    }
     c.data[i] = id;
     const k = chunkKey(cx, cz);
     let e = this.edits.get(k);
     if (id === c.base[i]) { e?.delete(i); if (e && !e.size) this.edits.delete(k); }
     else { if (!e) this.edits.set(k, (e = new Map())); e.set(i, id); }
-    const dxs = [0, ...(lx === 0 ? [-1] : []), ...(lx === CS - 1 ? [1] : [])], dzs = [0, ...(lz === 0 ? [-1] : []), ...(lz === CS - 1 ? [1] : [])];
-    for (const dz of dzs) for (const dx of dxs) { const n = this.chunkAt(cx + dx, cz + dz); if (n) { n.ver++; n.urgent = true; } }     // borders and corners change a neighbour's faces and AO
+    const dxs = lightChange ? [-1, 0, 1] : [0, ...(lx === 0 ? [-1] : []), ...(lx === CS - 1 ? [1] : [])], dzs = lightChange ? [-1, 0, 1] : [0, ...(lz === 0 ? [-1] : []), ...(lz === CS - 1 ? [1] : [])];
+    for (const dz of dzs) for (const dx of dxs) { const nb = this.chunkAt(cx + dx, cz + dz); if (nb) { nb.ver++; nb.urgent = true; } }     // borders and corners change a neighbour's faces and AO
     return true;
   }
 
@@ -166,16 +188,14 @@ export class World {
     return list;
   }
 
-  #padded(c) {
-    const out = new Uint8Array(PW * H * PW);
+  /** The blocks of the 3 x 3 chunks around `c` as one 48 x 128 x 48 array, index (y * 48 + z) * 48 + x (the chunk itself is x, z in 16..31). Outside the world is bedrock. */
+  #region(c) {
+    const out = new Uint8Array(RW * H * RW);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      const n = dx === 0 && dz === 0 ? c : this.chunkAt(c.cx + dx, c.cz + dz);
-      if (!n?.data) continue;
+      const n = dx === 0 && dz === 0 ? c : this.chunkAt(c.cx + dx, c.cz + dz), ox = (dx + 1) * CS, oz = (dz + 1) * CS;
+      if (!n?.data) { if (!this.inWorld(c.cx + dx, c.cz + dz)) for (let y = 0; y < H; y++) for (let z = 0; z < CS; z++) out.fill(B.bedrock, (y * RW + oz + z) * RW + ox, (y * RW + oz + z) * RW + ox + CS); continue; }
       const d = n.data;
-      if (dx === 0 && dz === 0) { for (let y = 0; y < H; y++) for (let z = 0; z < CS; z++) out.set(d.subarray((y << 8) + (z << 4), (y << 8) + (z << 4) + CS), (y * PW + z + 1) * PW + 1); }
-      else if (dz === 0) { const sx = dx < 0 ? CS - 1 : 0, ox = dx < 0 ? 0 : PW - 1; for (let y = 0; y < H; y++) for (let z = 0; z < CS; z++) out[(y * PW + z + 1) * PW + ox] = d[(y << 8) | (z << 4) | sx]; }
-      else if (dx === 0) { const sz = dz < 0 ? CS - 1 : 0, oz = dz < 0 ? 0 : PW - 1; for (let y = 0; y < H; y++) out.set(d.subarray((y << 8) + (sz << 4), (y << 8) + (sz << 4) + CS), (y * PW + oz) * PW + 1); }
-      else { const sx = dx < 0 ? CS - 1 : 0, sz = dz < 0 ? CS - 1 : 0, ox = dx < 0 ? 0 : PW - 1, oz = dz < 0 ? 0 : PW - 1; for (let y = 0; y < H; y++) out[(y * PW + oz) * PW + ox] = d[(y << 8) | (sz << 4) | sx]; }
+      for (let y = 0; y < H; y++) for (let z = 0; z < CS; z++) out.set(d.subarray((y << 8) + (z << 4), (y << 8) + (z << 4) + CS), (y * RW + oz + z) * RW + ox);
     }
     return out;
   }
@@ -186,7 +206,7 @@ export class World {
   }
 
   #requestGen(cx, cz) {
-    const c = { cx, cz, data: null, base: null, biomes: null, ver: 0, meshVer: -1, meshing: false, requested: true, urgent: false, mesh: null };
+    const c = { cx, cz, data: null, base: null, biomes: null, light: null, ver: 0, meshVer: -1, meshing: false, requested: true, urgent: false, mesh: null };
     this.chunks.set(chunkKey(cx, cz), c);
     const gen = this.generation;
     this.genInFlight++;
@@ -206,7 +226,7 @@ export class World {
     c.meshing = true; c.urgent = false;
     const ver = c.ver, gen = this.generation;
     this.meshInFlight++;
-    this.backend.mesh(this.#padded(c), true).then((m) => {
+    this.backend.meshRegion(this.#region(c), { sky: !this.noSky }, true).then((m) => {
       if (gen !== this.generation) return;
       this.meshInFlight--;
       if (this.chunks.get(chunkKey(c.cx, c.cz)) !== c) return;
@@ -244,7 +264,7 @@ export class World {
       const u = this.uploads.shift();
       u.c.meshing = false;
       if (this.chunks.get(chunkKey(u.c.cx, u.c.cz)) !== u.c || u.c.ver !== u.ver) continue;
-      u.c.meshVer = u.ver; u.c.mesh = true;
+      u.c.meshVer = u.ver; u.c.mesh = true; u.c.light = u.m.light ?? null;
       this.stats.meshed++;
       this.onMesh?.(u.c, u.m);
     }

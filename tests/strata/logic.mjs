@@ -111,20 +111,24 @@ const floorWorld = () => new Grid().fill(-50, 0, -50, 50, 10, 50, B.stone);     
 
 // ---------------------------------------------------------------- mining and tools
 {
-  const tools = [null, 'wood', 'stone', 'iron'];
+  const tools = [null, 'wood', 'stone', 'iron', 'cobalt'];
   const held = (type, tier) => (tier ? stack(`${type}_${tier}`) : null);
   const hand = (b) => BLOCKS[B[b]].hardness;
   check('mining: bedrock is unbreakable with everything', tools.every((t) => !breakInfo(B.bedrock, held('pickaxe', t)).breakable));
   // table: [block, tool type, tier or null] -> expected time and drops
-  const speed = { null: 1, wood: 2, stone: 4, iron: 6 };
+  const speed = { null: 1, wood: 2, stone: 4, iron: 6, cobalt: 9 };
   const rows = [];
-  for (const [name, def] of Object.entries(Object.fromEntries(BLOCKS.filter((b) => b.hardness > 0).map((b) => [b.name, b])))) for (const type of ['pickaxe', 'axe', 'shovel', 'sword']) for (const tier of tools) {
-    const matches = tier && def.tool === type, ok = !def.need || (tier && type === def.need.tool && { wood: 1, stone: 2, iron: 3 }[tier] >= def.need.tier);
+  for (const [name, def] of Object.entries(Object.fromEntries(BLOCKS.filter((b) => b.hardness > 0 && !b.only).map((b) => [b.name, b])))) for (const type of ['pickaxe', 'axe', 'shovel', 'sword']) for (const tier of tools) {
+    const matches = tier && def.tool === type, ok = !def.need || (tier && type === def.need.tool && { wood: 1, stone: 2, iron: 3, cobalt: 4 }[tier] >= def.need.tier);
     rows.push([name, type, tier, def.hardness / (matches ? speed[tier] : 1) * (ok ? 1 : 3.3), !!ok]);
   }
   const bad = rows.filter(([name, type, tier, time, drops]) => { const i = breakInfo(B[name], held(type, tier)); return !near(i.time, time, 1e-9) || i.drops !== drops; });
   check(`mining: break time and drop rule for ${rows.length} block x tool combinations match hardness / speed (x 3.3 without the needed tool)`, bad.length === 0, JSON.stringify(bad.slice(0, 3)));
-  check('mining: stone by hand takes 1.5 x 3.3 s and drops nothing; wood pickaxe 0.75 s; stone 0.375; iron 0.25', near(breakInfo(B.stone, null).time, 4.95) && !breakInfo(B.stone, null).drops && near(breakInfo(B.stone, held('pickaxe', 'wood')).time, 0.75) && near(breakInfo(B.stone, held('pickaxe', 'stone')).time, 0.375) && near(breakInfo(B.stone, held('pickaxe', 'iron')).time, 0.25));
+
+  const cb = (t) => breakInfo(B.cracked_bedrock, held('pickaxe', t));
+  check('mining: cracked bedrock breaks ONLY with a cobalt pickaxe, in 8 s; every other tool and the bare hand cannot', tools.filter((t) => t !== 'cobalt').every((t) => !cb(t).breakable) && !breakInfo(B.cracked_bedrock, held('axe', 'cobalt')).breakable && cb('cobalt').breakable && near(cb('cobalt').time, 8, 1e-9));
+  check('mining: cobalt ore needs an IRON pickaxe (a stone one breaks it slowly and drops nothing)', breakInfo(B.cobalt_ore, held('pickaxe', 'iron')).drops && !breakInfo(B.cobalt_ore, held('pickaxe', 'stone')).drops && dropFor(B.cobalt_ore, held('pickaxe', 'iron'))?.id === 'raw_cobalt');
+  check('mining: Kernel crystal takes 3 s with a cobalt pickaxe', near(breakInfo(B.kernel_crystal, held('pickaxe', 'cobalt')).time, 3, 1e-9));  check('mining: stone by hand takes 1.5 x 3.3 s and drops nothing; wood pickaxe 0.75 s; stone 0.375; iron 0.25', near(breakInfo(B.stone, null).time, 4.95) && !breakInfo(B.stone, null).drops && near(breakInfo(B.stone, held('pickaxe', 'wood')).time, 0.75) && near(breakInfo(B.stone, held('pickaxe', 'stone')).time, 0.375) && near(breakInfo(B.stone, held('pickaxe', 'iron')).time, 0.25));
   check('mining: iron ore needs a stone pickaxe: a wood one breaks it slowly and drops nothing', !breakInfo(B.iron_ore, held('pickaxe', 'wood')).drops && breakInfo(B.iron_ore, held('pickaxe', 'stone')).drops && breakInfo(B.iron_ore, held('pickaxe', 'wood')).time > breakInfo(B.iron_ore, held('pickaxe', 'stone')).time);
   const d = (b, h, r = 0) => dropFor(B[b], h, () => r);
   check('drops: stone gives cobblestone, grass gives dirt, coal ore gives coal, iron ore gives raw iron, glass nothing', d('stone', held('pickaxe', 'wood'))?.id === 'cobblestone' && d('grass', null)?.id === 'dirt' && d('coal_ore', held('pickaxe', 'wood'))?.id === 'coal' && d('iron_ore', held('pickaxe', 'stone'))?.id === 'raw_iron' && d('glass', null) === null);
@@ -254,7 +258,15 @@ const floorWorld = () => new Grid().fill(-50, 0, -50, 50, 10, 50, B.stone);     
     check('furnace screen: shift-click sends smeltables to the input and fuel to the fuel slot', f.input?.n === 4 && f.fuel?.id === 'coal' && !i.slots[0] && !i.slots[1]);
     m.cursor = { id: 'dirt', n: 1 }; check('furnace screen: the input only accepts things that smelt; the output is take-only', !m.click('in', 0, 'left') && (m.cursor = { id: 'glass', n: 1 }, !m.click('smelt', 0, 'left') || true));
     m.cursor = null; f.update(8.1); m.click('smelt', 0, 'left'); check('furnace screen: clicking the output takes the smelted items', m.cursor?.id === 'iron_ingot' && m.cursor.n === 2); }
-  check('item registry: 33 items, every placeable block has an item, every tool has durability', Object.keys(ITEMS).length === 33 && itemInfo('stone').block === B.stone && ['wood', 'stone', 'iron'].every((t) => ['pickaxe', 'axe', 'shovel', 'sword'].every((k) => ITEMS[`${k}_${t}`].tool.durability === CONFIG.tools[t].durability)));
+  check('item registry: every placeable block, tool (4 tiers), armor piece and food is an item; every drop and every recipe output exists; durable items have durability', Object.keys(ITEMS).length > 33 && itemInfo('stone').block === B.stone && ['wood', 'stone', 'iron', 'cobalt'].every((t) => ['pickaxe', 'axe', 'shovel', 'sword'].every((ty) => ITEMS[`${ty}_${t}`]?.tool?.durability > 0)) && ['leather', 'iron', 'cobalt'].every((t) => ['helmet', 'chestplate', 'leggings', 'boots'].every((sl) => ITEMS[`${t}_${sl}`]?.armor?.points > 0)) && Object.keys(CONFIG.food).every((f) => ITEMS[f]?.food?.hunger > 0) && BLOCKS.every((b) => !b.drop || ITEMS[b.drop[0]]) && RECIPES.every((r) => ITEMS[r.out[0]]));
+}
+
+// ---------------------------------------------------------------- Part 2 recipes
+{
+  const torch = matchRecipe(['coal', null, 'stick', null], 2), right = matchRecipe([null, 'coal', null, 'stick'], 2);
+  check('recipe: 1 coal over 1 stick makes 4 torches (in the 2 x 2 grid, either column)', torch?.out?.id === 'torch' && torch.out.n === 4 && right?.out?.id === 'torch');
+  const g = (str) => str.split('').map((c) => ({ c: 'cobalt_ingot', s: 'stick' })[c] ?? null);
+  check('recipe: a cobalt pickaxe is 3 cobalt ingots over 2 sticks on a crafting table; the sword and the tool tiers still match', matchRecipe(g('ccc.s..s.'), 3)?.out?.id === 'pickaxe_cobalt' && matchRecipe(g('.c..c..s.'), 3)?.out?.id === 'sword_cobalt');
 }
 
 console.log(`\nStrata logic: ${fails ? `${fails} FAILED` : 'all passed'}`);

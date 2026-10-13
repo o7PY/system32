@@ -18,10 +18,22 @@ const mixv = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 
 const CHUNK_VS = `
 attribute float aBr;
-varying vec2 vUv; varying float vBr; varying float vDist;
-uniform float uTime; uniform float uWave;
+#ifndef ENTITY
+attribute float aSky; attribute float aBlk; attribute float aAnim;
+#endif
+varying vec2 vUv; varying float vBr; varying float vSky; varying float vBlk; varying float vDist;
+uniform float uTime; uniform float uWave; uniform float uStride;
+#ifdef ENTITY
+uniform vec2 uEnt;
+#endif
 void main() {
   vUv = uv; vBr = aBr;
+  #ifdef ENTITY
+  vSky = uEnt.x; vBlk = uEnt.y;
+  #else
+  vSky = aSky; vBlk = aBlk;
+  if (aAnim > 0.5) vUv.x += floor(mod(uTime * 3.0, aAnim)) * uStride;      // animated tiles (Rift, server racks, torch flame): frames sit side by side
+  #endif
   vec3 p = position;
   #ifdef WATER
   vec4 wp = modelMatrix * vec4(p, 1.0);
@@ -31,15 +43,20 @@ void main() {
   vDist = length(mv.xyz);
   gl_Position = projectionMatrix * mv;
 }`;
+// Light: the sky part follows the time of day (uSun = daylight, uTint = its colour), the block part is warm torchlight that flickers a little; the brighter wins.
+// Both are baked per vertex as 0..1 (level / 15) and bent with a gamma curve so a torch falls off quickly. uMin is the least light anywhere (a cave is not pitch black).
 const CHUNK_FS = `
-uniform sampler2D uMap; uniform float uSun; uniform vec3 uTint; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uAlpha;
-varying vec2 vUv; varying float vBr; varying float vDist;
+uniform sampler2D uMap; uniform float uSun; uniform vec3 uTint; uniform vec3 uWarm; uniform float uFlick; uniform float uMin; uniform vec3 uMinCol;
+uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uAlpha;
+varying vec2 vUv; varying float vBr; varying float vSky; varying float vBlk; varying float vDist;
 void main() {
   vec4 t = texture2D(uMap, vUv);
   #ifdef CUTOUT
   if (t.a < 0.5) discard;
   #endif
-  vec3 c = t.rgb * vBr * uTint * uSun;
+  vec3 light = max(vec3(pow(vSky, 1.5) * uSun) * uTint, vec3(pow(vBlk, 1.5) * uFlick) * uWarm);
+  light = max(light, uMinCol * uMin);
+  vec3 c = t.rgb * vBr * light;
   #ifdef WATER
   c *= vec3(0.62, 0.8, 1.0);                       // deeper blue, so the sea floor does not stripe through
   #endif
@@ -128,7 +145,7 @@ export class Renderer {
     this.time = 0.1;
     this.viewBlocks = CONFIG.view.default * CS;
     this.uniforms = {
-      uSun: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uFogColor: { value: new THREE.Vector3(0.7, 0.83, 1) },
+      uSun: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uWarm: { value: new THREE.Vector3(1, 0.8, 0.52) }, uFlick: { value: 1 }, uMin: { value: 0.035 }, uMinCol: { value: new THREE.Vector3(0.8, 0.85, 1) }, uStride: { value: 0 }, uFogColor: { value: new THREE.Vector3(0.7, 0.83, 1) },
       uFogNear: { value: 60 }, uFogFar: { value: 120 }, uTime: { value: 0 }, uWave: { value: low ? 0 : 1 }, uAlpha: { value: 0.82 },
     };
     this.sunDir = new THREE.Vector3(0, 1, 0);
@@ -148,12 +165,14 @@ export class Renderer {
     this.crackTex = crackTextures();
   }
 
-  #mat(map, { cutout = false, water = false, side = THREE.FrontSide } = {}) {
+  /** `entity`: the light does not come from vertex data but from the uEnt uniform, set per object in onBeforeRender (drops, mobs). */
+  #mat(map, { cutout = false, water = false, entity = false, side = THREE.FrontSide } = {}) {
     const defines = {};
     if (cutout) defines.CUTOUT = 1;
     if (water) defines.WATER = 1;
+    if (entity) defines.ENTITY = 1;
     return new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: map }, ...this.uniforms }, vertexShader: CHUNK_VS, fragmentShader: CHUNK_FS, defines, side,
+      uniforms: { uMap: { value: map }, ...this.uniforms, ...(entity ? { uEnt: { value: new THREE.Vector2(1, 0) } } : {}) }, vertexShader: CHUNK_VS, fragmentShader: CHUNK_FS, defines, side,
       transparent: water, depthWrite: !water,
     });
   }
@@ -161,7 +180,8 @@ export class Renderer {
   #materials() {
     this.mat = { opaque: this.#mat(this.tex.atlas), cut: this.#mat(this.tex.atlas, { cutout: true, side: THREE.DoubleSide }), water: this.#mat(this.tex.atlas, { water: true }) };
     this.mat.water.renderOrder = 2;
-    this.itemMat = this.#mat(this.tex.items, { cutout: true, side: THREE.DoubleSide });
+    this.entMat = this.#mat(this.tex.atlas, { entity: true });
+    this.itemMat = this.#mat(this.tex.items, { cutout: true, entity: true, side: THREE.DoubleSide });
   }
 
   #sky() {
@@ -235,6 +255,15 @@ export class Renderer {
     this.wallDefs = walls.map((m, i) => ({ m, axis: i < 2 ? 'x' : 'z', at: i % 2 ? CONFIG.worldSize : 0 }));
   }
 
+  /** The atlas layout: animated tiles have their frames in neighbouring cells, `stride` pixels apart. */
+  setAtlas(atlas) {
+    const stride = Object.values(atlas.tiles).find((t) => t.stride)?.stride ?? 0;
+    this.uniforms.uStride.value = stride / atlas.size;
+  }
+
+  /** The least light anywhere and its colour (a dimension without a sky has a dim red floor of light). */
+  setAmbient(min, col = [0.8, 0.85, 1]) { this.uniforms.uMin.value = min; this.uniforms.uMinCol.value.set(...col); }
+
   /** Move the four border walls for a world of another size. */
   setWorldSize(S) {
     this.worldSize = S;
@@ -257,6 +286,9 @@ export class Renderer {
       g.setAttribute('position', new THREE.BufferAttribute(L.pos, 3));
       g.setAttribute('uv', new THREE.BufferAttribute(L.uv, 2));
       g.setAttribute('aBr', new THREE.BufferAttribute(L.br, 1));
+      g.setAttribute('aSky', new THREE.BufferAttribute(L.sk, 1));
+      g.setAttribute('aBlk', new THREE.BufferAttribute(L.bl, 1));
+      g.setAttribute('aAnim', new THREE.BufferAttribute(L.an, 1));
       g.setIndex(new THREE.BufferAttribute(L.idx, 1));
       g.boundingSphere = new THREE.Sphere(new THREE.Vector3(8, CONFIG.height / 2, 8), 75);
       const m = new THREE.Mesh(g, mat);
@@ -355,17 +387,22 @@ export class Renderer {
     return g;
   }
 
-  /** drops: [{ x, y, z, spin, visual }]; atlas: { rect(tile), icon(name) } gives UV rects. Meshes are pooled. */
+  /** drops: [{ x, y, z, spin, visual, light: [sky, block] (0..1) }]; atlas: { rect(tile), icon(name) } gives UV rects. Meshes are pooled; each is lit by its own cell. */
   setDrops(drops, atlas) {
-    while (this.dropPool.length < drops.length) { const m = new THREE.Mesh(new THREE.BufferGeometry(), this.mat.opaque); m.frustumCulled = false; this.scene.add(m); this.dropPool.push(m); }
+    while (this.dropPool.length < drops.length) {
+      const m = new THREE.Mesh(new THREE.BufferGeometry(), this.entMat); m.frustumCulled = false;
+      m.onBeforeRender = (r, sc, cam, geo, material) => { material.uniforms.uEnt.value.set(m.userData.sky ?? 1, m.userData.blk ?? 0); material.uniformsNeedUpdate = true; };
+      this.scene.add(m); this.dropPool.push(m);
+    }
     this.dropPool.forEach((m, i) => {
       const d = drops[i];
       m.visible = !!d;
       if (!d) return;
       m.geometry = this.#dropGeometry(d.visual, atlas);
-      m.material = d.visual.block !== undefined ? this.mat.opaque : this.itemMat;
+      m.material = d.visual.block !== undefined ? this.entMat : this.itemMat;
       m.position.set(d.x, d.y, d.z);
       m.rotation.y = d.spin;
+      m.userData.sky = d.light?.[0] ?? 1; m.userData.blk = d.light?.[1] ?? 0;
     });
   }
 
@@ -387,6 +424,7 @@ export class Renderer {
     const g = CONFIG.border.gridDist;
     this.walls.forEach((w, i) => { const u = w.material.uniforms; u.uCam.value.copy(cam); const d = Math.abs((i < 2 ? cam.x : cam.z) - u.uAt.value); w.visible = d < g; });
     this.uniforms.uTime.value = now;
+    this.uniforms.uFlick.value = 1 + 0.04 * Math.sin(now * 11.3) * Math.sin(now * 7.1 + 1.3);
     this.gl.render(this.scene, this.camera);
   }
 

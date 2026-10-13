@@ -222,6 +222,106 @@
     return { x: mid + 0.5, y: cfg.sea + 20, z: mid + 0.5 };
   }
 
+  // ------------------------------------------------------------------ lighting
+  // Two 4-bit channels per cell: sky light (15 straight down from the sky, -1 per step otherwise) and block light (emitters, -1 per step). The light of
+  // a chunk is a PURE FUNCTION of the blocks in the 3 x 3 chunks around it (a torch reaches 14 blocks and the chunk is 16 wide, so nothing outside can matter):
+  // that is exactly what lightRegion() computes, on a 48 x 128 x 48 copy. Light is never saved; it is recomputed from the blocks, always to the same result.
+  var RW = CS * 3;
+  var tabs = null;      // per block id: opaque (blocks light), dim (sky light lost passing through), emit
+
+  function buildTabs() {
+    var opq = new Uint8Array(256), dim = new Uint8Array(256), emit = new Uint8Array(256);
+    for (var i = 0; i < cfg.blocks.length; i++) { var b = cfg.blocks[i]; opq[i] = b.kind === 'opaque' ? 1 : 0; dim[i] = b.dim || 0; emit[i] = b.emit || 0; }
+    tabs = { opq: opq, dim: dim, emit: emit };
+  }
+
+  /** Flood fill: queues[L] holds cell indices at level L; a cell passes L - 1 to every neighbour that is not opaque and darker. */
+  function flood(light, region, queues) {
+    var opq = tabs.opq, L, q, k, i, x, y, z, nb;
+    var XS = 1, ZS = RW, YS = RW * RW;
+    for (L = 15; L >= 2; L--) {
+      q = queues[L];
+      for (k = 0; k < q.length; k++) {
+        i = q[k];
+        if (light[i] !== L) continue;                                   // raised meanwhile, it was queued at its higher level
+        x = i % RW; z = ((i / RW) | 0) % RW; y = (i / YS) | 0;
+        if (x > 0) { nb = i - XS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+        if (x < RW - 1) { nb = i + XS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+        if (z > 0) { nb = i - ZS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+        if (z < RW - 1) { nb = i + ZS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+        if (y > 0) { nb = i - YS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+        if (y < H - 1) { nb = i + YS; if (light[nb] < L - 1 && !opq[region[nb]]) { light[nb] = L - 1; queues[L - 1].push(nb); } }
+      }
+      q.length = 0;
+    }
+  }
+
+  /**
+   * Sky and block light of a 48 x 128 x 48 region (index (y * 48 + z) * 48 + x; the chunk being meshed is the middle one, x and z in 16..31).
+   * `sky: false` = no sky at all (the Underlayer and the Kernel). Returns { sky, blk }.
+   */
+  function lightRegion(region, opts) {
+    if (!tabs) buildTabs();
+    var hasSky = !(opts && opts.sky === false);
+    var n = RW * RW * H, sky = new Uint8Array(n), blk = new Uint8Array(n), opq = tabs.opq, dim = tabs.dim, emit = tabs.emit;
+    var queues, L, x, y, z, i;
+    function fresh() { var q = []; for (var l = 0; l <= 15; l++) q.push([]); return q; }
+    if (hasSky) {
+      var top = new Int16Array(RW * RW);                                  // y of the highest opaque cell of a column (-1 = none)
+      for (z = 0; z < RW; z++) for (x = 0; x < RW; x++) {
+        var level = 15, t = -1;
+        for (y = H - 1; y >= 0; y--) {
+          i = (y * RW + z) * RW + x;
+          var bid = region[i];
+          if (opq[bid]) { t = y; break; }
+          level = level - dim[bid]; if (level < 0) level = 0;
+          sky[i] = level;
+        }
+        top[z * RW + x] = t;
+      }
+      queues = fresh();
+      for (z = 0; z < RW; z++) for (x = 0; x < RW; x++) {
+        // only cells at or below the highest neighbouring ground can have a darker neighbour: everything above is plain open sky
+        var hm = top[z * RW + x];
+        if (x > 0 && top[z * RW + x - 1] > hm) hm = top[z * RW + x - 1];
+        if (x < RW - 1 && top[z * RW + x + 1] > hm) hm = top[z * RW + x + 1];
+        if (z > 0 && top[(z - 1) * RW + x] > hm) hm = top[(z - 1) * RW + x];
+        if (z < RW - 1 && top[(z + 1) * RW + x] > hm) hm = top[(z + 1) * RW + x];
+        for (y = top[z * RW + x] + 1; y <= Math.min(H - 1, hm + 1); y++) { i = (y * RW + z) * RW + x; L = sky[i]; if (L > 1) queues[L].push(i); }
+      }
+      flood(sky, region, queues);
+    }
+    queues = fresh();
+    for (i = 0; i < n; i++) { var e = emit[region[i]]; if (e) { blk[i] = e; queues[e].push(i); } }
+    flood(blk, region, queues);
+    return { sky: sky, blk: blk };
+  }
+
+  /** The padded 18 x 128 x 18 block array and light arrays of the middle chunk of a region (what mesh() takes). */
+  function fromRegion(region, lt) {
+    var out = new Uint8Array(PW * H * PW), s = new Uint8Array(PW * H * PW), b = new Uint8Array(PW * H * PW), y, z, ri, pi;
+    for (y = 0; y < H; y++) for (z = 0; z < PW; z++) {
+      ri = (y * RW + z + CS - 1) * RW + CS - 1; pi = (y * PW + z) * PW;
+      out.set(region.subarray(ri, ri + PW), pi); s.set(lt.sky.subarray(ri, ri + PW), pi); b.set(lt.blk.subarray(ri, ri + PW), pi);
+    }
+    return { padded: out, sky: s, blk: b };
+  }
+
+  /** Light of the middle chunk only, packed (sky << 4 | block), index as the chunk data. */
+  function packLight(lt) {
+    var out = new Uint8Array(CS * H * CS), x, y, z;
+    for (y = 0; y < H; y++) for (z = 0; z < CS; z++) for (x = 0; x < CS; x++) { var i = (y * RW + z + CS) * RW + x + CS; out[(y << 8) | (z << 4) | x] = (lt.sky[i] << 4) | lt.blk[i]; }
+    return out;
+  }
+
+  /** Light and mesh of the chunk in the middle of a 48 x 128 x 48 region. Also returns the chunk's packed light for the main thread (mobs, entities). */
+  function meshRegion(region, opts) {
+    var lt = lightRegion(region, opts), f = fromRegion(region, lt);
+    var out = mesh(f.padded, { sky: f.sky, blk: f.blk, noSky: !!(opts && opts.sky === false) });
+    out.light = packLight(lt);
+    return out;
+  }
+
   // ------------------------------------------------------------------ meshing
   // padded chunk: 18 x 128 x 18, index = (y * 18 + (z + 1)) * 18 + (x + 1) for x, z in [-1, 16]
   var PW = CS + 2;
@@ -238,35 +338,48 @@
   ];
   var CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
-  function newLayer() { return { pos: [], uv: [], br: [], idx: [], faces: 0 }; }
+  function newLayer() { return { pos: [], uv: [], br: [], sk: [], bl: [], an: [], idx: [], faces: 0 }; }
 
-  /** Is this block hiding the face of `cur` that touches it? */
+  /** Is this block hiding the face of `cur` that touches it? (for a partial box the caller also checks that the face lies on the cell boundary) */
   function hides(cur, nb) {
     var ck = cfg.blocks[cur].kind, nk = cfg.blocks[nb].kind;
     if (nk === 'air') return false;
-    if (cur === nb && (ck === 'cutout' || ck === 'water')) return true;           // glass next to glass, leaves in a blob, water in water
+    if (cur === nb && (ck === 'cutout' || ck === 'water' || ck === 'lava')) return true;           // glass next to glass, leaves in a blob, water in water
     if (ck === 'opaque') return nk === 'opaque';
-    if (ck === 'water') return nk === 'opaque';
+    if (ck === 'water' || ck === 'lava') return nk === 'opaque';
+    if (ck === 'box') return nk === 'opaque';
     return false;                                                                    // a cutout block's faces stay next to anything else (leaves next to stone keep both faces)
   }
 
-  /** Meshes one padded chunk into three layers (opaque, cutout, water) of typed arrays ready for transfer. */
-  function mesh(padded) {
+  /**
+   * Meshes one padded chunk into three layers (opaque, cutout, water) of typed arrays ready for transfer.
+   * lt = { sky, blk } padded light arrays (same indexing); without it every cell has full sky light and no block light (the geometry tests use that).
+   * Per vertex: br (face shade x ambient occlusion), sk and bl (smoothed sky / block light 0..1), an (animation frames of the tile, 0 = still).
+   */
+  function mesh(padded, lt) {
     var layers = { opaque: newLayer(), cut: newLayer(), water: newLayer() };
-    var blocks = cfg.blocks, x, y, z, f, c;
+    var blocks = cfg.blocks, x, y, z, f, c, noSky = !!(lt && lt.noSky);
     var occ = function (px, py, pz) { return py >= 0 && py < H && blocks[padded[(py * PW + pz + 1) * PW + px + 1]].kind === 'opaque' ? 1 : 0; };
+    var lightAt = function (arr, px, py, pz, def) { return py < 0 ? 0 : py >= H ? def : arr[(py * PW + pz + 1) * PW + px + 1]; };
     for (y = 0; y < H; y++) for (z = 0; z < CS; z++) for (x = 0; x < CS; x++) {
       var bid = padded[(y * PW + z + 1) * PW + x + 1];
       if (bid === 0) continue;
-      var bk = blocks[bid].kind, layer = bk === 'opaque' ? layers.opaque : bk === 'water' ? layers.water : layers.cut, tiles = blocks[bid].tiles;
+      var def = blocks[bid], bk = def.kind, layer = bk === 'opaque' || bk === 'lava' ? layers.opaque : bk === 'water' ? layers.water : layers.cut, tiles = def.tiles, emitL = (def.emit || 0) / 15;
+      if (bk === 'plant') { plant(layer, def, x, y, z); continue; }
+      var box = bk === 'box' ? def.box : null;
       for (f = 0; f < 6; f++) {
         var fc = FACE[f], nx = x + fc.n[0], ny = y + fc.n[1], nz = z + fc.n[2];
         var nid = ny < 0 || ny >= H ? 0 : padded[(ny * PW + nz + 1) * PW + nx + 1];
         if (ny < 0) continue;                                                        // never draw the underside of the world
-        if (nid !== 0 && hides(bid, nid)) continue;
-        // ambient occlusion per corner (the classic 3-neighbour rule), only opaque blocks occlude
+        var hide = nid !== 0 && hides(bid, nid);
+        if (box && hide) {                                                           // a partial box: only a face lying ON the cell boundary can be hidden
+          var ax = fc.n[0] ? 0 : fc.n[1] ? 1 : 2, onEdge = fc.n[ax] > 0 ? box[ax + 3] === 16 : box[ax] === 0;
+          hide = onEdge;
+        }
+        if (hide) continue;
+        // ambient occlusion per corner (the classic 3-neighbour rule), only opaque blocks occlude; partial and plant shapes are not occluded
         var ao = [0, 0, 0, 0];
-        if (bk !== 'water') {
+        if (bk === 'opaque') {
           for (c = 0; c < 4; c++) {
             var su = CORNERS[c][0] ? 1 : -1, sv = CORNERS[c][1] ? 1 : -1;
             var s1 = occ(nx + fc.u[0] * su, ny + fc.u[1] * su, nz + fc.u[2] * su), s2 = occ(nx + fc.v[0] * sv, ny + fc.v[1] * sv, nz + fc.v[2] * sv);
@@ -274,41 +387,71 @@
             ao[c] = s1 && s2 ? 0 : 3 - (s1 + s2 + co);
           }
         } else ao = [3, 3, 3, 3];
-        var rect = tiles[f], base = layer.pos.length / 3;
-        var lowerTop = bk === 'water' && !(y + 1 < H && padded[((y + 1) * PW + z + 1) * PW + x + 1] === bid);     // an exposed water surface sits 1/8 below the top
+        // smooth light: the cell in front of the face and the three around the corner (opaque ones count as the front cell's value)
+        var skyV = [0, 0, 0, 0], blkV = [0, 0, 0, 0];
+        if (lt) {
+          var frontOpaque = occ(nx, ny, nz), fx = frontOpaque ? x : nx, fy = frontOpaque ? y : ny, fz = frontOpaque ? z : nz;
+          var fs = lightAt(lt.sky, fx, fy, fz, noSky ? 0 : 15), fb = lightAt(lt.blk, fx, fy, fz, 0);
+          for (c = 0; c < 4; c++) {
+            var cu2 = CORNERS[c][0] ? 1 : -1, cv2 = CORNERS[c][1] ? 1 : -1;
+            var ax1 = fx + fc.u[0] * cu2, ay1 = fy + fc.u[1] * cu2, az1 = fz + fc.u[2] * cu2, ax2 = fx + fc.v[0] * cv2, ay2 = fy + fc.v[1] * cv2, az2 = fz + fc.v[2] * cv2;
+            var o1 = occ(ax1, ay1, az1), o2 = occ(ax2, ay2, az2), axc = ax1 + fc.v[0] * cv2, ayc = ay1 + fc.v[1] * cv2, azc = az1 + fc.v[2] * cv2, oc = (o1 && o2) || occ(axc, ayc, azc);
+            skyV[c] = (fs + (o1 ? fs : lightAt(lt.sky, ax1, ay1, az1, noSky ? 0 : 15)) + (o2 ? fs : lightAt(lt.sky, ax2, ay2, az2, noSky ? 0 : 15)) + (oc ? fs : lightAt(lt.sky, axc, ayc, azc, noSky ? 0 : 15))) / 60;
+            blkV[c] = (fb + (o1 ? fb : lightAt(lt.blk, ax1, ay1, az1, 0)) + (o2 ? fb : lightAt(lt.blk, ax2, ay2, az2, 0)) + (oc ? fb : lightAt(lt.blk, axc, ayc, azc, 0))) / 60;
+          }
+        } else skyV = [1, 1, 1, 1];
+        var rect = tiles[f], base = layer.pos.length / 3, anim = def.fr ? def.fr[f] : 0;
+        var lowerTop = (bk === 'water' || bk === 'lava') && !(y + 1 < H && padded[((y + 1) * PW + z + 1) * PW + x + 1] === bid);     // an exposed surface sits 1/8 below the top
+        // a box face samples a part of its tile (uvr: sides, uvTop / uvBot) by position inside the box; a plain face samples the whole tile by position in the cell
+        var sub = box ? (f === 2 ? def.uvTop : f === 3 ? def.uvBot : def.uvr) : null, tr = rect;
+        if (sub) tr = [rect[0] + (rect[2] - rect[0]) * sub[0] / 16, rect[1] + (rect[3] - rect[1]) * sub[1] / 16, rect[0] + (rect[2] - rect[0]) * sub[2] / 16, rect[1] + (rect[3] - rect[1]) * sub[3] / 16];
+        var lo = box ? [box[0] / 16, box[1] / 16, box[2] / 16] : [0, 0, 0], hi = box ? [box[3] / 16, box[4] / 16, box[5] / 16] : [1, 1, 1];
         for (c = 0; c < 4; c++) {
-          var cu = CORNERS[c][0], cv = CORNERS[c][1];
-          var lx = (fc.n[0] > 0 ? 1 : 0) * Math.abs(fc.n[0]) + cu * Math.abs(fc.u[0]) + cv * Math.abs(fc.v[0]);
-          var ly = (fc.n[1] > 0 ? 1 : 0) * Math.abs(fc.n[1]) + cu * Math.abs(fc.u[1]) + cv * Math.abs(fc.v[1]);
-          var lz = (fc.n[2] > 0 ? 1 : 0) * Math.abs(fc.n[2]) + cu * Math.abs(fc.u[2]) + cv * Math.abs(fc.v[2]);
-          layer.pos.push(x + lx, y + (lowerTop && ly === 1 ? 0.875 : ly), z + lz);
-          // texture coordinates: side faces stand upright (v along +y, u to the viewer's right); top and bottom use x and z
-          var tu, tv;
-          if (f === 2 || f === 3) { tu = lx; tv = lz; }
-          else { var rx = fc.n[2], rz = -fc.n[0]; tu = rx !== 0 ? (rx > 0 ? lx : 1 - lx) : (rz > 0 ? lz : 1 - lz); tv = ly; }
-          layer.uv.push(rect[0] + (rect[2] - rect[0]) * tu, rect[1] + (rect[3] - rect[1]) * tv);
-          layer.br.push(bk === 'water' ? 0.92 : FACE_SHADE[f] * AO_BRIGHT[ao[c]]);
+          var cu = CORNERS[c][0], cv = CORNERS[c][1], q = [0, 0, 0], k;
+          for (k = 0; k < 3; k++) q[k] = fc.n[k] ? (fc.n[k] > 0 ? hi[k] : lo[k]) : fc.u[k] ? (cu ? hi[k] : lo[k]) : (cv ? hi[k] : lo[k]);
+          layer.pos.push(x + q[0], y + (lowerTop && q[1] === 1 ? 0.875 : q[1]), z + q[2]);
+          // texture coordinates: side faces stand upright (v along +y, u to the viewer's right); top and bottom use x and z. `t*` = fraction along the face.
+          var tu, tv, ex = box && sub ? [(q[0] - lo[0]) / (hi[0] - lo[0] || 1), (q[1] - lo[1]) / (hi[1] - lo[1] || 1), (q[2] - lo[2]) / (hi[2] - lo[2] || 1)] : q;
+          if (f === 2 || f === 3) { tu = ex[0]; tv = ex[2]; }
+          else { var rx = fc.n[2], rz = -fc.n[0]; tu = rx !== 0 ? (rx > 0 ? ex[0] : 1 - ex[0]) : (rz > 0 ? ex[2] : 1 - ex[2]); tv = ex[1]; }
+          layer.uv.push(tr[0] + (tr[2] - tr[0]) * tu, tr[1] + (tr[3] - tr[1]) * tv);
+          layer.br.push(bk === 'water' ? 0.92 : bk === 'lava' ? 1 : FACE_SHADE[f] * AO_BRIGHT[ao[c]]);
+          layer.sk.push(skyV[c]); layer.bl.push(Math.max(blkV[c], emitL)); layer.an.push(anim);
         }
         if (ao[0] + ao[2] > ao[1] + ao[3]) layer.idx.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);       // split along the darker diagonal
         else layer.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         layer.faces++;
       }
     }
+    // two crossed quads (berry bushes, wheat, glowcaps): double-sided in the cutout material, lit by their own cell
+    function plant(L, d, px, py, pz) {
+      var rect = d.tiles[0], base, k, s0 = lt ? lightAt(lt.sky, px, py, pz, noSky ? 0 : 15) / 15 : 1, b0 = lt ? lightAt(lt.blk, px, py, pz, 0) / 15 : 0;
+      var quads = [[0, 0, 1, 1], [0, 1, 1, 0]];
+      for (k = 0; k < 2; k++) {
+        base = L.pos.length / 3;
+        var q = quads[k];
+        L.pos.push(px + q[0], py, pz + q[1], px + q[2], py, pz + q[3], px + q[2], py + 1, pz + q[3], px + q[0], py + 1, pz + q[1]);
+        L.uv.push(rect[0], rect[1], rect[2], rect[1], rect[2], rect[3], rect[0], rect[3]);
+        for (var j = 0; j < 4; j++) { L.br.push(0.95); L.sk.push(s0); L.bl.push(Math.max(b0, (d.emit || 0) / 15)); L.an.push(d.fr ? d.fr[0] : 0); }
+        L.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        L.faces++;
+      }
+    }
     var out = { faces: layers.opaque.faces + layers.cut.faces + layers.water.faces };
-    for (var k in layers) {
-      var L = layers[k];
-      out[k] = { pos: new Float32Array(L.pos), uv: new Float32Array(L.uv), br: new Float32Array(L.br), idx: new Uint32Array(L.idx), faces: L.faces };
+    for (var kk in layers) {
+      var Ly = layers[kk];
+      out[kk] = { pos: new Float32Array(Ly.pos), uv: new Float32Array(Ly.uv), br: new Float32Array(Ly.br), sk: new Float32Array(Ly.sk), bl: new Float32Array(Ly.bl), an: new Float32Array(Ly.an), idx: new Uint32Array(Ly.idx), faces: Ly.faces };
     }
     return out;
   }
 
   // ------------------------------------------------------------------ API
   function init(c) {
-    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0);
+    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0); tabs = null;
     return true;
   }
   var API = {
-    init: init, generate: generate, mesh: mesh, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
+    init: init, generate: generate, mesh: mesh, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
     noise2: function (x, y) { return noise2(x, y); }, noise3: function (x, y, z) { return noise3(x, y, z); },
     ao: function (s1, s2, c) { return s1 && s2 ? 0 : 3 - (s1 + s2 + c); },
     BIOME: { PLAINS: PLAINS, FOREST: FOREST, DESERT: DESERT, MOUNTAINS: MOUNTAINS, BEACH: BEACH, OCEAN: OCEAN },
@@ -321,9 +464,10 @@
       try {
         if (m.t === 'init') { init(m.cfg); self.postMessage({ t: 'ready', rid: m.rid }); return; }
         if (m.t === 'gen') { out = generate(m.cx, m.cz); tr.push(out.data.buffer, out.biomes.buffer); self.postMessage({ t: 'gen', rid: m.rid, data: out.data, biomes: out.biomes }, tr); return; }
-        if (m.t === 'mesh') {
-          out = mesh(m.padded);
-          ['opaque', 'cut', 'water'].forEach(function (k) { tr.push(out[k].pos.buffer, out[k].uv.buffer, out[k].br.buffer, out[k].idx.buffer); });
+        if (m.t === 'mesh' || m.t === 'meshR') {
+          out = m.t === 'mesh' ? mesh(m.padded) : meshRegion(m.region, m.opts);
+          ['opaque', 'cut', 'water'].forEach(function (k) { tr.push(out[k].pos.buffer, out[k].uv.buffer, out[k].br.buffer, out[k].sk.buffer, out[k].bl.buffer, out[k].an.buffer, out[k].idx.buffer); });
+          if (out.light) tr.push(out.light.buffer);
           self.postMessage({ t: 'mesh', rid: m.rid, mesh: out }, tr); return;
         }
         if (m.t === 'spawn') { self.postMessage({ t: 'spawn', rid: m.rid, spawn: spawn() }); return; }

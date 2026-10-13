@@ -114,7 +114,7 @@ Object.assign(generated, {
   async memory_block() { const c = fill(T, T, [12, 44, 28]); for (let i = 0; i <= T; i += 8) { rect(c, Math.min(i, T - 1), 0, 1, T, [40, 200, 100]); rect(c, 0, Math.min(i, T - 1), T, 1, [40, 200, 100]); } speckle(c, hash('mem'), 18, [[120, 255, 170], [30, 120, 70]], 1); return c; },
   async kernel_crystal() { const c = fill(T, T, [20, 110, 70]); for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const d = Math.abs(x - 15.5) + Math.abs(y - 15.5); put(c, x, y, mix([30, 140, 90], [200, 255, 220], Math.max(0, 1 - d / 26))); } line(c, 0, 0, 31, 31, [90, 220, 150]); line(c, 31, 0, 0, 31, [90, 220, 150]); return c; },
   async kernel_core() { const c = fill(T, T, [14, 70, 40]); rect(c, 3, 3, 26, 26, [30, 150, 80]); rect(c, 8, 8, 16, 16, [120, 255, 170]); rect(c, 12, 12, 8, 8, [255, 255, 255]); return c; },
-  async torch(spec, f) { const c = canvas(T, T); rect(c, 14, 12, 4, 20, [128, 88, 44]); rect(c, 14, 12, 1, 20, [96, 62, 28]); rect(c, 12, 4 + f, 8, 8, [255, 150, 30]); rect(c, 13, 3 + f, 6, 8, [255, 205, 60]); rect(c, 14, 6 + f, 4, 4, [255, 250, 190]); return c; },
+  async torch(spec, f) { const c = canvas(T, T); rect(c, 14, 12, 4, 20, [128, 88, 44]); rect(c, 14, 12, 1, 20, [96, 62, 28]); rect(c, 14, 4 + f, 4, 8, [255, 150, 30]); rect(c, 15, 3 + f, 2, 9, [255, 205, 60]); rect(c, 15, 6 + f, 2, 4, [255, 250, 190]); return c; },
 });
 function riftTile(f, [d, m, l]) {
   const c = canvas(T, T);
@@ -200,12 +200,14 @@ await png(atlas).png({ compressionLevel: 9 }).toFile(join(OUT, 'atlas.png'));
 writeFileSync(join(OUT, 'atlas.json'), JSON.stringify({ size: atlasSize, tile: T, padding: PAD, tiles: tileMeta }, null, 1));
 
 // ---------------------------------------------------------------- 2. item icons
+/** An item icon taken from a block tile (the first frame of the atlas), shown at I x I. */
+const tileIcon = async (name, size) => { const m = tileMeta[name]; const c = canvas(T, T); for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const i = ((m.y + y) * atlas.w + m.x + x) * 4; put(c, x, y, [atlas.d[i], atlas.d[i + 1], atlas.d[i + 2], atlas.d[i + 3]]); } return size === T ? c : upscale(c, size / T); };
 const iNames = Object.keys(cfg.items), I = cfg.itemSize, iCols = 10, iRows = Math.ceil(iNames.length / iCols);
 const sheet = canvas(iCols * I, iRows * I);
 const iMeta = {};
 for (let n = 0; n < iNames.length; n++) {
   const name = iNames[n], spec = cfg.items[name];
-  const icon = spec.src ? await raw(spec.src, I) : upscale((genItem[name] ?? (() => { throw new Error(`item ${name}: no src and no generator`); }))(), I / 16);
+  const icon = spec.fromTile ? await tileIcon(spec.fromTile, I) : spec.src ? await raw(spec.src, I) : upscale((genItem[name] ?? (() => { throw new Error(`item ${name}: no src and no generator`); }))(), I / 16);
   const x = (n % iCols) * I, y = Math.floor(n / iCols) * I;
   over(sheet, icon, x, y);
   iMeta[name] = { x, y };

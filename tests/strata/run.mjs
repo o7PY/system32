@@ -39,7 +39,7 @@ test('loads: title screen over a generated world, generation in a worker started
   await boot(p);
   const r = await S(p, `({ ...S.state(), font: document.fonts.check('20px "Kenney Pixel"'), atlas: S.renderer().tex.atlas.image.width, items: S.renderer().tex.items.image.width, sys: typeof System32, cont: document.getElementById('b-continue').disabled, logo: getComputedStyle(document.querySelector('#s-title .logo')).fontFamily })`);
   if (r.backend !== 'worker') throw new Error(`backend ${r.backend}: ${r.backendReason}`);
-  if (r.screen !== 'title' || !r.cont || r.atlas !== 256 || r.items !== 256 || r.sys !== 'object' || !r.font || r.meshed < 10) throw new Error(JSON.stringify(r));
+  if (r.screen !== 'title' || !r.cont || r.atlas !== 512 || r.items !== 320 || r.sys !== 'object' || !r.font || r.meshed < 10) throw new Error(JSON.stringify(r));
 });
 
 test('fallback: ?noWorker=1 generates and meshes on the main thread, and a chunk is byte-identical to the worker\'s', async (p) => {
@@ -446,13 +446,13 @@ test('menus: New World with a seed, pause + Save & Quit, Continue brings the sam
   if (!(await p.eval(`/Save could not be loaded/.test(document.getElementById('s-error').textContent)`))) throw new Error('no clear message');
 });
 
-test('save results: a too-large answer shows "World too big to save: 1.6 MB / 1.5 MB. Try removing some builds."; Esc / lost pointer lock pauses and saves', async (p) => {
+test('save results: a too-large answer shows "World too big to save: 2.6 MB / 2.5 MB. Try removing some builds."; Esc / lost pointer lock pauses and saves', async (p) => {
   await flat(p);
   await fakeShell(p);
-  await p.eval(`window.postMessage({ source: 'system32-shell', type: 'SAVED', payload: { ok: false, error: 'too-large', bytes: 1.6 * 1048576 } }, '*')`);
+  await p.eval(`window.postMessage({ source: 'system32-shell', type: 'SAVED', payload: { ok: false, error: 'too-large', bytes: 2.6 * 1048576 } }, '*')`);
   await p.waitFor(`/World too big to save/.test(document.getElementById('saved').textContent)`, { what: 'warning' });
   const t = await p.eval(`document.getElementById('saved').textContent`);
-  if (t !== 'World too big to save: 1.6 MB / 1.5 MB. Try removing some builds.') throw new Error(t);
+  if (t !== 'World too big to save: 2.6 MB / 2.5 MB. Try removing some builds.') throw new Error(t);
   await p.eval(`window.postMessage({ source: 'system32-shell', type: 'SAVED', payload: { ok: false, error: 'quota', bytes: 10 } }, '*')`);
   await p.waitFor(`/storage is full/.test(document.getElementById('saved').textContent)`);
   await p.eval(`__STRATA.G.fakeLock = false`);
@@ -601,6 +601,81 @@ test('a seeded terrain world loads with biomes, trees and water in view, and has
   if ((await p.eval(`__STRATA.settle(3)`)) !== 0) throw new Error('did not settle');
   const r = await S(p, `({ pos: S.state().pos, ground: S.getBlock(Math.floor(S.state().pos.x), Math.floor(S.state().pos.y) - 1, Math.floor(S.state().pos.z)), biome: S.world().biomeAt(Math.floor(S.state().pos.x), Math.floor(S.state().pos.z)) })`);
   if (r.ground !== 4 || !['plains', 'forest'].includes(r.biome)) throw new Error(JSON.stringify(r));
+});
+
+// ------------------------------------------------------------------ Part 2: lighting and torches
+const lumAt = (p, dx = 0, size = 40) => S(p, `(() => { const r = S.renderer(); r.render(performance.now() / 1000); const gl = r.gl.getContext(), W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, n = ${size}; const b = new Uint8Array(n * n * 4); gl.readPixels(Math.floor(W / 2 - n / 2 + ${dx}), Math.floor(H / 2 - n / 2), n, n, gl.RGBA, gl.UNSIGNED_BYTE, b); let t = 0; for (let i = 0; i < b.length; i += 4) t += b[i] * 0.3 + b[i + 1] * 0.59 + b[i + 2] * 0.11; return t / (n * n); })()`);
+const night = async (p) => { await p.eval(`__STRATA.setTime(0.75)`); await p.waitFor(`Math.abs(__STRATA.renderer().time - 0.75) < 0.003`, { what: 'night drawn', timeout: 15000 }); };
+
+test('torches: placed with the real right click on a floor and on a wall, lit 14, brighter pixels at night, popped off when the support goes, picked up by hand', async (p) => {
+  await flat(p);
+  await night(p);
+  await p.eval(`__STRATA.face(0, -0.9)`);
+  await sleep(200);
+  const hit = await S(p, `S.target()`);
+  if (!hit || hit.ny !== 1) throw new Error('no ground in front: ' + JSON.stringify(hit));
+  const before = await lumAt(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('torch', 4); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'torch')); S.useOrPlace(); })()`);
+  const tx = hit.x, ty = hit.y + 1, tz = hit.z, ids = await S(p, `S.world().table.ids`);
+  if ((await S(p, `S.getBlock(${tx}, ${ty}, ${tz})`)) !== ids.torch) throw new Error('the torch was not placed on the floor');
+  if ((await S(p, `S.inv().slots.find((s) => s?.id === 'torch').n`)) !== 3) throw new Error('placing did not use one torch');
+  await p.waitFor(`(() => { const l = __STRATA.world().lightAt(${tx}, ${ty}, ${tz}); return l && l.blk === 14; })()`, { what: 'torch light after the remesh', timeout: 30000 });
+  await p.waitFor(`__STRATA.world().missingMeshes(__STRATA.player().pos.x, __STRATA.player().pos.z, 2) === 0`, { what: 'meshes up to date' });
+  await sleep(150);
+  const after = await lumAt(p);
+  if (!(after > before * 1.6 + 2)) throw new Error(`the torch did not light the scene: ${before.toFixed(1)} -> ${after.toFixed(1)}`);
+  const lit3 = await S(p, `S.world().lightAt(${tx + 3}, ${ty}, ${tz})`);
+  if (!lit3 || lit3.blk !== 11) throw new Error('3 blocks from the torch the light should be 11: ' + JSON.stringify(lit3));
+  // a wall torch: a stone pillar, aim at its +x side... aim from the front: place a block ahead and click its face
+  await p.eval(`(() => { const S = __STRATA; const pl = S.player(); S.setBlock(Math.floor(pl.pos.x), 51, Math.floor(pl.pos.z) - 3, 'stone'); S.setBlock(Math.floor(pl.pos.x), 50, Math.floor(pl.pos.z) - 3, 'stone'); S.setBlock(Math.floor(pl.pos.x), 49, Math.floor(pl.pos.z) - 3, 'stone'); S.face(0, 0); })()`);
+  await sleep(200);
+  const wall = await S(p, `S.target()`);
+  if (!wall || wall.nz !== 1) throw new Error('the pillar was not hit on its +z face: ' + JSON.stringify(wall));
+  await p.eval(`__STRATA.useOrPlace()`);
+  if ((await S(p, `S.getBlock(${wall.x}, ${wall.y}, ${wall.z + 1})`)) !== ids.torch_pz) throw new Error('the wall torch should be torch_pz');
+  // break the stone under the floor torch: the torch pops off as an item
+  const dropsBefore = await S(p, `S.drops().list.length`);
+  await p.eval(`(() => { const S = __STRATA; S.breakBlock({ x: ${tx}, y: ${ty - 1}, z: ${tz}, id: S.getBlock(${tx}, ${ty - 1}, ${tz}) }); })()`);
+  if ((await S(p, `S.getBlock(${tx}, ${ty}, ${tz})`)) !== 0) throw new Error('the torch stayed in the air');
+  const dropped = await S(p, `S.drops().list.filter((d) => d.stack.id === 'torch').length`);
+  if (dropped < 1) throw new Error(`the torch did not drop as an item (${dropsBefore} -> ${dropped})`);
+  // the wall torch pops off when its pillar block is mined
+  await p.eval(`(() => { const S = __STRATA; S.breakBlock({ x: ${wall.x}, y: ${wall.y}, z: ${wall.z}, id: S.getBlock(${wall.x}, ${wall.y}, ${wall.z}) }); })()`);
+  if ((await S(p, `S.getBlock(${wall.x}, ${wall.y}, ${wall.z + 1})`)) !== 0) throw new Error('the wall torch did not pop off');
+  // by hand a torch breaks at once and gives itself back
+  const info = await p.eval(`import('/games/strata/src/interact.js').then((m) => { const s = __STRATA; return { time: m.breakInfo(s.world().table.ids.torch, null).time, drop: m.dropFor(s.world().table.ids.torch_nx, null)?.id }; })`);
+  if (!(info.time < 0.1) || info.drop !== 'torch') throw new Error(JSON.stringify(info));
+});
+
+test('lighting in the browser: day and night go through the sky light only (no remesh), a cave is dark, a lit furnace glows and goes out again', async (p) => {
+  await flat(p);
+  await p.waitFor(`__STRATA.world().missingMeshes(__STRATA.player().pos.x, __STRATA.player().pos.z, 4) === 0 && __STRATA.world().queueLength === 0`, { what: 'every chunk of the ring meshed', timeout: 60000 });
+  const meshedBefore = await S(p, `S.world().stats.meshed`);
+  await night(p);
+  await sleep(300);
+  await p.eval(`__STRATA.setTime(0.25)`); await sleep(300);
+  if ((await S(p, `S.world().stats.meshed`)) !== meshedBefore) throw new Error('changing the time of day remeshed chunks');
+  // a sealed hole underground has no sky light; the surface does
+  const pos = await S(p, `({ x: Math.floor(S.player().pos.x), z: Math.floor(S.player().pos.z) })`);
+  await p.eval(`(() => { const S = __STRATA; S.setBlock(${pos.x + 5}, 30, ${pos.z + 5}, 'air'); })()`);
+  await p.waitFor(`__STRATA.world().missingMeshes(__STRATA.player().pos.x, __STRATA.player().pos.z, 2) === 0`, { what: 'remeshed' });
+  const cave = await S(p, `S.world().lightAt(${pos.x + 5}, 30, ${pos.z + 5})`), surf = await S(p, `S.world().lightAt(${pos.x}, 55, ${pos.z})`);
+  if (!cave || cave.sky !== 0 || cave.blk !== 0 || surf.sky !== 15) throw new Error(JSON.stringify([cave, surf]));
+  // a furnace: right-click opens its screen (creating it), coal + raw iron burn, the block becomes the lit one, then goes back
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setBlock(Math.floor(pl.pos.x), 50, Math.floor(pl.pos.z) - 3, 'furnace'); S.face(0, -0.2); })()`);
+  await sleep(150);
+  const fh = await S(p, `S.target()`);
+  await p.eval(`__STRATA.useOrPlace()`);
+  await p.waitFor(`__STRATA.state().menu === 'furnace'`, { what: 'furnace screen' });
+  const key = `${fh.x},${fh.y},${fh.z}`;
+  await p.eval(`(() => { const f = __STRATA.furnaces().get(${JSON.stringify(key)}); f.input = { id: 'raw_iron', n: 1 }; f.fuel = { id: 'planks', n: 1 }; })()`);       // a plank burns 6 s: 4 s of smelting, then the fire dies down
+  const ids = await S(p, `S.world().table.ids`);
+  await p.waitFor(`__STRATA.getBlock(${fh.x}, ${fh.y}, ${fh.z}) === ${ids.furnace_lit}`, { what: 'the furnace to glow', timeout: 10000 });
+  await p.waitFor(`(() => { const l = __STRATA.world().lightAt(${fh.x}, ${fh.y + 1}, ${fh.z}); return l && l.blk === 12; })()`, { what: 'light 12 beside the furnace', timeout: 30000 });
+  await p.eval(`(() => { const S = __STRATA; S.closeMenu(); })()`);
+  await p.waitFor(`__STRATA.getBlock(${fh.x}, ${fh.y}, ${fh.z}) === ${ids.furnace}`, { what: 'the furnace to go out', timeout: 20000 });
+  await p.waitFor(`(() => { const l = __STRATA.world().lightAt(${fh.x}, ${fh.y + 1}, ${fh.z}); return l && l.blk === 0; })()`, { what: 'the glow to go', timeout: 30000 });
+  if ((await S(p, `S.inv().slots.some((s) => s?.id === 'iron_ingot') || S.furnaces().get(${JSON.stringify(key)}).output?.id === 'iron_ingot'`)) !== true) throw new Error('the furnace did not smelt');
 });
 
 s.run();

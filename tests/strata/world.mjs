@@ -186,8 +186,10 @@ const lone = (blocks) => { const c = new Uint8Array(16 * 16 * 128); for (const [
     const w = new World({ backend, atlas });
     await w.setSeed(31337, { flat });
     const seen = [];
-    const keep = backend.mesh.bind(backend);
-    backend.mesh = (padded, urgent) => { seen.push(padded.slice()); return keep(padded, urgent); };
+    const keep = backend.meshRegion.bind(backend);
+    backend.meshRegion = (region, opts, urgent) => { seen.push(region.slice()); return keep(region, opts, urgent); };
+    // the reference: the 3 x 3 chunks around `c` as one 48 x 128 x 48 array (outside the world = bedrock), built straight from the chunk data
+    const refOf = (c) => { const out = new Uint8Array(48 * 128 * 48); for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const n = w.chunkAt(c.cx + dx, c.cz + dz)?.data ?? null; for (let y = 0; y < 128; y++) for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) out[(y * 48 + (dz + 1) * 16 + z) * 48 + (dx + 1) * 16 + x] = n ? n[idx(x, y, z)] : (w.inWorld(c.cx + dx, c.cz + dz) ? 1 : B.bedrock); } return out; };
     const meshes = new Map();
     w.onMesh = (c, m) => meshes.set(`${c.cx},${c.cz}`, m);
     w.view = 2;
@@ -196,15 +198,15 @@ const lone = (blocks) => { const c = new Uint8Array(16 * 16 * 128); for (const [
     // every padded array given to the mesher must equal the reference built straight from the chunk data (all 8 neighbours present)
     let wrong = 0, compared = 0;
     for (const padded of seen) {
-      // find which chunk it was by matching the centre against loaded chunk data
+      // find which chunk it was by matching it against the reference of every loaded chunk
       for (const c of w.chunks.values()) {
         if (!c.data) continue;
-        const ref = pad(c.data, (dx, dz) => w.chunkAt(c.cx + dx, c.cz + dz)?.data ?? null);
+        const ref = refOf(c);
         let same = true; for (let i = 0; i < ref.length && same; i++) if (ref[i] !== padded[i]) same = false;
         if (same) { compared++; break; }
       }
     }
-    check(`${flat ? 'flat' : 'terrain'} world: every padded array handed to the mesher equals the reference (no row, column or layer missing): ${compared}/${seen.filter((_, i) => i < 9).length} matched`, compared >= 9 && seen.slice(0, 9).every((padded) => [...w.chunks.values()].some((c) => c.data && (() => { const ref = pad(c.data, (dx, dz) => w.chunkAt(c.cx + dx, c.cz + dz)?.data ?? null); for (let i = 0; i < ref.length; i++) if (ref[i] !== padded[i]) return false; return true; })())));
+    check(`${flat ? 'flat' : 'terrain'} world: every 48 x 128 x 48 region handed to the mesher equals the reference (no row, column or layer missing): ${compared}/${seen.filter((_, i) => i < 9).length} matched`, compared >= 9 && seen.slice(0, 9).every((padded) => [...w.chunks.values()].some((c) => c.data && (() => { const ref = refOf(c); for (let i = 0; i < ref.length; i++) if (ref[i] !== padded[i]) return false; return true; })())));
     if (flat) {
       const m = meshes.get('32,32');
       check('flat world: a chunk with all neighbours loaded meshes to exactly its 256 top faces (nothing underground is drawn)', m && m.opaque.faces === 256 && m.faces === 256, `faces ${m?.faces}`);

@@ -38,6 +38,33 @@ export const CONFIG = {
     wood: { tier: 1, speed: 2, durability: 60 },
     stone: { tier: 2, speed: 4, durability: 130 },
     iron: { tier: 3, speed: 6, durability: 250 },
+    cobalt: { tier: 4, speed: 9, durability: 900 },
+  },
+  // melee damage by item (hand 1); other tools are 2 (axe 1) less than the sword of their tier. Cooldown 0.6 s (damage scales with the charge).
+  attack: { hand: 1, sword: { wood: 4, stone: 5, iron: 6, cobalt: 8 }, axeLess: 1, otherLess: 2, cooldownS: 0.6, critMul: 1.5, knockback: 5 },
+  // armor: points per piece [helmet, chestplate, leggings, boots] (a full set: leather 7, iron 15, cobalt 20); damage reduction = points * 4%, at most 80%
+  armor: {
+    slots: ['helmet', 'chestplate', 'leggings', 'boots'], perPoint: 0.04, maxReduce: 0.8,
+    tiers: { leather: { points: [1, 3, 2, 1], durability: 80 }, iron: { points: [2, 6, 5, 2], durability: 240 }, cobalt: { points: [3, 8, 6, 3], durability: 600 } },
+    durabilityMul: [0.7, 1, 0.9, 0.8],
+  },
+  // survival (STRATA_PART2_SPEC 2): 20 HP shown as 10 hearts, 20 hunger as 10 food icons, 10 bubbles of air
+  survival: {
+    maxHp: 20, maxHunger: 20, invuln: 0.5, armorPerPoint: 0.04, armorMax: 0.8, hardDamageMul: 1.5, hardHungerMul: 1.3,
+    fallSafe: 3.5,                                            // blocks you can fall unhurt; then 1 HP per block beyond
+    bubbles: 10, bubbleS: 1.5, airRefillPerS: 5, drownDamage: 2, drownEveryS: 1,
+    lava: { damage: 4, everyS: 0.5, burnS: 3, burnDamage: 1 }, suffocation: 1, voidY: -32,
+    exhaust: { sprintPerM: 0.1, jump: 0.05, mine: 0.005, damage: 0.1, perHunger: 4 },
+    regen: { minHunger: 16, everyS: 3, fastEveryS: 1, fedS: 20, exhaust: 1.5 },
+    starveEveryS: 4, noSprintAt: 6,
+    deathDropS: 600,                                          // the pile at your death place lasts 10 minutes of game time
+  },
+  // food: hunger points restored (STRATA_PART2_SPEC 2.2); eating takes eatS
+  eatS: 1.6,
+  food: {
+    berries: { hunger: 2 }, apple: { hunger: 4 }, raw_pork: { hunger: 3 }, raw_beef: { hunger: 3 }, raw_mutton: { hunger: 2 }, raw_chicken: { hunger: 2 },
+    cooked_pork: { hunger: 8 }, cooked_beef: { hunger: 8 }, cooked_mutton: { hunger: 6 }, cooked_chicken: { hunger: 6 }, bread: { hunger: 5 },
+    glowcap_stew: { hunger: 6, returns: 'bowl' }, rotten_flesh: { hunger: 4, nausea: 0.3 },
   },
   stack: 64,
   inv: { hotbar: 9, main: 27 },
@@ -48,7 +75,7 @@ export const CONFIG = {
   day: { lengthS: 1200, start: 0.08 },      // 20 minutes per day; 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
   clouds: { y: 112, speed: 1.6 },
 
-  save: { autosaveS: 60, version: 1, capBytes: 1.5 * 1024 * 1024 },
+  save: { autosaveS: 60, version: 1, capBytes: 2.5 * 1024 * 1024 },     // the shell's cap for Strata (two dimensions); a finished world should stay under 1.5 MB
   settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
@@ -58,12 +85,13 @@ export const CONFIG = {
  * Shapeless recipes list their ingredients. `table: true` needs the 3x3 crafting table (the inventory has a 2x2 grid).
  * Materials by tier: planks (wood), cobblestone (stone), iron_ingot (iron).
  */
-const TIERS = [['wood', 'planks'], ['stone', 'cobblestone'], ['iron', 'iron_ingot']];
+const TIERS = [['wood', 'planks'], ['stone', 'cobblestone'], ['iron', 'iron_ingot'], ['cobalt', 'cobalt_ingot']];
 export const RECIPES = [
   { id: 'planks', shapeless: ['log'], out: ['planks', 4] },
   { id: 'sticks', pattern: ['P', 'P'], key: { P: 'planks' }, out: ['stick', 4] },
   { id: 'crafting_table', pattern: ['PP', 'PP'], key: { P: 'planks' }, out: ['crafting_table', 1] },
   { id: 'furnace', pattern: ['CCC', 'C.C', 'CCC'], key: { C: 'cobblestone' }, out: ['furnace', 1] },
+  { id: 'torch', pattern: ['C', 'S'], key: { C: 'coal', S: 'stick' }, out: ['torch', 4] },
   ...TIERS.flatMap(([tier, mat]) => [
     { id: `pickaxe_${tier}`, pattern: ['MMM', '.S.', '.S.'], key: { M: mat, S: 'stick' }, out: [`pickaxe_${tier}`, 1] },
     { id: `axe_${tier}`, pattern: ['MM', 'MS', '.S'], key: { M: mat, S: 'stick' }, out: [`axe_${tier}`, 1] },

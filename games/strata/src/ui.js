@@ -3,7 +3,7 @@
 // atlas (a 2D canvas, cached as data URLs): they are not assets.
 import { CONFIG } from './config.js';
 import { BLOCKS } from './blocks.js';
-import { ITEMS } from './items.js';
+import { ITEMS, durabilityOf } from './items.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'error'];
@@ -102,7 +102,7 @@ export class UI {
   }
   #slotInner(stk) {
     if (!stk) return '';
-    const info = ITEMS[stk.id], max = info.tool?.durability;
+    const info = ITEMS[stk.id], max = durabilityOf(stk.id);
     let h = this.#icon(stk);
     if (stk.n > 1) h += `<span class="ct">${stk.n}</span>`;
     if (max && stk.dur < max) h += `<span class="dur"><i style="width:${(stk.dur / max) * 100}%;background:hsl(${(stk.dur / max) * 120},80%,45%)"></i></span>`;

@@ -1,10 +1,29 @@
 // Interaction rules, no DOM and no three.js: the voxel ray (DDA), tool and drop rules, mining progress, and the dropped-item entities.
 import { CONFIG } from './config.js';
 import { BLOCKS, B } from './blocks.js';
-import { ITEMS, isTool, stack, maxStack } from './items.js';
+import { ITEMS, isTool, hasDurability, stack, maxStack } from './items.js';
+
+/** Ray against the box of a partial block in cell (x, y, z): { t, nx, ny, nz } or null. A ray starting inside the box hits at t = 0 with no normal. */
+function boxHit(o, d, x, y, z, box) {
+  const O = [o.x, o.y, o.z], D = [d.x, d.y, d.z], C = [x, y, z];
+  let tmin = -Infinity, tmax = Infinity, axis = -1, sign = 0;
+  for (let k = 0; k < 3; k++) {
+    const lo = C[k] + box[k] / 16, hi = C[k] + box[k + 3] / 16;
+    if (Math.abs(D[k]) < 1e-9) { if (O[k] < lo || O[k] > hi) return null; continue; }
+    let t1 = (lo - O[k]) / D[k], t2 = (hi - O[k]) / D[k], n = -1;
+    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
+    if (t1 > tmin) { tmin = t1; axis = k; sign = n; }
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return null;
+  }
+  if (tmax < 0) return null;
+  if (tmin <= 0) return { t: 0, nx: 0, ny: 0, nz: 0 };
+  return { t: tmin, nx: axis === 0 ? sign : 0, ny: axis === 1 ? sign : 0, nz: axis === 2 ? sign : 0 };
+}
 
 /**
- * Voxel DDA (Amanatides and Woo) from `o` along the unit vector `d`, up to `reach` blocks. Air and water are not targetable.
+ * Voxel DDA (Amanatides and Woo) from `o` along the unit vector `d`, up to `reach` blocks. Air, water and lava are not targetable; a partial block (torch, chest,
+ * bed) is hit only where its box is.
  * @returns {{x, y, z, nx, ny, nz, dist, id}|null} the block hit and the normal of the face that was entered (the place-here cell is block + normal)
  */
 export function raycast(getBlock, o, d, reach = CONFIG.reach) {
@@ -17,7 +36,12 @@ export function raycast(getBlock, o, d, reach = CONFIG.reach) {
   let nx = 0, ny = 0, nz = 0, t = 0;
   for (let i = 0; i < 256; i++) {
     const id = getBlock(x, y, z);
-    if (id !== B.air && id !== B.water) return { x, y, z, nx, ny, nz, dist: t, id };
+    if (id !== B.air && id !== B.water && id !== B.lava) {
+      const box = BLOCKS[id].box;
+      if (!box) return { x, y, z, nx, ny, nz, dist: t, id };
+      const h = boxHit(o, d, x, y, z, box);
+      if (h && h.t <= reach) return { x, y, z, nx: h.nx, ny: h.ny, nz: h.nz, dist: h.t, id };
+    }
     if (tx <= ty && tx <= tz) { t = tx; if (t > reach) return null; x += sx; tx += tdx; nx = -sx; ny = 0; nz = 0; }
     else if (ty <= tz) { t = ty; if (t > reach) return null; y += sy; ty += tdy; nx = 0; ny = -sy; nz = 0; }
     else { t = tz; if (t > reach) return null; z += sz; tz += tdz; nx = 0; ny = 0; nz = -sz; }
@@ -36,6 +60,7 @@ export function breakInfo(blockId, held) {
   const tool = held && ITEMS[held.id]?.tool;
   const matches = !!tool && tool.type === b.tool;
   const ok = !b.need || (!!tool && tool.type === b.need.tool && tool.tierN >= b.need.tier);
+  if (b.only && !ok) return { time: Infinity, drops: false, speed: 0, breakable: false };                   // cracked bedrock: only a cobalt pickaxe breaks it
   const speed = matches ? tool.speed : 1;
   return { time: b.hardness * m.base / speed * (ok ? 1 : m.noToolMul), drops: ok, speed, breakable: true };
 }
@@ -127,7 +152,7 @@ export class Drops {
     // merge identical nearby drops (not tools), despawn
     for (let i = 0; i < this.list.length; i++) {
       const a = this.list[i];
-      if (a.dead || isTool(a.stack.id)) continue;
+      if (a.dead || hasDurability(a.stack.id)) continue;
       for (let j = i + 1; j < this.list.length; j++) {
         const b = this.list[j];
         if (b.dead || b.stack.id !== a.stack.id || a.stack.n + b.stack.n > maxStack(a.stack.id)) continue;

@@ -1,7 +1,7 @@
 // Strata: boot, the state machine (loading -> title -> entering -> playing <-> paused), input, the frame loop, saving through the shell, test hooks.
 import { CONFIG } from './config.js';
-import { B, BLOCKS } from './blocks.js';
-import { ITEMS, stack, blockItem, isTool } from './items.js';
+import { B, BLOCKS, isFurnace, isSolid, itemOfBlock } from './blocks.js';
+import { ITEMS, stack, blockItem, isTool, hasDurability } from './items.js';
 import { World, createBackend } from './world.js';
 import { Renderer } from './renderer.js';
 import { Player } from './player.js';
@@ -74,6 +74,7 @@ async function boot() {
   await renderer.init(`${base}atlas.png`, `${base}items.png`);
   renderer.setView(G.settings.viewDistance);
   renderer.setWorldSize(G.worldSize);
+  renderer.setAtlas(atlas);
   const resize = () => renderer.resize(innerWidth, innerHeight);
   addEventListener('resize', resize); resize();
   ui.init({ atlasImage: renderer.tex.atlas.image, atlas, items: itemsJson, itemsUrl: `${base}items.png` });
@@ -342,12 +343,13 @@ const blockAt2 = (x, y, z) => world.getBlock(x, y, z);
 function breakBlock(hit) {
   const id = hit.id, held = inv.held(), at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
   const stk = dropFor(id, held);
-  if (id === B.furnace) {
+  if (isFurnace(id)) {
     const key = furnaceKey(hit.x, hit.y, hit.z), f = furnaces.get(key);
     if (f) { for (const s of [f.input, f.fuel, f.output]) if (s) drops.spawn(at.x, at.y, at.z, s); furnaces.delete(key); }
   }
   world.setBlock(hit.x, hit.y, hit.z, B.air);
   if (stk) drops.spawn(at.x, at.y - 0.1, at.z, stk);
+  dropUnsupported(hit.x, hit.y, hit.z);
   audio.block('break', id, { at, listener: listener() });
   if (held && isTool(held.id)) {
     const r = useTool(held);
@@ -358,13 +360,39 @@ function breakBlock(hit) {
   if (egg) { eggOnce(egg); ui.subtitle('Ad Block enabled.'); sdk?.effect('toast', { title: 'Strata', text: 'Ad Block enabled.' }); }
 }
 
+/** Which side of its cell a torch leans on, as the offset to the block that holds it. */
+const TORCH_SUPPORT = { torch: [0, -1, 0], torch_px: [-1, 0, 0], torch_nx: [1, 0, 0], torch_pz: [0, 0, -1], torch_nz: [0, 0, 1] };
+const TORCH_IDS = new Map(Object.entries(TORCH_SUPPORT).map(([n, off]) => [B[n], off]));
+/** After a block was removed: torches that lost their support pop off as items. */
+function dropUnsupported(x, y, z) {
+  for (const [dx, dy, dz] of [[0, 1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    const tx = x + dx, ty = y + dy, tz = z + dz, off = TORCH_IDS.get(world.getBlock(tx, ty, tz));
+    if (!off) continue;
+    if (isSolid(world.getBlock(tx + off[0], ty + off[1], tz + off[2]))) continue;
+    world.setBlock(tx, ty, tz, B.air);
+    drops.spawn(tx + 0.5, ty + 0.3, tz + 0.5, stack('torch', 1));
+  }
+}
+/** The block to set when the held item is used on `hit` (a torch picks floor or wall; null = it cannot go there). */
+function blockFor(info, hit) {
+  if (info.id === 'torch') {
+    if (hit.ny === -1 || !isSolid(hit.id)) return null;
+    return hit.ny === 1 ? B.torch : hit.nx === 1 ? B.torch_px : hit.nx === -1 ? B.torch_nx : hit.nz === 1 ? B.torch_pz : B.torch_nz;
+  }
+  return info.block;
+}
+
+/** Right click on a block with a use of its own that is not a menu (a bed, a rift, a chest): later phases hook in here. */
+function useBlock() {}
+
 function useOrPlace() {
   const hit = target();
   if (!hit) return;
   const def = BLOCKS[hit.id];
   if (def.use && !player.sneaking) {
     if (def.use === 'crafting') openMenu('table');
-    else { const key = furnaceKey(hit.x, hit.y, hit.z); if (!furnaces.has(key)) furnaces.set(key, makeFurnace(key)); openMenu('furnace', furnaces.get(key)); }
+    else if (def.use === 'furnace') { const key = furnaceKey(hit.x, hit.y, hit.z); if (!furnaces.has(key)) furnaces.set(key, makeFurnace(key)); openMenu('furnace', furnaces.get(key)); }
+    else useBlock(def, hit);
     return;
   }
   const held = inv.held(), info = held && ITEMS[held.id];
@@ -375,7 +403,8 @@ function useOrPlace() {
   if (there !== B.air && there !== B.water) return;
   const b = player.box();
   if (x + 1 > b.x0 && x < b.x1 && y + 1 > b.y0 && y < b.y1 && z + 1 > b.z0 && z < b.z1 && BLOCKS[info.block].solid) return;      // never inside the player
-  if (!world.setBlock(x, y, z, info.block)) return;
+  const placed = blockFor(info, hit);
+  if (placed === null || !world.setBlock(x, y, z, placed)) return;
   inv.takeOne(inv.selected);
   audio.play('place', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
   if (y === CONFIG.height - 1) { eggOnce('strata-cloud'); ui.subtitle('Saved to cloud storage.'); }
@@ -384,7 +413,7 @@ function useOrPlace() {
 function pickBlock() {
   const hit = target();
   if (!hit) return;
-  const item = blockItem(hit.id) ?? blockItem(BLOCKS[hit.id].drop ? B[BLOCKS[hit.id].drop[0]] : -1);
+  const item = itemOfBlock(hit.id) && ITEMS[itemOfBlock(hit.id)] ? itemOfBlock(hit.id) : blockItem(BLOCKS[hit.id].drop ? B[BLOCKS[hit.id].drop[0]] : -1);
   if (!item) return;
   const hot = inv.slots.findIndex((s, i) => i < 9 && s?.id === item);
   if (hot >= 0) { selectSlot(hot); return; }
@@ -428,7 +457,11 @@ function simulate(dt) {
   // drops, furnaces, time, autosave, music
   const picks = drops.update(dt, player.pos, (s) => inv.add(s));
   if (picks.length) { audio.play('pickup', { vol: 0.8 }); }
-  for (const f of furnaces.values()) f.update(dt);
+  for (const [k, f] of furnaces) {
+    f.update(dt);
+    const [fx, fy, fz] = k.split(',').map(Number), cur = world.getBlock(fx, fy, fz), want = f.burning ? B.furnace_lit : B.furnace;
+    if (isFurnace(cur) && cur !== want) world.setBlock(fx, fy, fz, want);       // a burning furnace glows (light 13)
+  }
   G.dayT = (G.dayT + dt / CONFIG.day.lengthS) % 1;
   G.saveTimer += dt;
   if (G.saveTimer >= CONFIG.save.autosaveS) { G.saveTimer = 0; saveNow('autosave'); }
@@ -480,11 +513,13 @@ function frame(now) {
     case 'paused': world.update(player.pos.x, player.pos.z); world.pump(); renderer.setTarget(null); renderer.setCrack(null, 0); break;
   }
   renderer.setTime(G.dayT, G.now);
-  renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id) })) : [], G.atlasUV);
+  renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id), light: lightOf(d.x, d.y + 0.2, d.z) })) : [], G.atlasUV);
   renderer.render(G.now);
   if (G.f3 && G.phase === 'playing') { G.f3Timer -= dt; if (G.f3Timer <= 0) { G.f3Timer = 0.25; ui.debug(debugText()); } }
 }
 
+/** [sky, block] light 0..1 of a point (an entity's cell); full daylight where the chunk has no light yet. */
+const lightOf = (x, y, z) => { const l = world.lightAt(Math.floor(x), Math.floor(y), Math.floor(z)); return l ? [l.sky / 15, l.blk / 15] : [1, 0]; };
 const dropVisual = (id) => (ITEMS[id].icon.block !== undefined ? { block: ITEMS[id].icon.block } : { sheet: ITEMS[id].icon.sheet });
 
 function orbitCamera(dt) {
@@ -514,7 +549,7 @@ function installHooks() {
     }),
     getBlock: (x, y, z) => world.getBlock(x, y, z),
     setBlock: (x, y, z, id) => world.setBlock(x, y, z, typeof id === 'string' ? B[id] : id),
-    give: (item, n = 1) => inv.add(isTool(item) ? stack(item) : stack(item, n)),
+    give: (item, n = 1) => inv.add(hasDurability(item) ? stack(item) : stack(item, n)),
     tp: (x, y, z) => { player.teleport(x, y, z); },
     setTime: (t) => { G.dayT = t; },
     save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: G.flags, edits: world.edits }, { compress: !OPT.noCompress }),

@@ -1,9 +1,9 @@
 // Inventory and the click rules of the inventory screens. No DOM: ui.js only draws the model and forwards clicks. A stack is { id, n, dur? }.
 import { CONFIG } from './config.js';
-import { maxStack, isTool, cloneStack } from './items.js';
+import { maxStack, hasDurability, cloneStack } from './items.js';
 import { matchRecipe, smeltsTo, fuelValue } from './crafting.js';
 
-const same = (a, b) => !!a && !!b && a.id === b.id && !isTool(a.id);
+const same = (a, b) => !!a && !!b && a.id === b.id && !hasDurability(a.id);
 
 export class Inventory {
   constructor() { this.slots = Array(CONFIG.inv.hotbar + CONFIG.inv.main).fill(null); this.selected = 0; }
@@ -15,7 +15,7 @@ export class Inventory {
   add(stk) {
     let left = { ...stk };
     const order = [...this.slots.keys()];
-    if (!isTool(left.id)) for (const i of order) {
+    if (!hasDurability(left.id)) for (const i of order) {
       const s = this.slots[i];
       if (same(s, left) && s.n < maxStack(s.id)) { const put = Math.min(maxStack(s.id) - s.n, left.n); s.n += put; left.n -= put; if (!left.n) return null; }
     }
@@ -131,7 +131,7 @@ export class Menu {
   }
   #moveInto(s, r, from, to) {
     let left = { ...s };
-    if (!isTool(s.id)) for (let k = from; k < to && left.n; k++) { const t = this.inv.slots[k]; if (same(t, left) && t.n < maxStack(t.id)) { const put = Math.min(maxStack(t.id) - t.n, left.n); t.n += put; left.n -= put; } }
+    if (!hasDurability(s.id)) for (let k = from; k < to && left.n; k++) { const t = this.inv.slots[k]; if (same(t, left) && t.n < maxStack(t.id)) { const put = Math.min(maxStack(t.id) - t.n, left.n); t.n += put; left.n -= put; } }
     for (let k = from; k < to && left.n; k++) if (!this.inv.slots[k]) { const put = Math.min(maxStack(left.id), left.n); this.inv.slots[k] = { ...left, n: put }; left.n -= put; }
     if (left.n === s.n) return false;
     r.set(left.n ? left : null);

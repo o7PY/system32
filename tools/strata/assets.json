@@ -452,6 +452,16 @@
   "cobalt_boots": {
    "generate": true,
    "note": "cobalt boots"
+  },
+  "torch": {
+   "fromTile": "torch",
+   "note": "the torch tile, frame 0"
+  },
+  "bed": {
+   "fromTile": "bed_pillow"
+  },
+  "glowcap": {
+   "fromTile": "glowcap"
   }
  },
  "itemSize": 32,

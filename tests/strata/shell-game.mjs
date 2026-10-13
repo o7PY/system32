@@ -64,18 +64,18 @@ test('SAVE / SAVED / INIT through the real shell: the world is stored under syst
   if (r.planks !== 9 || r.glass !== 11 || r.stone !== 12) throw new Error(JSON.stringify(r));
 });
 
-test('the shell caps a save at 1.5 MB: an over-sized world gets SAVED too-large, nothing is written, and the game says so', async (page) => {
+test('the shell caps a save at 2.5 MB: an over-sized world gets SAVED too-large, nothing is written, and the game says so', async (page) => {
   await open(page);
   await inFrame(page, `__STRATA.newWorld({ seed: 5, flat: true }).then(() => 0)`);
   await waitFrame(page, `__STRATA.state().phase === 'playing'`, 90000);
   await inFrame(page, `__STRATA.saveNow('first'); 0`);
   await waitFrame(page, `__STRATA.state().saveResult?.ok === true`, 20000);
   const before = await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`);
-  await inFrame(page, `(() => { window.__big = 'x'.repeat(1.6 * 1048576); System32.save(window.__big); })()`);
+  await inFrame(page, `(() => { window.__big = 'x'.repeat(2.6 * 1048576); System32.save(window.__big); })()`);
   await waitFrame(page, `__STRATA.state().saveResult?.error === 'too-large'`, 20000);
   if ((await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`)) !== before) throw new Error('a too-large save changed the stored world');
   const msg = await inFrame(page, `document.getElementById('saved').textContent`);
-  if (!/World too big to save: 1\.6 MB \/ 1\.5 MB\. Try removing some builds\./.test(msg)) throw new Error(msg);
+  if (!/World too big to save: 2\.6 MB \/ 2\.5 MB\. Try removing some builds\./.test(msg)) throw new Error(msg);
 });
 
 test('the shell\'s PAUSE (minimizing the window) pauses the game and autosaves; the world survives a reload', async (page) => {
