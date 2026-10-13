@@ -41,9 +41,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0f14; col
 #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
 #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
 #hotbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; background: rgba(20, 22, 27, .72); border: 3px solid var(--edge); }
-#itemname { position: absolute; left: 0; right: 0; bottom: 84px; text-align: center; font-size: 22px; opacity: 0; transition: opacity .4s; }
+#itemname { position: absolute; left: 0; right: 0; bottom: 130px; text-align: center; font-size: 22px; opacity: 0; transition: opacity .4s; }
 #itemname.on { opacity: 1; transition: none; }
-#subtitle { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); max-width: min(720px, 90vw); padding: 6px 14px; background: rgba(0, 0, 0, .6); text-align: center; opacity: 0; transition: opacity .5s; }
+#subtitle { position: absolute; left: 50%; bottom: 164px; transform: translateX(-50%); max-width: min(720px, 90vw); padding: 6px 14px; background: rgba(0, 0, 0, .6); text-align: center; opacity: 0; transition: opacity .5s; }
 #subtitle.on { opacity: 1; transition: none; }
 #saved { position: absolute; right: 16px; top: 12px; font-size: 18px; color: var(--accent); opacity: 0; transition: opacity .6s; max-width: min(520px, 70vw); text-align: right; }
 #saved.on { opacity: 1; transition: none; }
@@ -74,3 +74,29 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0f14; col
 #underwater { position: fixed; inset: 0; background: rgba(24, 70, 150, .38); pointer-events: none; }
 #s-title { background: radial-gradient(ellipse at center, rgba(6, 8, 12, .55) 0%, rgba(6, 8, 12, .15) 70%); }
 .menu-open #hotbar, .menu-open #crosshair { display: none; }
+
+/* ---- survival HUD (Part 2): hearts, food, armor and air drawn in code (hudicons.js), above the hotbar */
+#vitals { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); width: min(468px, 92vw); display: flex; flex-direction: column; gap: 2px; }
+#vitals .vrow { display: flex; justify-content: space-between; }
+#hearts, #food, #armorbar, #air { display: flex; gap: 1px; min-height: 18px; }
+#food { flex-direction: row-reverse; }
+#air { justify-content: flex-end; }
+#armorbar { min-height: 0; }
+#vitals img { width: 18px; height: 18px; image-rendering: pixelated; display: block; }
+#hearts.low img.on { animation: shake .5s infinite; }
+@keyframes shake { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-2px) } }
+.menu-open #vitals, .menu-open #eatbar { display: none; }
+#eatbar { position: absolute; left: 50%; top: calc(50% + 34px); width: 90px; height: 7px; margin-left: -45px; background: rgba(0, 0, 0, .6); border: 2px solid #000; }
+#eatbar i { display: block; height: 100%; width: 0; background: #e0a040; }
+#hurt { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px 40px rgba(210, 10, 10, .8); opacity: 0; }
+#hurt.on { animation: hurt .55s ease-out forwards; }
+@keyframes hurt { 0% { opacity: 1 } 100% { opacity: 0 } }
+#burning { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 -90px 90px -20px rgba(255, 120, 20, .7); }
+.deadtitle { color: #ff6a5a; font-size: 40px; margin: 4px 0 2px; }
+.deathcause { font-size: 22px; margin: 2px 0 8px; }
+select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; border: 2px solid var(--edge); }
+.armorcol { display: flex; flex-direction: column; gap: 2px; margin-right: 10px; }
+.armorcol .slot.armor { position: relative; }
+.armorcol .slot.armor:empty::before { content: ""; position: absolute; inset: 9px; border: 2px dashed rgba(255, 255, 255, .18); }
+.armtotal { font-size: 14px; color: var(--dim); text-align: center; }
+.chestgrid { margin: 4px 0; }

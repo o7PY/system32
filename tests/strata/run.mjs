@@ -678,4 +678,183 @@ test('lighting in the browser: day and night go through the sky light only (no r
   if ((await S(p, `S.inv().slots.some((s) => s?.id === 'iron_ingot') || S.furnaces().get(${JSON.stringify(key)}).output?.id === 'iron_ingot'`)) !== true) throw new Error('the furnace did not smelt');
 });
 
+// ------------------------------------------------------------------ Part 2: survival
+const rightDown = (p) => p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 400, y: 225, button: 'right', clickCount: 1 });
+const rightUp = (p) => p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 400, y: 225, button: 'right', clickCount: 1 });
+const vit = (p) => S(p, `({ hp: S.vitals().hp, hunger: S.vitals().hunger, air: S.vitals().air, dead: S.vitals().dead, phase: S.state().phase, screen: S.state().screen, armor: S.vitals().armorPoints })`);
+
+test('survival HUD: 10 hearts, 10 food icons above the hotbar, half hearts, armor points, air bubbles only under water, all drawn in code', async (p) => {
+  await flat(p);
+  const hud = () => S(p, `({ hearts: [...document.querySelectorAll('#hearts img')].map((i) => i.src.length), food: document.querySelectorAll('#food img').length, armor: document.querySelectorAll('#armorbar img').length, air: document.querySelectorAll('#air img').length, y: [document.getElementById('hearts').getBoundingClientRect().bottom, document.getElementById('hotbar').getBoundingClientRect().top] })`);
+  let h = await hud();
+  if (h.hearts.length !== 10 || h.food !== 10 || h.armor !== 0 || h.air !== 0) throw new Error(JSON.stringify(h));
+  if (!(h.y[0] <= h.y[1])) throw new Error('hearts are not above the hotbar ' + JSON.stringify(h.y));
+  await p.eval(`__STRATA.setHealth(7); __STRATA.setHunger(5)`);
+  await p.waitFor(`document.querySelectorAll('#hearts img')[3].src !== document.querySelectorAll('#hearts img')[0].src`, { what: 'a half heart' });
+  const srcs = await S(p, `[...document.querySelectorAll('#hearts img')].map((i) => i.src)`);
+  if (!(srcs[0] === srcs[2] && srcs[3] !== srcs[2] && srcs[4] !== srcs[3] && srcs[4] === srcs[9])) throw new Error('7 HP should be 3 full hearts, 1 half, 6 empty... ' + srcs.map((x) => x.length).join());
+  if (!/^data:image\/png/.test(srcs[0])) throw new Error('the heart is not drawn in code');
+  await p.eval(`__STRATA.giveKit('iron')`);
+  await p.waitFor(`document.querySelectorAll('#armorbar img').length === 10`, { what: 'armor row' });
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setBlock(Math.floor(pl.pos.x), 49, Math.floor(pl.pos.z), 'water'); S.tp(pl.pos.x, 49, pl.pos.z); })()`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); for (let y = 49; y <= 52; y++) S.setBlock(Math.floor(pl.pos.x), y, Math.floor(pl.pos.z), 'water'); S.tp(pl.pos.x, 49, pl.pos.z); })()`);
+  await p.waitFor(`document.querySelectorAll('#air img').length === 10 && document.querySelectorAll('#air img[src]').length === 10 && __STRATA.vitals().air < 9.5`, { what: 'air bubbles under water', timeout: 15000 });
+});
+
+test('damage: a hit flashes the screen edge, tilts the camera, plays the hurt sound, and 0.5 s of invulnerability stops a second hit', async (p) => {
+  await flat(p);
+  await p.eval(`__STRATA.audio().setAllowed(true); __STRATA.audio().unlock()`);
+  const r = await S(p, `(() => { const v = S.vitals(); const a = v.damage(3, { type: 'mob', from: { x: S.player().pos.x + 5, z: S.player().pos.z } }); const b = v.damage(3, { type: 'mob' }); return { a, b, hp: v.hp }; })()`);
+  if (r.a !== 3 || r.b !== 0 || r.hp !== 17) throw new Error(JSON.stringify(r));
+  await p.waitFor(`document.getElementById('hurt').classList.contains('on') && !document.getElementById('hurt').hidden`, { what: 'the red flash' });
+  const tilt = await S(p, `S.renderer().camera.rotation.z`);
+  const sound = await S(p, `S.audio().played.includes('player.hurt')`);
+  if (!sound) throw new Error('no hurt sound');
+  if (Math.abs(tilt) < 0.01) throw new Error('no camera tilt ' + tilt);
+  await sleep(700);
+  if (Math.abs(await S(p, `S.renderer().camera.rotation.z`)) > 0.001) throw new Error('the tilt did not settle');
+});
+
+test('real damage sources in the world: a fall of 9 blocks hurts 5 HP, water softens it, lava burns, suffocating in a wall hurts, the void kills', async (p) => {
+  await flat(p);
+  await p.eval(`__STRATA.setHunger(10)`);                                  // no regeneration, so the numbers are exact
+  const fall = async (h) => { await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setHealth(20); S.vitals().invuln = 0; S.tp(pl.pos.x, ${h}, pl.pos.z); })()`); await p.waitFor(`!__STRATA.state().onGround`, { timeout: 5000, what: 'leaving the ground' }); await p.waitFor(`__STRATA.state().onGround`, { timeout: 15000, what: 'landing' }); await sleep(150); return S(p, `S.vitals().hp`); };
+  const hp9 = await fall(49 + 9);
+  if (hp9 !== 15) throw new Error(`a 9 block fall left ${hp9} HP (expected 15)`);
+  const hp3 = await fall(49 + 3);
+  if (hp3 !== 20) throw new Error(`a 3 block fall hurt: ${hp3}`);
+  // water: 12 blocks into a 4 deep pool = no damage
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); for (let y = 49; y <= 53; y++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) S.setBlock(Math.floor(pl.pos.x) + dx, y, Math.floor(pl.pos.z) + dz, 'water'); })()`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setHealth(20); S.tp(pl.pos.x, 49 + 12, pl.pos.z); })()`);
+  await p.waitFor(`__STRATA.state().inWater`, { what: 'in the pool' });
+  await sleep(600);
+  if ((await S(p, `S.vitals().hp`)) !== 20) throw new Error('falling into water hurt');
+  // lava
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(), x = Math.floor(pl.pos.x) + 6, z = Math.floor(pl.pos.z); for (let y = 49; y <= 51; y++) S.setBlock(x, y, z, 'lava'); S.setHealth(20); S.vitals().burn = 0; S.tp(x + 0.5, 49, z + 0.5); })()`);
+  await sleep(1100);
+  const lava = await S(p, `({ hp: S.vitals().hp, burning: S.vitals().burn > 0 || S.vitals().hp < 20, ui: !document.getElementById('burning').hidden })`);
+  if (!(lava.hp <= 12 && lava.burning)) throw new Error('lava did not burn: ' + JSON.stringify(lava));
+  // suffocation: a block placed over the head
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.tp(Math.floor(pl.pos.x) - 12 + 0.5, 49, Math.floor(pl.pos.z) + 0.5); S.setHealth(20); S.vitals().burn = 0; S.vitals().invuln = 0; })()`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); for (const dy of [1, 2]) S.setBlock(Math.floor(pl.pos.x), Math.floor(pl.pos.y) + dy, Math.floor(pl.pos.z), 'stone'); })()`);
+  await sleep(2300);
+  const suff = await S(p, `S.vitals().hp`);
+  if (!(suff <= 18 && suff >= 16)) throw new Error('suffocation: ' + suff);
+  // the void
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setBlock(Math.floor(pl.pos.x), Math.floor(pl.pos.y) + 2, Math.floor(pl.pos.z), 'air'); S.setBlock(Math.floor(pl.pos.x), Math.floor(pl.pos.y) + 1, Math.floor(pl.pos.z), 'air'); })()`);
+  await p.eval(`(() => { const S = __STRATA; S.player().pos.y = -40; })()`);
+  await p.waitFor(`__STRATA.state().dead`, { what: 'the void to kill', timeout: 5000 });
+  const d = await S(p, `S.vitals().causeText`);
+  if (d !== 'Fell out of the world') throw new Error(d);
+});
+
+test('eating: hold the right mouse button on food for 1.6 s; letting go cancels; it only works while hungry; a bowl comes back from the stew', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.setHunger(8); S.give('cooked_beef', 3); S.give('glowcap_stew', 1); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'cooked_beef')); S.face(0, 0.5); })()`);
+  await S(p, `true`);
+  await p.eval(`__STRATA.G.fakeLock = true`);
+  await rightDown(p);
+  await sleep(700);
+  const mid = await S(p, `({ hunger: S.vitals().hunger, bar: !document.getElementById('eatbar').hidden, w: parseFloat(document.getElementById('eatbar').firstElementChild.style.width) })`);
+  if (mid.hunger !== 8 || !mid.bar || !(mid.w > 20 && mid.w < 70)) throw new Error('mid-eat: ' + JSON.stringify(mid));
+  await rightUp(p);
+  await sleep(200);
+  if ((await vit(p)).hunger !== 8 || !(await S(p, `document.getElementById('eatbar').hidden`))) throw new Error('letting go did not cancel');
+  await rightDown(p);
+  await sleep(2000);
+  await rightUp(p);
+  const after = await S(p, `({ hunger: S.vitals().hunger, beef: S.inv().count('cooked_beef') })`);
+  if (after.beef !== 2 || after.hunger < 16) throw new Error('after eating: ' + JSON.stringify(after));      // 8 + 8 (and maybe a second one started): at least 16
+  // stew gives the bowl back
+  await p.eval(`(() => { const S = __STRATA; S.setHunger(2); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'glowcap_stew')); })()`);
+  await rightDown(p); await sleep(2100); await rightUp(p);
+  if ((await S(p, `S.inv().count('bowl')`)) !== 1 || (await S(p, `S.inv().count('glowcap_stew')`)) !== 0) throw new Error('the bowl did not come back');
+  // full stomach: nothing happens
+  await p.eval(`(() => { const S = __STRATA; S.setHunger(20); S.give('cooked_beef', 1); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'cooked_beef')); })()`);
+  const n0 = await S(p, `S.inv().count('cooked_beef')`);
+  await rightDown(p); await sleep(2000); await rightUp(p);
+  if ((await S(p, `S.inv().count('cooked_beef')`)) !== n0) throw new Error('ate with a full stomach');
+});
+
+test('death: the screen names the cause and shows the score; the items lie where you died and are not in the inventory; Respawn restores you at the spawn', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('cobblestone', 20); S.give('torch', 5); S.giveKit('iron'); S.vitals().stats.mined = 12; S.setHunger(10); })()`);
+  const where = await S(p, `({ x: S.player().pos.x, y: S.player().pos.y, z: S.player().pos.z })`);
+  await p.eval(`(() => { const S = __STRATA; S.vitals().invuln = 0; S.damage(99, { type: 'fall' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead' && __STRATA.state().screen === 'death'`, { what: 'death screen' });
+  const scr = await S(p, `({ cause: document.getElementById('death-cause').textContent, score: document.getElementById('death-score').textContent, hud: document.getElementById('hud').hidden, btn: !!document.getElementById('b-respawn') })`);
+  if (scr.cause !== 'Fell from a high place' || !/Blocks mined: 12/.test(scr.score) || !scr.hud) throw new Error(JSON.stringify(scr));
+  const inv = await S(p, `({ held: S.inv().slots.filter(Boolean).length, armor: S.vitals().armorPoints, pile: S.drops().list.filter((d) => d.death).length, marker: S.G.deathMarker, ttl: S.drops().list.find((d) => d.death)?.ttl })`);
+  if (inv.held !== 0 || inv.armor !== 0 || inv.pile < 8 || !inv.marker || inv.ttl !== 600) throw new Error(JSON.stringify(inv));
+  if (Math.abs(inv.marker.x - Math.floor(where.x)) > 1) throw new Error('marker is not where we died');
+  await p.eval(`document.getElementById('b-respawn').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { what: 'respawned' });
+  const back = await S(p, `({ hp: S.vitals().hp, hunger: S.vitals().hunger, dead: S.vitals().dead, d: Math.hypot(S.player().pos.x - S.G.spawn.x, S.player().pos.z - S.G.spawn.z), deaths: S.vitals().deaths })`);
+  if (back.hp !== 20 || back.hunger !== 20 || back.dead || back.deaths !== 1) throw new Error(JSON.stringify(back));
+  // walk back to the pile: the items are picked up again
+  await p.eval(`(() => { const S = __STRATA; S.tp(${where.x}, ${where.y + 0.2}, ${where.z}); })()`);
+  await p.waitFor(`__STRATA.inv().count('cobblestone') === 20`, { what: 'the pile to be picked up', timeout: 20000 });
+  await p.waitFor(`!__STRATA.G.deathMarker`, { what: 'the marker to go once the pile is gone', timeout: 10000 });
+});
+
+test('keep inventory: with the setting on you keep everything when you die; the setting and the difficulty are in Settings and in a new world', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.G.settings.keepInventory = true; S.ui().setSettings(S.G.settings); S.give('cobblestone', 20); S.giveKit('iron'); })()`);
+  await p.eval(`(() => { const S = __STRATA; S.damage(99, { type: 'fall' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead'`, { what: 'death' });
+  const r = await S(p, `({ cobble: S.inv().count('cobblestone'), armor: S.vitals().armorPoints, pile: S.drops().list.length, note: document.getElementById('death-note').textContent })`);
+  if (r.cobble !== 20 || r.armor !== 15 || r.pile !== 0 || !/keep your items/.test(r.note)) throw new Error(JSON.stringify(r));
+  await p.eval(`document.getElementById('b-respawn').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`);
+  // settings UI
+  await p.eval(`__STRATA.pause()`);
+  await p.eval(`document.querySelector('#s-pause [data-act="settings"]').click()`);
+  const ui = await S(p, `({ diff: document.getElementById('set-diff').value, keep: document.getElementById('set-keepinv').checked, compass: document.getElementById('set-compass').checked, subs: document.getElementById('set-subtitles').checked })`);
+  if (ui.diff !== 'normal' || !ui.keep || !ui.compass || ui.subs) throw new Error(JSON.stringify(ui));
+  await p.eval(`(() => { const e = document.getElementById('set-diff'); e.value = 'hard'; e.dispatchEvent(new Event('change')); })()`);
+  if ((await S(p, `S.vitals().difficulty`)) !== 'hard') throw new Error('the difficulty setting did not apply');
+  // a new world takes the difficulty chosen on the New World screen
+  await boot(p);
+  await p.eval(`document.querySelector('[data-act="new"]').click()`);
+  await p.eval(`(() => { const e = document.getElementById('new-diff'); e.value = 'peaceful'; })()`);
+  await p.eval(`document.getElementById('b-start-new').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' || __STRATA.state().phase === 'paused'`, { timeout: 90000, what: 'new world' });
+  if ((await S(p, `S.vitals().difficulty`)) !== 'peaceful') throw new Error('the New World difficulty was ignored');
+});
+
+test('armor: right-click puts a piece on, the inventory has 4 armor slots that only take their own piece, shift-click equips, and the damage drops with the armor', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('iron_helmet'); S.give('iron_boots'); S.give('leather_chestplate'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'iron_helmet')); })()`);
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.useOrPlace()`);
+  if ((await S(p, `S.vitals().armor[0]?.id`)) !== 'iron_helmet' || (await S(p, `S.inv().count('iron_helmet')`)) !== 0) throw new Error('right-click did not equip');
+  await tap(p, 'e');
+  await p.waitFor(`__STRATA.state().menu === 'inventory'`);
+  const slots = await S(p, `[...document.querySelectorAll('#s-inv .slot.armor')].length`);
+  if (slots !== 4) throw new Error(`${slots} armor slots`);
+  // the leather chestplate on the cursor goes into the chest slot, not into the helmet slot
+  const click = (c, i) => S(p, `(() => { const e = document.querySelector('#s-inv .slot[data-c="${c}"][data-i="${i}"]'); const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+  const press = async (c, i, button = 'left') => { const [x, y] = await click(c, i); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: 1 }); await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: 1 }); await sleep(80); };
+  const ci = await S(p, `S.inv().slots.findIndex((s) => s?.id === 'leather_chestplate')`);
+  await press('inv', ci);
+  await press('armor', 0);                                                      // wrong slot: refused (the cursor keeps it)
+  if ((await S(p, `S.vitals().armor[0].id`)) !== 'iron_helmet' || (await S(p, `S.G.menu.cursor?.id`)) !== 'leather_chestplate') throw new Error('a chestplate went into the helmet slot');
+  await press('armor', 1);
+  if ((await S(p, `S.vitals().armor[1]?.id`)) !== 'leather_chestplate') throw new Error('the chestplate did not go into its slot');
+  // shift-click the boots
+  const bi = await S(p, `S.inv().slots.findIndex((s) => s?.id === 'iron_boots')`);
+  const [bx, by] = await click('inv', bi);
+  await p.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16, modifiers: 8 });
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bx, y: by, modifiers: 8 });
+  await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: bx, y: by, button: 'left', clickCount: 1, modifiers: 8 });
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bx, y: by, button: 'left', clickCount: 1, modifiers: 8 });
+  await p.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
+  await sleep(100);
+  if ((await S(p, `S.vitals().armor[3]?.id`)) !== 'iron_boots') throw new Error('shift-click did not equip the boots');
+  await tap(p, 'e');
+  const pts = await S(p, `S.vitals().armorPoints`);
+  if (pts !== 2 + 3 + 2) throw new Error('armor points ' + pts);                    // iron helmet 2 + leather chestplate 3 + iron boots 2
+  const hit = await S(p, `(() => { S.vitals().invuln = 0; return S.damage(10, { type: 'mob' }); })()`);
+  if (Math.abs(hit - 10 * (1 - 7 * 0.04)) > 0.01) throw new Error('damage with armor ' + hit);
+});
+
 s.run();

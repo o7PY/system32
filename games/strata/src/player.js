@@ -1,7 +1,7 @@
 // First-person controller: AABB 0.6 x 1.8 x 0.6, eye 1.62, swept per axis (no tunnelling at terminal speed), swimming, sprint and sneak (no walking off edges).
 // Pure: it only needs `world.getBlock(x, y, z)`, so Node tests drive it on a hand-built world. No automatic step-up: jumping is part of the feel.
 import { CONFIG } from './config.js';
-import { B, isSolid } from './blocks.js';
+import { B, BLOCKS, isSolid } from './blocks.js';
 
 const EPS = 1e-4;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -19,7 +19,12 @@ export class Player {
     this.hitX = false; this.hitZ = false;
     this.lastLanded = 0;                             // downward speed at the last landing (for the sound)
     this.stepDist = 0;                               // distance walked on the ground since the last footstep
+    this.inLava = false; this.headInSolid = false;   // survival: lava burns, a head inside an opaque block suffocates
+    this.peakY = 0; this.lastFall = 0;               // highest feet position of the current fall, and how far the last fall was (read and cleared by takeFall)
+    this.jumped = false;                             // set when a jump starts (hunger), cleared by the caller
   }
+  /** The distance of the fall that just ended (0 = none), cleared on read. Landing in water or lava ends a fall at once. */
+  takeFall() { const f = this.lastFall; this.lastFall = 0; return f; }
 
   teleport(x, y, z) { this.pos.x = x; this.pos.y = y; this.pos.z = z; this.vel.x = this.vel.y = this.vel.z = 0; }
   eye() { return { x: this.pos.x, y: this.pos.y + this.eyeH, z: this.pos.z }; }
@@ -40,6 +45,7 @@ export class Player {
     return false;
   }
   #water(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.water; }
+  #lava(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.lava; }
 
   /** Move along one axis in sub-steps of at most cfg.maxStep; on contact snap to the block face. Returns true if it hit something. */
   #move(axis, d) {
@@ -70,9 +76,14 @@ export class Player {
     dt = Math.min(dt, 0.05);
     const c = this.cfg, p = this.pos, v = this.vel;
     this.inWater = this.#water(p.x, p.y + 0.4, p.z);
+    this.inLava = this.#lava(p.x, p.y + 0.1, p.z) || this.#lava(p.x, p.y + 0.9, p.z);
     this.headInWater = this.#water(p.x, p.y + this.eyeH, p.z);
-    this.sneaking = !!inp.sneak && !this.inWater;
-    this.sprinting = !!inp.sprint && inp.z > 0 && !this.sneaking && !this.inWater;
+    const eyeBlock = this.world.getBlock(Math.floor(p.x), Math.floor(p.y + this.eyeH), Math.floor(p.z));
+    this.headInSolid = BLOCKS[eyeBlock]?.opaque ?? false;
+    const fluid = this.inWater || this.inLava;                                                  // both are swum in
+    if (this.onGround || fluid) this.peakY = p.y; else this.peakY = Math.max(this.peakY, p.y);
+    this.sneaking = !!inp.sneak && !fluid;
+    this.sprinting = !!inp.sprint && inp.z > 0 && !this.sneaking && !fluid && inp.canSprint !== false;
     this.eyeH = approach(this.eyeH, this.sneaking ? c.sneakEye : c.eye, 4 * dt);
 
     // wanted horizontal velocity
@@ -83,18 +94,18 @@ export class Player {
       wx = -Math.sin(this.yaw) * f + Math.cos(this.yaw) * s;
       wz = -Math.cos(this.yaw) * f - Math.sin(this.yaw) * s;
     }
-    const speed = this.inWater ? c.swim : this.sneaking ? c.sneak : this.sprinting ? c.sprint : c.walk;
-    const acc = (this.onGround || this.inWater ? c.accel : c.airAccel) * dt;
+    const speed = fluid ? c.swim * (this.inLava && !this.inWater ? 0.5 : 1) : this.sneaking ? c.sneak : this.sprinting ? c.sprint : c.walk;
+    const acc = (this.onGround || fluid ? c.accel : c.airAccel) * dt;
     v.x = approach(v.x, wx * speed, acc); v.z = approach(v.z, wz * speed, acc);
 
     // vertical (the position uses the average of the old and new velocity, so a jump is an exact parabola: peak = jump^2 / 2g)
     let vy0;
-    if (this.inWater) {
+    if (fluid) {
       vy0 = v.y;
       v.y = approach(v.y, inp.jump ? c.swimUp : -c.swimSink, 24 * dt);
       if (inp.jump && (this.hitX || this.hitZ)) v.y = Math.max(v.y, 5.5);            // climb out onto a ledge
     } else {
-      if (inp.jump && this.onGround) { v.y = c.jump; this.onGround = false; }
+      if (inp.jump && this.onGround) { v.y = c.jump; this.onGround = false; this.jumped = true; }
       vy0 = v.y;
       v.y = Math.max(-c.terminal, v.y - c.gravity * dt);
     }
@@ -112,10 +123,10 @@ export class Player {
     const fall = v.y;
     const hitY = this.#move('y', (vy0 + v.y) / 2 * dt);
     if (hitY) {
-      if (v.y < 0) { this.onGround = true; if (!wasGround) this.lastLanded = -fall; } else this.onGround = false;
+      if (v.y < 0) { this.onGround = true; if (!wasGround) { this.lastLanded = -fall; this.lastFall = fluid ? 0 : Math.max(0, this.peakY - p.y); } this.peakY = p.y; } else this.onGround = false;
       v.y = 0;
     } else this.onGround = false;
-    if (this.onGround && !this.inWater) this.stepDist += Math.hypot(p.x - ox, p.z - oz); else this.stepDist = 0;
+    if (this.onGround && !fluid) this.stepDist += Math.hypot(p.x - ox, p.z - oz); else this.stepDist = 0;
     return this;
   }
 }

@@ -7,6 +7,7 @@ export const DIFFICULTIES = ['peaceful', 'normal', 'hard'];
 /** Damage that no armor reduces (spec 2.3). */
 const IGNORES_ARMOR = new Set(['void', 'starvation', 'suffocation']);
 /** Damage that ticks on its own timer and is not blocked by the 0.5 s of invulnerability after a hit. */
+const E = 1e-6;                                      // timers compare with a hair of slack: 20 steps of 0.05 s are one second, whatever the float says
 const OVER_TIME = new Set(['lava', 'burning', 'drowning', 'starvation', 'suffocation', 'void']);
 
 const DEATH_TEXT = {
@@ -29,7 +30,7 @@ export class Vitals {
     this.hp = c.maxHp; this.hunger = c.maxHunger; this.air = c.bubbles;
     this.exhaustion = 0; this.fedT = 0; this.regenT = 0; this.starveT = 0;
     this.invuln = 0; this.burn = 0; this.burnT = 0; this.lavaT = 0; this.drownT = 0; this.suffocT = 0;
-    this.dead = false; this.cause = null; this.causeText = '';
+    this.dead = false; this.cause = null; this.causeText = ''; this.hitCount = 0;
     this.hurtDir = null; this.hurtT = 0; this.nausea = 0;
   }
 
@@ -57,7 +58,7 @@ export class Vitals {
     this.hp = Math.max(0, this.hp - d);
     if (!over) this.invuln = this.cfg.invuln;
     this.addExhaustion(this.cfg.exhaust.damage);
-    this.hurtT = 0.45; this.hurtDir = opts.from ?? null;
+    this.hurtT = 0.45; this.hurtDir = opts.from ?? null; this.hitCount++;
     if (this.hp <= 0 && type !== 'starvation') this.#die(type, opts.name);
     else if (this.hp <= 0) this.#die(type, opts.name);
     return d;
@@ -106,7 +107,7 @@ export class Vitals {
       if (env.sprintM) this.addExhaustion(env.sprintM * c.exhaust.sprintPerM);
       if (env.jumped) this.addExhaustion(c.exhaust.jump);
       if (env.mined) this.addExhaustion(env.mined * c.exhaust.mine);
-      while (this.exhaustion >= c.exhaust.perHunger) { this.exhaustion -= c.exhaust.perHunger; this.hunger = Math.max(0, this.hunger - 1); }
+      while (this.exhaustion >= c.exhaust.perHunger - E) { this.exhaustion -= c.exhaust.perHunger; this.hunger = Math.max(0, this.hunger - 1); }
     } else this.exhaustion = 0;
 
     // falling
@@ -118,34 +119,35 @@ export class Vitals {
     // air and drowning
     if (env.headInWater) {
       this.air = Math.max(0, this.air - dt / c.bubbleS);
-      if (this.air <= 0) { this.drownT += dt; while (this.drownT >= c.drownEveryS) { this.drownT -= c.drownEveryS; hit('drowning', c.drownDamage); } }
+      if (this.air <= 0) { this.drownT += dt; while (this.drownT >= c.drownEveryS - E) { this.drownT -= c.drownEveryS; hit('drowning', c.drownDamage); } }
     } else { this.air = Math.min(c.bubbles, this.air + dt * c.airRefillPerS); this.drownT = 0; }
 
     // lava and burning
     if (env.inLava) {
       this.lavaT += dt;
-      while (this.lavaT >= c.lava.everyS) { this.lavaT -= c.lava.everyS; hit('lava', c.lava.damage); }
+      while (this.lavaT >= c.lava.everyS - E) { this.lavaT -= c.lava.everyS; hit('lava', c.lava.damage); }
       this.burn = c.lava.burnS;
     } else this.lavaT = Math.min(this.lavaT, c.lava.everyS);
     if (env.inWater) this.burn = 0;
     if (this.burn > 0) {
       this.burn = Math.max(0, this.burn - dt); this.burnT += dt;
-      while (this.burnT >= 1) { this.burnT -= 1; hit('burning', c.lava.burnDamage); }
+      while (this.burnT >= 1 - E) { this.burnT -= 1; hit('burning', c.lava.burnDamage); }
     } else this.burnT = 0;
 
     // suffocation: the head inside a solid block
-    if (env.headInSolid) { this.suffocT += dt; while (this.suffocT >= 1) { this.suffocT -= 1; hit('suffocation', c.suffocation); } } else this.suffocT = 0;
+    if (env.headInSolid) { this.suffocT += dt; while (this.suffocT >= 1 - E) { this.suffocT -= 1; hit('suffocation', c.suffocation); } } else this.suffocT = 0;
 
     // starvation, then regeneration
     if (!this.peaceful && this.hunger <= 0) {
       this.starveT += dt;
-      while (this.starveT >= c.starveEveryS) { this.starveT -= c.starveEveryS; hit('starvation', 1); }
+      while (this.starveT >= c.starveEveryS - E) { this.starveT -= c.starveEveryS; hit('starvation', 1); }
     } else this.starveT = 0;
     this.fedT = Math.max(0, this.fedT - dt);
     if (this.hp < c.maxHp && !this.dead && (this.hunger >= c.regen.minHunger || this.peaceful)) {
-      const fast = this.hunger >= c.maxHunger && this.fedT > 0, every = fast ? c.regen.fastEveryS : c.regen.everyS;
+      // fed recently and (nearly) full: 1 HP per second, and cheap (a third of the hunger), so a good meal heals for its whole 20 s
+      const fast = this.hunger >= c.maxHunger - 1 && this.fedT > 0, every = fast ? c.regen.fastEveryS : c.regen.everyS;
       this.regenT += dt;
-      while (this.regenT >= every && this.hp < c.maxHp) { this.regenT -= every; this.hp = Math.min(c.maxHp, this.hp + 1); this.addExhaustion(c.regen.exhaust); }
+      while (this.regenT >= every - E && this.hp < c.maxHp) { this.regenT -= every; this.hp = Math.min(c.maxHp, this.hp + 1); this.addExhaustion(fast ? c.regen.exhaustFast : c.regen.exhaust); }
     } else this.regenT = 0;
     return events;
   }
@@ -165,6 +167,16 @@ export class Vitals {
     this.stats = { mined: Math.floor(n(o.stats?.mined, 0, 1e9, 0)), mobs: Math.floor(n(o.stats?.mobs, 0, 1e9, 0)), timeS: n(o.stats?.timeS, 0, 1e9, 0) };
     return this;
   }
+}
+
+/** Does dying keep the inventory? On with the Keep inventory setting, and always in the Kernel ("the Kernel does not free your memory"). */
+export const keepsInventoryOnDeath = (settings, dimension) => !!settings?.keepInventory || dimension === 'kernel';
+
+/** A held-button action with a duration (eating): feed it dt while the button is down, it reports completion once. */
+export class Hold {
+  constructor(seconds) { this.seconds = seconds; this.t = 0; this.done = false; }
+  update(dt) { if (this.done) return true; this.t += dt; if (this.t >= this.seconds) this.done = true; return this.done; }
+  get progress() { return Math.min(1, this.t / this.seconds); }
 }
 
 /** The text of the death screen's score line. */

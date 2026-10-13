@@ -105,8 +105,8 @@ export class Drops {
   constructor(world) { this.world = world; this.list = []; this.t = 0; this.nextId = 1; }
 
   /** A drop with a little hop. `delayS` keeps it from being picked up straight away (a thrown item). */
-  spawn(x, y, z, stk, { vx = (Math.random() - 0.5) * 2, vy = 3, vz = (Math.random() - 0.5) * 2, delayS = 0.35 } = {}) {
-    const d = { id: this.nextId++, x, y, z, vx, vy, vz, stack: { ...stk }, age: 0, delay: delayS };
+  spawn(x, y, z, stk, { vx = (Math.random() - 0.5) * 2, vy = 3, vz = (Math.random() - 0.5) * 2, delayS = 0.35, ttl = null, death = false } = {}) {
+    const d = { id: this.nextId++, x, y, z, vx, vy, vz, stack: { ...stk }, age: 0, delay: delayS, ttl, death };       // ttl: seconds of game time it lasts (null = the default); death: part of the pile left where you died
     this.list.push(d);
     return d;
   }
@@ -122,6 +122,7 @@ export class Drops {
     this.t += dt;
     const R = CONFIG.mining, picks = [];
     for (const d of this.list) {
+      if (this.world.has && !this.world.has(d.x, d.z)) continue;                    // in an unloaded chunk nothing happens: it does not age, so a death pile never despawns unseen
       d.age += dt; d.delay -= dt;
       const water = this.world.getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) === B.water;
       d.vy = water ? Math.max(-1.2, d.vy - 6 * dt) + (d.vy < 0.4 ? 5 * dt : 0) : Math.max(-40, d.vy - 22 * dt);
@@ -155,11 +156,24 @@ export class Drops {
       if (a.dead || hasDurability(a.stack.id)) continue;
       for (let j = i + 1; j < this.list.length; j++) {
         const b = this.list[j];
-        if (b.dead || b.stack.id !== a.stack.id || a.stack.n + b.stack.n > maxStack(a.stack.id)) continue;
+        if (b.dead || b.stack.id !== a.stack.id || !!a.death !== !!b.death || a.stack.n + b.stack.n > maxStack(a.stack.id)) continue;
         if (Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < R.dropMergeR) { a.stack.n += b.stack.n; b.dead = true; a.age = Math.min(a.age, b.age); }
       }
     }
-    this.list = this.list.filter((d) => !d.dead && d.age < R.dropDespawnS && d.y > -20);
+    this.list = this.list.filter((d) => !d.dead && d.age < (d.ttl ?? R.dropDespawnS) && d.y > -64);
     return picks;
+  }
+
+  /** For the save: the drops that lie around, the death pile first (at most `max`). */
+  toJSON(max = 300) {
+    return [...this.list].sort((a, b) => (b.death ? 1 : 0) - (a.death ? 1 : 0)).slice(0, max).map((d) => ({ x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), stack: d.stack, age: Math.round(d.age), ttl: d.ttl, death: !!d.death }));
+  }
+  load(list) {
+    this.list.length = 0;
+    for (const d of Array.isArray(list) ? list : []) {
+      if (!d?.stack?.id || !ITEMS[d.stack.id] || !Number.isInteger(d.stack.n) || d.stack.n < 1) continue;
+      const e = this.spawn(d.x, d.y, d.z, d.stack, { vx: 0, vy: 0, vz: 0, delayS: 0, ttl: d.ttl ?? null, death: !!d.death });
+      e.age = Number.isFinite(d.age) ? d.age : 0;
+    }
   }
 }

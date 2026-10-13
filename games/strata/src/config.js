@@ -55,7 +55,7 @@ export const CONFIG = {
     bubbles: 10, bubbleS: 1.5, airRefillPerS: 5, drownDamage: 2, drownEveryS: 1,
     lava: { damage: 4, everyS: 0.5, burnS: 3, burnDamage: 1 }, suffocation: 1, voidY: -32,
     exhaust: { sprintPerM: 0.1, jump: 0.05, mine: 0.005, damage: 0.1, perHunger: 4 },
-    regen: { minHunger: 16, everyS: 3, fastEveryS: 1, fedS: 20, exhaust: 1.5 },
+    regen: { minHunger: 16, everyS: 3, fastEveryS: 1, fedS: 20, exhaust: 1.5, exhaustFast: 0.5 },
     starveEveryS: 4, noSprintAt: 6,
     deathDropS: 600,                                          // the pile at your death place lasts 10 minutes of game time
   },
@@ -76,7 +76,7 @@ export const CONFIG = {
   clouds: { y: 112, speed: 1.6 },
 
   save: { autosaveS: 60, version: 1, capBytes: 2.5 * 1024 * 1024 },     // the shell's cap for Strata (two dimensions); a finished world should stay under 1.5 MB
-  settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true },
+  settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true, difficulty: 'normal', keepInventory: false, compass: true, subtitles: false },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 

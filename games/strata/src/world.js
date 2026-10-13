@@ -96,7 +96,7 @@ export class World {
     this.chunks = new Map();
     this.edits = new Map();             // chunkKey -> Map(localIndex -> block id): only blocks that differ from the generator
     this.view = CONFIG.view.default;
-    this.seed = 0; this.flat = false; this.noSky = false;                // noSky: a dimension without a sky (the Underlayer, the Kernel)
+    this.seed = 0; this.flat = false; this.noSky = false; this.voidBelow = false;                // noSky: a dimension without a sky (the Underlayer, the Kernel)
     this.onMesh = null;                 // (chunk, mesh) the renderer uploads it
     this.onUnload = null;               // (chunk)
     this.uploads = [];
@@ -125,7 +125,7 @@ export class World {
 
   /** The block at a position. Outside the world and below y = 0 is bedrock (a wall), above y = 127 is air; a chunk that is not loaded yet reads as stone, so nothing falls through it. */
   getBlock(x, y, z) {
-    if (y < 0) return B.bedrock;
+    if (y < 0) return this.voidBelow ? B.air : B.bedrock;                   // the Kernel arena floats over a void
     if (y >= H) return B.air;
     const cx = x >> 4, cz = z >> 4;
     if (!this.inWorld(cx, cz)) return B.bedrock;

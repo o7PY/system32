@@ -6,6 +6,7 @@
 import { CONFIG } from './config.js';
 import { BLOCKS } from './blocks.js';
 import { ITEMS, durabilityOf } from './items.js';
+import { DIFFICULTIES } from './survival.js';
 
 export const MAGIC = 'STRATA1';
 export class SaveError extends Error {}
@@ -67,7 +68,7 @@ async function pipe(bytes, stream) { return new Uint8Array(await new Response(ne
 export async function serialize(s, { compress = true } = {}) {
   const header = new TextEncoder().encode(JSON.stringify({
     v: CONFIG.save.version, seed: s.seed >>> 0, worldSize: s.worldSize, flat: !!s.flat, spawn: s.spawn, player: s.player, inv: s.inv,
-    furnaces: s.furnaces ?? {}, time: s.time, settings: s.settings, flags: s.flags ?? {},
+    furnaces: s.furnaces ?? {}, time: s.time, settings: s.settings, flags: s.flags ?? {}, vitals: s.vitals ?? null, drops: s.drops ?? [],
   }));
   const edits = packEdits(s.edits ?? new Map());
   const box = new Uint8Array(4 + header.length + edits.length);
@@ -107,8 +108,13 @@ export async function deserialize(str) {
   if (typeof fz !== 'object' || Object.values(fz).some((f) => !f || !validStack(f.input ?? null) || !validStack(f.fuel ?? null) || !validStack(f.output ?? null) || !num(f.burn ?? 0, 0, 1e6) || !num(f.cook ?? 0, 0, 100))) fail('bad furnace');
   const st = { ...CONFIG.settings, ...(h.settings && typeof h.settings === 'object' ? h.settings : {}) };
   if (!num(st.sensitivity, 0.1, 5) || !num(st.fov, 60, 100) || !num(st.viewDistance, CONFIG.view.min, CONFIG.view.max) || !num(st.volume, 0, 1)) fail('bad settings');
+  if (!DIFFICULTIES.includes(st.difficulty)) fail('bad difficulty');
+  const v = h.vitals ?? null;
+  if (v !== null && (typeof v !== 'object' || (v.armor ?? []).length > 4 || !(v.armor ?? []).every(validStack))) fail('bad vitals');
+  const dr = h.drops ?? [];
+  if (!Array.isArray(dr) || dr.length > 400 || dr.some((d) => !d || !validStack(d.stack) || !d.stack || !num(d.x, -64, S + 64) || !num(d.y, -64, CONFIG.height + 64) || !num(d.z, -64, S + 64) || !num(d.age ?? 0, 0, 1e7))) fail('bad drops');
   const edits = unpackEdits(box.subarray(4 + hl), S);
-  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false }, flags: h.flags ?? {}, edits };
+  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false, keepInventory: !!st.keepInventory, compass: st.compass !== false, subtitles: !!st.subtitles }, flags: h.flags ?? {}, vitals: v, drops: dr, edits };
 }
 
 /** Human size for the warning: 1.6 MB / 1.5 MB. */

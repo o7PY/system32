@@ -29,7 +29,7 @@ test('the real game starts in the sandboxed window: worker from a Blob URL, atla
   const r = await inFrame(page, `({ origin: self.origin, state: __STRATA.state(), atlas: __STRATA.renderer().tex.atlas.image.width, samples: __STRATA.audio().raw.size, font: document.fonts.check('20px "Kenney Pixel"'), cont: document.getElementById('b-continue').disabled })`);
   if (r.origin !== 'null') throw new Error('not an opaque origin: ' + r.origin);
   if (r.state.backend !== 'worker') throw new Error(`the worker did not start in the sandbox: ${r.state.backend} (${r.state.backendReason})`);
-  if (r.atlas !== 256 || r.samples < 25 || !r.font || !r.cont) throw new Error(JSON.stringify(r));
+  if (r.atlas !== 512 || r.samples < 25 || !r.font || !r.cont) throw new Error(JSON.stringify(r));
 });
 
 test('the main-thread fallback also works inside the sandbox (?noWorker=1)', async (page) => {

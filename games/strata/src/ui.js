@@ -4,9 +4,10 @@
 import { CONFIG } from './config.js';
 import { BLOCKS } from './blocks.js';
 import { ITEMS, durabilityOf } from './items.js';
+import { hudIcons } from './hudicons.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'error'];
+const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'death', 'error'];
 
 
 export class UI {
@@ -23,7 +24,7 @@ export class UI {
     for (const [id, key] of [['set-sens', 'sensitivity'], ['set-fov', 'fov'], ['set-view', 'viewDistance'], ['set-vol', 'volume']]) {
       $(id).addEventListener('input', () => { this.#readSettings(); this.#outputs(); });
     }
-    for (const id of ['set-invert', 'set-music']) $(id).addEventListener('change', () => this.#readSettings());
+    for (const id of ['set-invert', 'set-music', 'set-diff', 'set-keepinv', 'set-compass', 'set-subtitles']) $(id).addEventListener('change', () => this.#readSettings());
     const inv = $('s-inv');
     inv.addEventListener('mousedown', (e) => this.#invDown(e));
     inv.addEventListener('mouseover', (e) => this.#invOver(e));
@@ -55,12 +56,15 @@ export class UI {
   /** Second step of replacing a saved world. */
   armReplace() { $('b-start-new').textContent = 'Click again to replace it'; $('overwrite-note').hidden = false; }
   seedText() { return $('seed-input').value.trim(); }
+  difficultyText() { return $('new-diff').value; }
+  setNewDifficulty(d) { $('new-diff').value = d; }
   error(title, text) { $('err-title').textContent = title; $('err-text').textContent = text; this.show('error'); }
   pauseNote(t) { $('pause-note').textContent = t; }
 
   setSettings(s) {
     $('set-sens').value = s.sensitivity; $('set-fov').value = s.fov; $('set-view').value = s.viewDistance; $('set-vol').value = s.volume;
     $('set-invert').checked = !!s.invertY; $('set-music').checked = !!s.music;
+    $('set-diff').value = s.difficulty ?? 'normal'; $('set-keepinv').checked = !!s.keepInventory; $('set-compass').checked = s.compass !== false; $('set-subtitles').checked = !!s.subtitles;
     this.#outputs();
   }
   #outputs() {
@@ -69,7 +73,7 @@ export class UI {
     set('set-view', `${$('set-view').value}`); set('set-vol', `${Math.round($('set-vol').value * 100)}%`);
   }
   #readSettings() {
-    this.emit('settings-change', { sensitivity: Number($('set-sens').value), fov: Number($('set-fov').value), viewDistance: Number($('set-view').value), volume: Number($('set-vol').value), invertY: $('set-invert').checked, music: $('set-music').checked });
+    this.emit('settings-change', { sensitivity: Number($('set-sens').value), fov: Number($('set-fov').value), viewDistance: Number($('set-view').value), volume: Number($('set-vol').value), invertY: $('set-invert').checked, music: $('set-music').checked, difficulty: $('set-diff').value, keepInventory: $('set-keepinv').checked, compass: $('set-compass').checked, subtitles: $('set-subtitles').checked });
   }
 
   // ---------------------------------------------------------------- icons
@@ -127,10 +131,31 @@ export class UI {
   saved(ok, text, ms) { const el = $('saved'); el.classList.toggle('bad', !ok); this.#flash('saved', text, ms ?? (ok ? 1400 : 7000)); }
   debug(text) { const el = $('f3'); el.hidden = !text; if (text) el.textContent = text; }
 
+  // ---------------------------------------------------------------- survival HUD
+  /** Hearts, food, armor and air for a Vitals. Redrawn only when something changed. */
+  renderVitals(v, { hideFood = false } = {}) {
+    const sig = `${Math.ceil(v.hp)}|${Math.ceil(v.hunger)}|${Math.ceil(v.air)}|${v.armorPoints}|${hideFood}`;
+    if (sig === this.sigs.vitals) return;
+    this.sigs.vitals = sig;
+    const ic = hudIcons(), img = (src, cls = '') => `<img class="${cls}" alt="" src="${src}">`;
+    const row = (value, kind, n = 10) => Array.from({ length: n }, (_, i) => { const left = value - i * 2; return img(ic[kind][left >= 2 ? 'full' : left >= 1 ? 'half' : 'empty'], left > 0 ? 'on' : ''); }).join('');
+    $('hearts').innerHTML = row(Math.ceil(v.hp), 'heart'); $('hearts').classList.toggle('low', v.hp <= 4);
+    $('food').innerHTML = hideFood ? '' : row(Math.ceil(v.hunger), 'food');
+    $('armorbar').innerHTML = v.armorPoints > 0 ? row(v.armorPoints, 'armor') : '';
+    $('armorbar').style.minHeight = v.armorPoints > 0 ? '18px' : '0';
+    const bubbles = Math.ceil(v.air - 1e-6);
+    $('air').innerHTML = bubbles < 10 ? Array.from({ length: 10 }, (_, i) => img(ic.bubble[i < bubbles ? 'full' : 'empty'])).join('') : '';
+  }
+  /** A red flash at the edge of the screen (the animation restarts on every hit). */
+  hurt() { const e = $('hurt'); e.hidden = false; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); }
+  burning(on) { $('burning').hidden = !on; }
+  eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
+  death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }
+
   // ---------------------------------------------------------------- inventory screens
   openMenu(menu) { this.menu = menu; this.show('inv'); this.#renderMenu(true); }
   closeMenu() { this.menu = null; }
-  #sig() { const m = this.menu; return JSON.stringify([m.inv.slots, m.grid, m.out, m.cursor, m.furnace?.toJSON()]); }
+  #sig() { const m = this.menu; return JSON.stringify([m.inv.slots, m.grid, m.out, m.cursor, m.furnace?.toJSON(), m.armor, m.chest]); }
 
   /** Call every frame while a menu is open: redraws only when something changed (the furnace arrow moves smoothly with it). */
   refresh() { if (this.menu && this.screen === 'inv') this.#renderMenu(false); }
@@ -149,7 +174,9 @@ export class UI {
     } else {
       title = m.kind === 'table' ? 'Crafting Table' : 'Inventory';
       top = `<div class="grid" style="grid-template-columns:repeat(${m.size},46px)">${m.grid.map((s, i) => S(s, 'craft', i)).join('')}</div><div class="arrow"><i style="width:${m.out ? 100 : 0}%"></i></div>${S(m.out, 'out', 0, 'take')}`;
+      if (m.kind === 'inventory' && m.armor) top = `<div class="armorcol">${m.armor.map((s, i) => S(s, 'armor', i, `armor a${i}`)).join('')}<span class="armtotal">${m.armor.reduce((n, s) => n + (s ? ITEMS[s.id]?.armor?.points ?? 0 : 0), 0)} armor</span></div>` + top;
     }
+    if (m.kind === 'chest') { title = 'Chest'; top = `<div class="grid chestgrid" style="grid-template-columns:repeat(9,46px)">${m.chest.map((s, i) => S(s, 'chest', i)).join('')}</div>`; }
     const main = Array.from({ length: CONFIG.inv.main }, (_, k) => S(m.inv.slots[CONFIG.inv.hotbar + k], 'inv', CONFIG.inv.hotbar + k)).join('');
     const hot = Array.from({ length: CONFIG.inv.hotbar }, (_, k) => S(m.inv.slots[k], 'inv', k, k === m.inv.selected ? 'sel' : '')).join('');
     $('s-inv').innerHTML = `<div class="panel invp"><h3>${title}</h3><div class="top">${top}</div>` +

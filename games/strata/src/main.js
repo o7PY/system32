@@ -9,6 +9,7 @@ import { raycast, Miner, Drops, dropFor, useTool } from './interact.js';
 import { Inventory, Menu } from './inventory.js';
 import { Furnace } from './crafting.js';
 import { UI } from './ui.js';
+import { Vitals, Hold, DIFFICULTIES, keepsInventoryOnDeath, scoreText } from './survival.js';
 import { StrataAudio } from './audio.js';
 import { serialize, deserialize, SaveError, fmtMB } from './save.js';
 
@@ -17,6 +18,7 @@ const num = (k, d) => { const v = Number(params.get(k)); return params.has(k) &&
 const OPT = {
   seed: params.has('seed') ? params.get('seed') : null, flat: params.get('flat') === '1', worldSize: num('worldSize', CONFIG.worldSize),
   low: params.get('quality') === 'low', noWorker: params.get('noWorker') === '1', noCompress: params.get('noCompress') === '1', debug: params.get('debug') === '1',
+  peaceful: params.get('peaceful') === '1',
 };
 const sdk = window.System32;
 const $ = (id) => document.getElementById(id);
@@ -35,14 +37,14 @@ export function seedFrom(text) {
 const G = {
   phase: 'loading',            // loading | title | entering | playing | paused
   menu: null, save: null, soundOn: false,
-  settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default },
+  settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default, difficulty: OPT.peaceful ? 'peaceful' : 'normal' },
   seed: 0, flat: false, worldSize: OPT.worldSize, spawn: { x: 0, y: 0, z: 0 },
   dayT: CONFIG.day.start, flags: {}, eggs: new Set(),
-  keys: new Set(), tapped: new Set(), mouseLeft: false, lastW: 0, sprintLatch: false, fakeLock: false,
+  keys: new Set(), tapped: new Set(), mouseLeft: false, mouseRight: false, eat: null, hitSeen: 0, tilt: 0, dim: 'overworld', minedStep: 0, deathMarker: null, lastPos: null, lastDeath: null, lastW: 0, sprintLatch: false, fakeLock: false,
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
-let ui, audio, renderer, world, player, inv, drops, miner, backendInfo = { kind: '?', reason: '' };
+let ui, audio, renderer, world, player, inv, drops, miner, vitals, backendInfo = { kind: '?', reason: '' };
 const furnaces = new Map();
 
 const isLocked = () => G.fakeLock || document.pointerLockElement === $('gl');
@@ -88,7 +90,7 @@ async function boot() {
   world.onMesh = (c, m) => renderer.addChunk(c, m);
   world.onUnload = (c) => renderer.removeChunk(c);
   world.view = G.settings.viewDistance;
-  player = new Player(world); inv = new Inventory(); drops = new Drops(world); miner = new Miner();
+  player = new Player(world); inv = new Inventory(); drops = new Drops(world); miner = new Miner(); vitals = new Vitals();
   bindUI();
   bindInput();
   ui.setSettings(G.settings);
@@ -138,9 +140,14 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   inv.load(save?.inv ?? null);
   if (!save) inv.slots.fill(null);
   drops.clear(); miner.reset(); furnaces.clear();
+  if (!save) G.settings.difficulty = ui.difficultyText();
+  vitals.load(save?.vitals ?? null); vitals.difficulty = G.settings.difficulty;
+  if (save?.drops) drops.load(save.drops);
+  G.eat = null; G.mouseRight = false; G.dim = 'overworld'; G.lastDeath = null; G.hitSeen = vitals.hitCount; G.tilt = 0;
   for (const [k, f] of Object.entries(save?.furnaces ?? {})) furnaces.set(k, makeFurnace(k, f));
   G.dayT = save?.time ?? CONFIG.day.start;
   G.flags = { ...(save?.flags ?? {}) };
+  G.deathMarker = G.flags.death ?? null;
   G.saveTimer = 0; G.fakeLock = fake;
   G.entering = { title: false, fake, t0: performance.now() };
   G.phase = 'entering';
@@ -186,17 +193,22 @@ function applySettings() {
   audio.setVolume(s.volume); audio.setMusic(s.music);
   world.view = s.viewDistance; renderer.setView(s.viewDistance);
   renderer.camera.fov = s.fov; renderer.camera.updateProjectionMatrix();
+  if (vitals) vitals.difficulty = DIFFICULTIES.includes(s.difficulty) ? s.difficulty : 'normal';
   ui.setSettings(s);
 }
 
 // ---------------------------------------------------------------- saving
+/** The flags that go into the save: the death marker rides along. */
+function saveFlags() { const f = { ...G.flags }; if (G.deathMarker) f.death = G.deathMarker; else delete f.death; return f; }
+
 async function saveNow(reason, wait = false) {
   if (!sdk || !world || !(G.phase === 'playing' || G.phase === 'paused') || G.seed === undefined) return;
   if (G.saving) { G.saveQueued = true; return G.saveWait; }
   G.saving = true;
   const data = await serialize({
     seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
-    inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: G.flags, edits: world.edits,
+    inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits,
+    vitals: vitals.toJSON(), drops: drops.toJSON(),
   }, { compress: !OPT.noCompress });
   G.pendingSave = data;
   G.saveWait = new Promise((resolve) => { G.saveDone = resolve; });
@@ -235,6 +247,7 @@ function bindUI() {
   ui.on('back-settings', () => { if (G.settingsFrom === 'pause') ui.show('pause'); else showTitle(); });
   ui.on('settings-change', (s) => { Object.assign(G.settings, s); applySettings(); });
   ui.on('resume', () => resumeGame());
+  ui.on('respawn', () => respawn());
   ui.on('quit', () => quitToTitle());
   ui.on('menu-changed', () => {
     audio.ui('click');
@@ -257,7 +270,7 @@ function makeFurnace(key, state) {
 }
 function openMenu(kind, furnace = null) {
   if (G.phase !== 'playing' || G.menu) return;
-  G.menu = new Menu(inv, kind, furnace);
+  G.menu = new Menu(inv, kind, furnace, { armor: vitals.armor });
   G.keys.clear(); G.mouseLeft = false; G.sprintLatch = false;
   if (!G.fakeLock) document.exitPointerLock?.();
   ui.openMenu(G.menu); ui.hud(true);
@@ -284,10 +297,10 @@ function bindInput() {
     if (G.phase !== 'playing' || G.menu) return;
     if (!isLocked()) { canvas.requestPointerLock?.(); return; }
     if (e.button === 0) G.mouseLeft = true;
-    else if (e.button === 2) useOrPlace();
+    else if (e.button === 2) { G.mouseRight = true; useOrPlace(); }
     else if (e.button === 1) { e.preventDefault(); pickBlock(); }
   });
-  addEventListener('mouseup', (e) => { if (e.button === 0) G.mouseLeft = false; });
+  addEventListener('mouseup', (e) => { if (e.button === 0) G.mouseLeft = false; if (e.button === 2) { G.mouseRight = false; G.eat = null; ui.eating(null); } });
   document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas && G.phase === 'playing' && !G.menu && !G.fakeLock) pauseGame(); });
   addEventListener('blur', () => { G.keys.clear(); G.mouseLeft = false; G.sprintLatch = false; });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.phase === 'playing') pauseGame('shell'); });
@@ -318,7 +331,7 @@ function onKeyDown(e) {
 function readInput() {
   const held = (c) => G.keys.has(c) || G.tapped.has(c);
   const z = (held('KeyW') ? 1 : 0) - (held('KeyS') ? 1 : 0);
-  const r = { x: (held('KeyD') ? 1 : 0) - (held('KeyA') ? 1 : 0), z, jump: held('Space'), sneak: held('KeyC'), sprint: held('ShiftLeft') || held('ShiftRight') || (G.sprintLatch && z > 0) };
+  const r = { x: (held('KeyD') ? 1 : 0) - (held('KeyA') ? 1 : 0), z, jump: held('Space'), sneak: held('KeyC'), sprint: held('ShiftLeft') || held('ShiftRight') || (G.sprintLatch && z > 0), canSprint: vitals.canSprint };
   G.tapped.clear();
   return r;
 }
@@ -341,6 +354,7 @@ function target() { const e = player.eye(); return raycast(blockAt2, e, player.d
 const blockAt2 = (x, y, z) => world.getBlock(x, y, z);
 
 function breakBlock(hit) {
+  G.minedStep++; vitals.stats.mined++;
   const id = hit.id, held = inv.held(), at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
   const stk = dropFor(id, held);
   if (isFurnace(id)) {
@@ -382,10 +396,19 @@ function blockFor(info, hit) {
   return info.block;
 }
 
+/** Right click with an armor piece in hand: put it on (swapping with what is worn in that slot). */
+function equipArmor() {
+  const held = inv.held(), slot = ITEMS[held.id].armor.slotN, cur = vitals.armor[slot];
+  vitals.armor[slot] = held; inv.slots[inv.selected] = cur ?? null;
+  audio.play('armor.equip', { vol: 0.8 });
+}
+
 /** Right click on a block with a use of its own that is not a menu (a bed, a rift, a chest): later phases hook in here. */
 function useBlock() {}
 
 function useOrPlace() {
+  const worn = inv.held();
+  if (worn && ITEMS[worn.id].armor) { equipArmor(); return; }
   const hit = target();
   if (!hit) return;
   const def = BLOCKS[hit.id];
@@ -429,7 +452,9 @@ function simulate(dt) {
   const ready = world.has(player.pos.x, player.pos.z);
   if (ready) {
     const wasGround = G.lastGround;
+    const px = player.pos.x, pz = player.pos.z;
     player.update(dt, inp);
+    survive(dt, Math.hypot(player.pos.x - px, player.pos.z - pz));
     if (player.onGround && !wasGround && player.lastLanded > 5) audio.block('step', blockAt(player.pos.x, player.pos.y - 0.5, player.pos.z), { vol: 1, at: player.pos, listener: listener() });
     G.lastGround = player.onGround;
     const stride = player.sprinting ? 2.3 : 1.9;
@@ -437,7 +462,7 @@ function simulate(dt) {
   }
   // camera
   const e = player.eye(), cam = renderer.camera;
-  cam.position.set(e.x, e.y, e.z); cam.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+  cam.position.set(e.x, e.y, e.z); cam.rotation.set(player.pitch, player.yaw, G.tilt * Math.min(1, vitals.hurtT / 0.45), 'YXZ');       // a hit tilts the view toward where it came from
   const fov = G.settings.fov + (player.sprinting ? 6 : 0);
   if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 10); cam.updateProjectionMatrix(); }
   $('underwater').hidden = !player.headInWater;
@@ -454,6 +479,15 @@ function simulate(dt) {
   } else if (state === 'broke') { G.mineTick = 0; breakBlock(hit); }
   else G.mineTick = 0;
 
+  // eating: hold the right button with food in hand (1.6 s), only while hungry
+  const heldNow = inv.held(), food = heldNow && ITEMS[heldNow.id].food;
+  if (G.mouseRight && locked && !open && food && vitals.hunger < CONFIG.survival.maxHunger && !vitals.dead) {
+    if (!G.eat || G.eat.id !== heldNow.id) { G.eat = { id: heldNow.id, hold: new Hold(CONFIG.eatS), tick: 0 }; audio.play('eat', { vol: 0.7 }); }
+    G.eat.tick += dt;
+    if (G.eat.hold.update(dt)) finishEating();
+    else { if (G.eat.tick > 0.3) { G.eat.tick = 0; audio.play('eat', { vol: 0.6 }); } ui.eating(G.eat.hold.progress); }
+  } else if (G.eat) { G.eat = null; ui.eating(null); }
+
   // drops, furnaces, time, autosave, music
   const picks = drops.update(dt, player.pos, (s) => inv.add(s));
   if (picks.length) { audio.play('pickup', { vol: 0.8 }); }
@@ -467,7 +501,74 @@ function simulate(dt) {
   if (G.saveTimer >= CONFIG.save.autosaveS) { G.saveTimer = 0; saveNow('autosave'); }
   audio.tick(dt);
   ui.renderHotbar(inv);
+  ui.renderVitals(vitals);
+  ui.burning(vitals.burn > 0);
+  if (G.deathMarker && !drops.list.some((d) => d.death)) G.deathMarker = null;              // the pile was picked up (or timed out)
   if (G.menu) ui.refresh();
+}
+
+// ---------------------------------------------------------------- survival: damage, eating, death, respawn
+/** One step of health, hunger, air and the damage sources. `moved` = the horizontal distance walked this step. */
+function survive(dt, moved) {
+  const env = { inWater: player.inWater, headInWater: player.headInWater, inLava: player.inLava, headInSolid: player.headInSolid, y: player.pos.y,
+    sprintM: player.sprinting ? moved : 0, jumped: player.jumped, mined: G.minedStep, fall: player.takeFall() };
+  player.jumped = false; G.minedStep = 0;
+  vitals.update(dt, env);
+  if (vitals.hitCount !== G.hitSeen) { G.hitSeen = vitals.hitCount; onHurt(); }
+  if (vitals.dead) die();
+}
+
+/** The red flash, the hurt sound and the tilt toward the side the damage came from. */
+function onHurt() {
+  audio.play('player.hurt', { vol: 0.9 });
+  ui.hurt();
+  const d = vitals.hurtDir;
+  if (d) { const dx = d.x - player.pos.x, dz = d.z - player.pos.z, side = dx * Math.cos(player.yaw) - dz * Math.sin(player.yaw); G.tilt = (side >= 0 ? -1 : 1) * 0.14; }
+  else G.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.08;
+  if (G.settings.subtitles) ui.subtitle('You are hurt', 1500);
+}
+
+function finishEating() {
+  const id = G.eat.id;
+  vitals.eat(id);
+  inv.takeOne(inv.selected);
+  const back = ITEMS[id].food.returns;
+  if (back) { const left = inv.add(stack(back, 1)); if (left) drops.spawn(player.pos.x, player.pos.y + 1.2, player.pos.z, left); }
+  G.eat = null; ui.eating(null);
+  if (vitals.nausea > 0) ui.subtitle('You feel sick…', 2500);
+}
+
+/** Where the player comes back: the bed (if it is still there and free), else the world spawn. */
+function respawnPoint() { return bedSpawn() ?? { x: G.spawn.x, y: G.spawn.y, z: G.spawn.z }; }
+function bedSpawn() { return null; }                       // beds arrive in phase 5
+
+function die() {
+  if (G.phase !== 'playing') return;
+  if (G.menu) closeMenu(false);
+  G.phase = 'dead'; G.keys.clear(); G.mouseLeft = false; G.mouseRight = false; G.eat = null; ui.eating(null);
+  document.exitPointerLock?.();
+  const keep = keepsInventoryOnDeath(G.settings, G.dim), at = { x: player.pos.x, y: player.pos.y + 0.5, z: player.pos.z };
+  if (!keep) {
+    const all = [...inv.slots, ...vitals.armor].filter(Boolean);
+    for (const s of all) drops.spawn(at.x, at.y, at.z, s, { delayS: 2, ttl: CONFIG.survival.deathDropS, death: true });
+    inv.slots.fill(null); vitals.armor = [null, null, null, null];
+    if (all.length) G.deathMarker = { x: Math.floor(at.x), y: Math.floor(at.y), z: Math.floor(at.z) };
+  }
+  G.lastDeath = { cause: vitals.causeText, keep, at };
+  audio.play('player.death');
+  ui.hud(false); $('underwater').hidden = true; ui.burning(false);
+  ui.death({ cause: vitals.causeText, score: scoreText(vitals.stats), note: keep ? 'You keep your items.' : 'Your items are where you died. They stay for 10 minutes.' });
+  saveNow('death');
+}
+
+function respawn() {
+  if (G.phase !== 'dead') return;
+  const p = respawnPoint();
+  vitals.respawn(); vitals.difficulty = G.settings.difficulty; G.hitSeen = vitals.hitCount;
+  player.teleport(p.x, p.y, p.z); player.peakY = p.y; player.lastFall = 0;
+  G.phase = 'playing'; ui.show(null); ui.hud(true);
+  if (!G.fakeLock) $('gl').requestPointerLock?.();
+  audio.unlock();
 }
 
 // ---------------------------------------------------------------- frame
@@ -510,7 +611,7 @@ function frame(now) {
       world.update(player.pos.x, player.pos.z); world.pump();
       break;
     }
-    case 'paused': world.update(player.pos.x, player.pos.z); world.pump(); renderer.setTarget(null); renderer.setCrack(null, 0); break;
+    case 'paused': case 'dead': world.update(player.pos.x, player.pos.z); world.pump(); renderer.setTarget(null); renderer.setCrack(null, 0); break;
   }
   renderer.setTime(G.dayT, G.now);
   renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id), light: lightOf(d.x, d.y + 0.2, d.z) })) : [], G.atlasUV);
@@ -545,14 +646,14 @@ function installHooks() {
       phase: G.phase, screen: ui.screen, menu: G.menu?.kind ?? null, pos: { ...player.pos }, vel: { ...player.vel }, yaw: player.yaw, pitch: player.pitch, onGround: player.onGround, inWater: player.inWater,
       chunks: world.loadedCount, meshed: world.meshedCount, queue: world.queueLength, backend: backendInfo.kind, backendReason: backendInfo.reason, seed: G.seed, flat: G.flat,
       dayT: G.dayT, edits: world.editCount(), drops: drops.list.length, selected: inv.selected, held: inv.held(), saving: G.saving, saveBytes: G.lastSaveBytes, saveResult: G.lastSaveResult ?? null,
-      eggs: [...G.eggs], settings: { ...G.settings }, locked: isLocked(), draws: renderer.info.calls, flags: { ...G.flags }, sound: { allowed: audio.allowed, ctx: !!audio.ctx, count: audio.count, played: [...audio.played] },
+      eggs: [...G.eggs], settings: { ...G.settings }, hp: vitals.hp, hunger: vitals.hunger, air: vitals.air, dead: vitals.dead, locked: isLocked(), draws: renderer.info.calls, flags: { ...G.flags }, sound: { allowed: audio.allowed, ctx: !!audio.ctx, count: audio.count, played: [...audio.played] },
     }),
     getBlock: (x, y, z) => world.getBlock(x, y, z),
     setBlock: (x, y, z, id) => world.setBlock(x, y, z, typeof id === 'string' ? B[id] : id),
     give: (item, n = 1) => inv.add(hasDurability(item) ? stack(item) : stack(item, n)),
     tp: (x, y, z) => { player.teleport(x, y, z); },
     setTime: (t) => { G.dayT = t; },
-    save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: G.flags, edits: world.edits }, { compress: !OPT.noCompress }),
+    save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits, vitals: vitals.toJSON(), drops: drops.toJSON() }, { compress: !OPT.noCompress }),
     load: async (str) => { const s = await deserialize(str); await startGame({ seed: s.seed, flat: s.flat, save: s, fake: true }); return s; },
     newWorld: (o = {}) => startGame({ seed: o.seed ?? 1, flat: !!o.flat, fake: o.fake !== false }),
     settle: async (radius = 2, ms = 60000) => { const t0 = performance.now(); while (world.missingMeshes(player.pos.x, player.pos.z, radius) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50)); return world.missingMeshes(player.pos.x, player.pos.z, radius); },
@@ -561,6 +662,10 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
+    vitals: () => vitals, die, respawn, hold: (on) => { G.mouseRight = !!on; },
+    setHealth: (n) => { vitals.hp = n; }, setHunger: (n) => { vitals.hunger = n; }, damage: (n, o) => vitals.damage(n, o),
+    setDifficulty: (d) => { G.settings.difficulty = d; applySettings(); },
+    giveKit: (kind) => { for (const sl of ['helmet', 'chestplate', 'leggings', 'boots']) vitals.armor[ITEMS[`${kind}_${sl}`].armor.slotN] = stack(`${kind}_${sl}`); for (const t of ['pickaxe', 'sword', 'axe']) inv.add(stack(`${t}_${kind}`)); inv.add(stack('cooked_beef', 16)); },
   };
   window.__STRATA = api;
 }

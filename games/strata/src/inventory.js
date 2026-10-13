@@ -1,6 +1,6 @@
 // Inventory and the click rules of the inventory screens. No DOM: ui.js only draws the model and forwards clicks. A stack is { id, n, dur? }.
 import { CONFIG } from './config.js';
-import { maxStack, hasDurability, cloneStack } from './items.js';
+import { ITEMS, maxStack, hasDurability, cloneStack } from './items.js';
 import { matchRecipe, smeltsTo, fuelValue } from './crafting.js';
 
 const same = (a, b) => !!a && !!b && a.id === b.id && !hasDurability(a.id);
@@ -38,15 +38,17 @@ export class Inventory {
 
 /**
  * One open screen: the player's inventory plus a crafting grid (2x2, or 3x3 at a table) or a furnace, and the stack on the cursor.
- * Containers: 'inv' (the 36 inventory slots: 0-8 hotbar), 'craft' + 'out' (grid and its result), 'in' / 'fuel' / 'smelt' (furnace slots).
+ * Containers: 'inv' (the 36 inventory slots: 0-8 hotbar), 'craft' + 'out' (grid and its result), 'in' / 'fuel' / 'smelt' (furnace slots), 'armor' (helmet, chestplate,
+ * leggings, boots: the Vitals' armor array; only the matching piece fits), 'chest' (a chest's 27 slots).
  */
 export class Menu {
   /** @param kind 'inventory' | 'table' | 'furnace' ; @param furnace a Furnace for kind 'furnace' */
-  constructor(inv, kind = 'inventory', furnace = null) {
+  constructor(inv, kind = 'inventory', furnace = null, { armor = null, chest = null } = {}) {
     this.inv = inv; this.kind = kind; this.furnace = furnace;
+    this.armor = armor; this.chest = chest;           // armor: the 4-slot array of the Vitals; chest: the chest's slot array
     this.cursor = null;
     this.size = kind === 'table' ? 3 : 2;
-    this.grid = kind === 'furnace' ? [] : Array(this.size * this.size).fill(null);
+    this.grid = kind === 'furnace' || kind === 'chest' ? [] : Array(this.size * this.size).fill(null);
     this.out = null;                       // the crafting result
     this.recompute();
   }
@@ -59,18 +61,21 @@ export class Menu {
       case 'in': return { get: () => this.furnace.input, set: (v) => { this.furnace.input = v; } };
       case 'fuel': return { get: () => this.furnace.fuel, set: (v) => { this.furnace.fuel = v; } };
       case 'smelt': return { get: () => this.furnace.output, set: (v) => { this.furnace.output = v; } };
+      case 'armor': return { get: () => this.armor[i], set: (v) => { this.armor[i] = v; } };
+      case 'chest': return { get: () => this.chest[i], set: (v) => { this.chest[i] = v; } };
       default: throw new Error(`no container ${name}`);
     }
   }
-  accepts(name, stk) {
+  accepts(name, stk, i = 0) {
     if (!stk) return true;
+    if (name === 'armor') return ITEMS[stk.id]?.armor?.slotN === i;
     if (name === 'out' || name === 'smelt') return false;                  // result slots are take-only
     if (name === 'in') return !!smeltsTo(stk.id);
     if (name === 'fuel') return fuelValue(stk.id) > 0;
     return true;
   }
 
-  recompute() { const m = this.kind === 'furnace' ? null : matchRecipe(this.grid.map((s) => s?.id ?? null), this.size); this.out = m ? m.out : null; }
+  recompute() { const m = this.kind === 'furnace' || this.kind === 'chest' ? null : matchRecipe(this.grid.map((s) => s?.id ?? null), this.size); this.out = m ? m.out : null; }
 
   /** Consume one of each ingredient after taking the result. */
   #consume() { this.grid = this.grid.map((s) => (s ? (s.n > 1 ? { ...s, n: s.n - 1 } : null) : null)); this.recompute(); }
@@ -93,7 +98,7 @@ export class Menu {
     }
     if (shift) return this.#shift(name, i);
     const r = this.slotRef(name, i), s = r.get(), c = this.cursor;
-    if (c && !this.accepts(name, c)) return false;
+    if (c && !this.accepts(name, c, i)) return false;
     if (button === 'left') {
       if (!c) { if (!s) return false; this.cursor = s; r.set(null); return true; }
       if (!s) { r.set(c); this.cursor = null; return true; }
@@ -110,7 +115,7 @@ export class Menu {
   /** Drag-spread helper: place one item of the cursor stack into a slot (used for every slot a right-drag passes over). */
   placeOne(name, i) {
     const c = this.cursor;
-    if (!c || !this.accepts(name, c)) return false;
+    if (!c || !this.accepts(name, c, i)) return false;
     const r = this.slotRef(name, i), s = r.get();
     if (s && !(same(s, c) && s.n < maxStack(s.id))) return false;
     r.set(s ? { ...s, n: s.n + 1 } : { ...c, n: 1 });
@@ -123,6 +128,9 @@ export class Menu {
     const r = this.slotRef(name, i), s = r.get();
     if (!s) return false;
     if (name === 'inv') {
+      const arm = ITEMS[s.id]?.armor;
+      if (arm && this.armor && !this.armor[arm.slotN]) { this.armor[arm.slotN] = s; r.set(null); return true; }                 // shift-click equips a free armor slot
+      if (this.kind === 'chest') { const k = this.chest.findIndex((t) => !t); if (k >= 0 && !hasDurability(s.id)) { const merged = this.#intoChest(s, r); if (merged) return true; } else if (k >= 0) { this.chest[k] = s; r.set(null); return true; } }
       if (this.kind === 'furnace') { const target = smeltsTo(s.id) ? 'in' : fuelValue(s.id) ? 'fuel' : null; if (target && this.#merge(target, s, r)) return true; }
       const hot = CONFIG.inv.hotbar, range = i < hot ? [hot, this.inv.slots.length] : [0, hot];
       return this.#moveInto(s, r, range[0], range[1]);
@@ -133,6 +141,15 @@ export class Menu {
     let left = { ...s };
     if (!hasDurability(s.id)) for (let k = from; k < to && left.n; k++) { const t = this.inv.slots[k]; if (same(t, left) && t.n < maxStack(t.id)) { const put = Math.min(maxStack(t.id) - t.n, left.n); t.n += put; left.n -= put; } }
     for (let k = from; k < to && left.n; k++) if (!this.inv.slots[k]) { const put = Math.min(maxStack(left.id), left.n); this.inv.slots[k] = { ...left, n: put }; left.n -= put; }
+    if (left.n === s.n) return false;
+    r.set(left.n ? left : null);
+    return true;
+  }
+  /** Shift-click from the inventory into the open chest: merge into stacks of the same item first, then the first free slot. */
+  #intoChest(s, r) {
+    let left = { ...s };
+    for (let k = 0; k < this.chest.length && left.n; k++) { const t = this.chest[k]; if (same(t, left) && t.n < maxStack(t.id)) { const put = Math.min(maxStack(t.id) - t.n, left.n); this.chest[k] = { ...t, n: t.n + put }; left.n -= put; } }
+    for (let k = 0; k < this.chest.length && left.n; k++) if (!this.chest[k]) { const put = Math.min(maxStack(left.id), left.n); this.chest[k] = { ...left, n: put }; left.n -= put; }
     if (left.n === s.n) return false;
     r.set(left.n ? left : null);
     return true;

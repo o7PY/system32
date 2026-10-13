@@ -14,10 +14,14 @@
 <canvas id="gl" tabindex="-1"></canvas>
 
 <div id="underwater" hidden></div>
+<div id="hurt" hidden></div>
+<div id="burning" hidden></div>
 <div id="hud" hidden>
   <div id="crosshair"></div>
   <div id="itemname"></div>
   <div id="subtitle"></div>
+  <div id="vitals"><div id="armorbar"></div><div class="vrow"><div id="hearts"></div><div id="food"></div></div><div id="air"></div></div>
+  <div id="eatbar" hidden><i></i></div>
   <div id="hotbar"></div>
   <div id="saved"></div>
 </div>
@@ -46,6 +50,7 @@
   <div class="panel narrow">
     <h2>New World</h2>
     <label class="field">Seed <input id="seed-input" type="text" maxlength="40" placeholder="leave blank for a random world" autocomplete="off" spellcheck="false"></label>
+    <label class="field">Difficulty <select id="new-diff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></label>
     <p id="overwrite-note" class="warn" hidden>This replaces your saved world. It cannot be undone.</p>
     <div class="row">
       <button class="btn" data-act="start-new" id="b-start-new">Create World</button>
@@ -73,6 +78,10 @@
     <label class="field">Field of view <input type="range" id="set-fov" min="60" max="100" step="1"><output></output></label>
     <label class="field">View distance <input type="range" id="set-view" min="4" max="12" step="1"><output></output></label>
     <label class="field">Sound volume <input type="range" id="set-vol" min="0" max="1" step="0.05"><output></output></label>
+    <label class="field">Difficulty <select id="set-diff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+    <label class="field check"><input type="checkbox" id="set-keepinv"> Keep inventory when you die</label>
+    <label class="field check"><input type="checkbox" id="set-compass"> Compass strip</label>
+    <label class="field check"><input type="checkbox" id="set-subtitles"> Subtitles for sounds</label>
     <label class="field check"><input type="checkbox" id="set-invert"> Invert Y</label>
     <label class="field check"><input type="checkbox" id="set-music"> Music</label>
     <button class="btn" data-act="back-settings">Done</button>
@@ -80,6 +89,16 @@
 </section>
 
 <section class="screen dim-bg" id="s-inv" hidden></section>
+
+<section class="screen dim-bg" id="s-death" hidden>
+  <div class="panel narrow">
+    <h2 class="deadtitle">You died!</h2>
+    <p id="death-cause" class="deathcause"></p>
+    <p id="death-score" class="dim"></p>
+    <p id="death-note" class="dim small"></p>
+    <div class="menu"><button class="btn" data-act="respawn" id="b-respawn">Respawn</button></div>
+  </div>
+</section>
 
 <section class="screen dim-bg" id="s-error" hidden>
   <div class="panel narrow">
