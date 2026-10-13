@@ -9,6 +9,8 @@ import { ITEMS, durabilityOf } from './items.js';
 import { DIFFICULTIES } from './survival.js';
 
 export const MAGIC = 'STRATA1';
+export const DIMS = ['overworld', 'underlayer'];
+const DIM_SIZE = { underlayer: 512 };
 export class SaveError extends Error {}
 const fail = (m) => { throw new SaveError(m); };
 
@@ -69,6 +71,7 @@ export async function serialize(s, { compress = true } = {}) {
   const header = new TextEncoder().encode(JSON.stringify({
     v: CONFIG.save.version, seed: s.seed >>> 0, worldSize: s.worldSize, flat: !!s.flat, spawn: s.spawn, player: s.player, inv: s.inv,
     furnaces: s.furnaces ?? {}, time: s.time, settings: s.settings, flags: s.flags ?? {}, vitals: s.vitals ?? null, drops: s.drops ?? [], animals: s.animals ?? [], chests: s.chests ?? {},
+    otherDrops: s.otherDrops ?? {}, dims: Object.fromEntries(Object.entries(s.dims ?? {}).filter(([, m]) => m.size).map(([k, m]) => [k, toBase64(packEdits(m))])),
   }));
   const edits = packEdits(s.edits ?? new Map());
   const box = new Uint8Array(4 + header.length + edits.length);
@@ -102,6 +105,7 @@ export async function deserialize(str) {
   const p = h.player, sp = h.spawn;
   if (!p || !num(p.x, 0, S) || !num(p.z, 0, S) || !num(p.y, -64, CONFIG.height + 64) || !num(p.yaw, -1e4, 1e4) || !num(p.pitch, -2, 2)) fail('bad player');
   if (!sp || !num(sp.x, 0, S) || !num(sp.z, 0, S) || !num(sp.y, -64, CONFIG.height + 64)) fail('bad spawn');
+  if (p.dim !== undefined && !DIMS.includes(p.dim)) fail('bad dimension');
   if (!h.inv || !Array.isArray(h.inv.slots) || h.inv.slots.length !== CONFIG.inv.hotbar + CONFIG.inv.main || !h.inv.slots.every(validStack)) fail('bad inventory');
   if (!num(h.time, 0, 1)) fail('bad time');
   const fz = h.furnaces ?? {};
@@ -116,9 +120,14 @@ export async function deserialize(str) {
   const an = h.animals ?? [];
   if (!Array.isArray(an) || an.length > 6000 || an.some((e) => !Array.isArray(e) || e.length !== 3 || !Number.isInteger(e[0]) || !Number.isInteger(e[1]) || !Array.isArray(e[2]) || e[2].length > 64)) fail('bad animals');
   const ch = h.chests ?? {};
-  if (typeof ch !== 'object' || Array.isArray(ch) || Object.keys(ch).length > 1000 || Object.entries(ch).some(([k, v]) => !/^-?\d+,-?\d+,-?\d+$/.test(k) || !Array.isArray(v) || v.length !== 27 || !v.every(validStack))) fail('bad chests');
+  if (typeof ch !== 'object' || Array.isArray(ch) || Object.keys(ch).length > 1000 || Object.entries(ch).some(([k, v]) => !/^([a-z]+\|)?-?\d+,-?\d+,-?\d+$/.test(k) || !Array.isArray(v) || v.length !== 27 || !v.every(validStack))) fail('bad chests');
+  const dimsRaw = h.dims ?? {}, dims = {};
+  if (typeof dimsRaw !== 'object' || Array.isArray(dimsRaw)) fail('bad dimensions');
+  for (const [k, b64] of Object.entries(dimsRaw)) { if (!DIMS.includes(k) || k === 'overworld' || typeof b64 !== 'string') fail('bad dimension data'); dims[k] = unpackEdits(fromBase64(b64), DIM_SIZE[k]); }
+  const od = h.otherDrops ?? {};
+  if (typeof od !== 'object' || Array.isArray(od) || Object.entries(od).some(([k, list]) => !DIMS.includes(k) || !Array.isArray(list) || list.length > 400 || list.some((d) => !d || !validStack(d.stack) || !d.stack || !num(d.x, -64, 5000) || !num(d.y, -64, CONFIG.height + 64) || !num(d.z, -64, 5000) || !num(d.age ?? 0, 0, 1e7)))) fail('bad stashed drops');
   const edits = unpackEdits(box.subarray(4 + hl), S);
-  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false, keepInventory: !!st.keepInventory, compass: st.compass !== false, subtitles: !!st.subtitles }, flags: h.flags ?? {}, vitals: v, drops: dr, animals: an, chests: ch, edits };
+  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false, keepInventory: !!st.keepInventory, compass: st.compass !== false, subtitles: !!st.subtitles }, flags: h.flags ?? {}, vitals: v, drops: dr, animals: an, chests: ch, dims, otherDrops: od, edits };
 }
 
 /** Human size for the warning: 1.6 MB / 1.5 MB. */

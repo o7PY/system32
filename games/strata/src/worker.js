@@ -109,6 +109,7 @@
   }
 
   function generate(cx, cz) {
+    if (cfg.dim === 'underlayer') return genUnderlayer(cx, cz);
     var data = new Uint8Array(CS * CS * H), biomes = new Uint8Array(CS * CS);
     var ox = cx * CS, oz = cz * CS, lx, lz, y;
     if (cfg.flat) {
@@ -134,6 +135,7 @@
     }
     ores(data, cx, cz);
     features(data, cx, cz);
+    crackStamp(data, cx, cz);
     return { data: data, biomes: biomes };
   }
 
@@ -146,7 +148,7 @@
 
   /** Ore veins: small blobs from a per-chunk seeded list; a chunk replays its neighbours' lists, so a vein over a border is whole on both sides. */
   function ores(data, cx, cz) {
-    var g = cfg.gen, ox = cx * CS, oz = cz * CS, kinds = [[id.coal_ore, g.coalPerChunk, g.coal, 1.2, 2.4, 1], [id.iron_ore, g.ironPerChunk, g.iron, 1.0, 2.0, 2]];
+    var g = cfg.gen, ox = cx * CS, oz = cz * CS, kinds = [[id.coal_ore, g.coalPerChunk, g.coal, 1.2, 2.4, 1], [id.iron_ore, g.ironPerChunk, g.iron, 1.0, 2.0, 2], [id.cobalt_ore, g.cobaltPerChunk, g.cobalt, 1.0, 1.9, 3]];
     for (var k = 0; k < kinds.length; k++) {
       var kind = kinds[k];
       for (var dz = -1; dz <= 1; dz++) for (var dx = -1; dx <= 1; dx++) {
@@ -206,6 +208,7 @@
   /** A dry grassy column near the middle of the world, found by spiralling out. Returns the feet position. */
   function spawn() {
     var mid = cfg.worldSize / 2;
+    if (cfg.dim === 'underlayer') return { x: mid + 0.5, y: 41, z: mid + 0.5 };
     if (cfg.flat) return { x: mid + 0.5, y: cfg.sea + 1, z: mid + 0.5 };
     for (var r = 0; r < 600; r += 2) {
       for (var a = 0; a < Math.max(1, r * 2); a++) {
@@ -220,6 +223,96 @@
       }
     }
     return { x: mid + 0.5, y: cfg.sea + 20, z: mid + 0.5 };
+  }
+
+  // ------------------------------------------------------------------ Part 2: cobalt, cracked bedrock, the Underlayer, fixed structures
+  // Everything here is a pure function of (seed, chunk). Structures are "stamps": a box of cells given by a function, written wherever it overlaps the chunk being generated.
+
+  /** Write every cell of the box [x0..x1] x [y0..y1] x [z0..z1] that lies inside the chunk (cx, cz); `f(x, y, z)` returns a block id or -1 to leave the cell alone. */
+  function stamp(data, cx, cz, x0, y0, z0, x1, y1, z1, f) {
+    var ox = cx * CS, oz = cz * CS, xa = Math.max(x0, ox), xb = Math.min(x1, ox + CS - 1), za = Math.max(z0, oz), zb = Math.min(z1, oz + CS - 1), x, y, z, v;
+    if (xa > xb || za > zb) return;
+    for (y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++) for (z = za; z <= zb; z++) for (x = xa; x <= xb; x++) {
+      v = typeof f === 'function' ? f(x, y, z) : f;
+      if (v >= 0) data[(y << 8) | ((z - oz) << 4) | (x - ox)] = v;
+    }
+  }
+
+  var crackCache = null, computingSpawn = false;
+  /**
+   * The Cracked Bedrock sites of the overworld: at least 8 within 250 blocks of the spawn (placed from it), plus a few more far away. Each is { x, y, z }: the cracked block, with a
+   * small cave pocket above it so that digging down into it opens onto the block. A site is deep: y 2 or 3, in the bedrock layer.
+   */
+  function crackSites() {
+    if (cfg.flat || cfg.dim) return [];
+    if (computingSpawn) return [];
+    if (crackCache) return crackCache;
+    computingSpawn = true;
+    var sp = spawn();
+    computingSpawn = false;
+    var out = [], i, r = rng(hash(777, 4242, 1, 0)), base = r() * TAU, lim = cfg.worldSize - 20;
+    for (i = 0; i < 8; i++) {
+      var a = base + (i / 8) * TAU + (r() - 0.5) * 0.5, d = 45 + r() * 190;
+      out.push({ x: Math.max(20, Math.min(lim, Math.floor(sp.x + Math.cos(a) * d))), y: 2 + (r() < 0.5 ? 1 : 0), z: Math.max(20, Math.min(lim, Math.floor(sp.z + Math.sin(a) * d))) });
+    }
+    for (i = 0; i < 6; i++) out.push({ x: 20 + Math.floor(r() * (lim - 20)), y: 2 + (r() < 0.5 ? 1 : 0), z: 20 + Math.floor(r() * (lim - 20)) });
+    crackCache = out;
+    return out;
+  }
+  var TAU = Math.PI * 2;
+
+  function crackStamp(data, cx, cz) {
+    var sites = crackSites(), i, s;
+    for (i = 0; i < sites.length; i++) {
+      s = sites[i];
+      if (s.x < cx * CS - 3 || s.x > cx * CS + CS + 2 || s.z < cz * CS - 3 || s.z > cz * CS + CS + 2) continue;
+      stamp(data, cx, cz, s.x - 2, s.y + 1, s.z - 2, s.x + 2, s.y + 3, s.z + 2, function (x, y, z) { return (Math.abs(x - s.x) === 2 && Math.abs(z - s.z) === 2) ? -1 : id.air; });      // a small pocket above it
+      stamp(data, cx, cz, s.x, s.y, s.z, s.x, s.y, s.z, id.cracked_bedrock);
+      stamp(data, cx, cz, s.x - 2, s.y, s.z - 2, s.x + 2, s.y, s.z + 2, function (x, y, z) { return (x === s.x && z === s.z) ? -1 : id.stone; });                                    // a stone floor around it
+    }
+  }
+
+  // ---- the Underlayer: 512 x 512, ceiling and floor of bedrock (96 tall), no sky. Huge basalt and scorched-stone caverns, ash dunes, lava lakes, glowcap groves, pillars.
+  var UH = 96, UC = 256;               // height and centre (x, z) of the Underlayer
+  function underFloor(x, z) {          // the height of the cavern floor in a column (pure of x, z)
+    var n = noise2(x * 0.018 + 70, z * 0.018 - 40) * 0.6 + noise2(x * 0.06 - 9, z * 0.06 + 31) * 0.25;
+    return Math.round(24 + n * 26);
+  }
+  function underCeil(x, z) { var n = noise2(x * 0.022 - 51, z * 0.022 + 12) * 0.6 + noise2(x * 0.07 + 5, z * 0.07 - 80) * 0.2; return Math.round(70 + n * 16); }
+  /** The vault sites: three towers 120 degrees apart, 120-200 blocks from the centre. */
+  function vaultSites() {
+    var r = rng(hash(555, 9, 3, 0)), a0 = r() * TAU, out = [], i;
+    for (i = 0; i < 3; i++) { var a = a0 + (i / 3) * TAU, d = 120 + r() * 80; out.push({ x: Math.floor(UC + Math.cos(a) * d), z: Math.floor(UC + Math.sin(a) * d) }); }
+    return out;
+  }
+
+  function genUnderlayer(cx, cz) {
+    var data = new Uint8Array(CS * CS * H), biomes = new Uint8Array(CS * CS), ox = cx * CS, oz = cz * CS, lx, lz, y;
+    for (lz = 0; lz < CS; lz++) for (lx = 0; lx < CS; lx++) {
+      var x = ox + lx, z = oz + lz, fl = underFloor(x, z), ce = Math.max(fl + 12, underCeil(x, z));
+      var dc = Math.hypot(x - UC, z - UC), flat = dc < 22;
+      if (flat) { fl = 40; ce = 64; }
+      else if (dc < 34) { var t = (dc - 22) / 12; fl = Math.round(40 + (fl - 40) * t); ce = Math.round(64 + (ce - 64) * t); }
+      var dune = noise2(x * 0.045 + 300, z * 0.045 - 300) > 0.25 && !flat, pillar = !flat && rand01(x >> 3, z >> 3, 9, 1) < 0.045 && Math.hypot((x & 7) - 3.5, (z & 7) - 3.5) < 1.5 + rand01(x >> 3, z >> 3, 9, 2);
+      for (y = 0; y < UH; y++) {
+        var b;
+        if (y === 0) b = id.bedrock;
+        else if (y <= 2) b = rand01(x, y, z, 21) < (3 - y) * 0.3 ? id.bedrock : id.basalt;
+        else if (y >= UH - 1) b = id.bedrock;
+        else if (y >= UH - 3) b = rand01(x, y, z, 22) < (y - (UH - 4)) * 0.3 ? id.bedrock : id.basalt;
+        else if (y < fl) b = (noise3(x * 0.07, y * 0.09, z * 0.07) > 0.35) ? id.scorched_stone : id.basalt;
+        else if (y === fl) b = dune ? id.ash : (noise2(x * 0.1, z * 0.1) > 0.3 ? id.scorched_stone : id.basalt);
+        else if (y === fl + 1 && dune) b = id.ash;
+        else if (y > ce) b = noise3(x * 0.05, y * 0.07, z * 0.05) > 0.1 ? id.basalt : id.scorched_stone;
+        else b = id.air;
+        if (pillar && y > fl && y <= ce) b = id.basalt;
+        if (b === id.air && y <= 20 && !flat && noise2(x * 0.03 + 11, z * 0.03 + 7) > 0.05) b = id.lava;                       // static lava lakes in the lowest basins
+        data[(y << 8) | (lz << 4) | lx] = b;
+      }
+      // glowcap groves on the floor
+      if (!flat && fl > 21 && noise2(x * 0.05 - 200, z * 0.05 + 100) > 0.2 && rand01(x, 31, z, 3) < 0.07) { var g = data[((fl + 1) << 8) | (lz << 4) | lx]; if (g === id.air && data[(fl << 8) | (lz << 4) | lx] !== id.lava) data[((fl + 1) << 8) | (lz << 4) | lx] = id.glowcap; }
+    }
+    return { data: data, biomes: biomes };
   }
 
   // ------------------------------------------------------------------ lighting
@@ -447,11 +540,11 @@
 
   // ------------------------------------------------------------------ API
   function init(c) {
-    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0); tabs = null;
+    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0); tabs = null; crackCache = null;
     return true;
   }
   var API = {
-    init: init, generate: generate, mesh: mesh, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
+    init: init, generate: generate, mesh: mesh, crackSites: crackSites, vaultSites: vaultSites, underFloor: underFloor, underCeil: underCeil, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
     noise2: function (x, y) { return noise2(x, y); }, noise3: function (x, y, z) { return noise3(x, y, z); },
     ao: function (s1, s2, c) { return s1 && s2 ? 0 : 3 - (s1 + s2 + c); },
     BIOME: { PLAINS: PLAINS, FOREST: FOREST, DESERT: DESERT, MOUNTAINS: MOUNTAINS, BEACH: BEACH, OCEAN: OCEAN },

@@ -28,4 +28,21 @@ s.test('night with torches; day terrain', async (p) => {
   await sleep(2500);
   await p.screenshot(`${out}/monsters.png`);
 });
+s.test('the Underlayer', async (p) => {
+  await p.goto('/games/strata/index.html?debug=1&seed=77');
+  await p.waitFor(`window.__STRATA?.state().phase === 'title'`, { timeout: 90000 });
+  await p.eval(`__STRATA.newWorld({ seed: 77 })`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 1e9; S.give('torch', 8); })()`);
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.settle(4); S.face(0.6, -0.05); })()`);
+  await sleep(4000);
+  await p.screenshot(`${out}/underlayer.png`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.tp(pl.pos.x + 20, pl.pos.y + 4, pl.pos.z + 12); })()`);
+  await sleep(500);
+  await p.eval(`(() => { const S = __STRATA; S.setHealth(20); S.vitals().invuln = 5; })()`);
+  await sleep(4500);
+  await p.screenshot(`${out}/underlayer2.png`);
+});
 s.run();

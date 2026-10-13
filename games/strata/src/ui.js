@@ -172,6 +172,8 @@ export class UI {
     if (!this.adBound) { this.adBound = true; $('ad-x').addEventListener('click', () => { this.adLeft = 0; $('ad').hidden = true; this.onAdClose?.(); }); }
     this.onAdClose = onClose;
   }
+  /** The purple screen warp while standing in a Rift (0..1). */
+  warp(f) { const e = $('warp'); e.hidden = f <= 0.01; e.style.opacity = Math.min(1, f).toFixed(2); e.style.transform = `scale(${1 + Math.min(1, f) * 0.25})`; }
   burning(on) { $('burning').hidden = !on; }
   eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }

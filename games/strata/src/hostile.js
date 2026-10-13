@@ -28,7 +28,7 @@ function step(mobs, arrows, m, dt, ctx) {
   if (m.voiceT <= 0) { m.voiceT = 5 + mobs.rand() * 9; if (dist < d.sight) mobs.events.push({ type: 'voice', mob: m, kind: 'idle' }); }
 
   // ---- sunrise: surface monsters freeze, flicker and crumble over 3 s (cave ones stay); not in the Underlayer / Kernel
-  if (d.surface && !d.neutralByDay && ctx.surfaceRules !== false) {                    // (a Creepcrawler is neutral by day, so it simply stays)
+  if (d.surface && !d.neutralByDay && !d.underlayer && ctx.surfaceRules !== false) {                    // (a Creepcrawler is neutral by day, so it simply stays)
     const l = ctx.lightAt?.(Math.floor(m.x), Math.floor(m.y + 0.5), Math.floor(m.z)), day = daylight(ctx.dayT);
     if (l && l.sky >= 13 && day > CONFIG.hostiles.lagDaylight) {
       m.data.lag = (m.data.lag ?? 0) + dt;
@@ -52,6 +52,8 @@ function step(mobs, arrows, m, dt, ctx) {
     case 'archer': return archer(mobs, arrows, m, dt, ctx, dist);
     case 'spider': return spider(mobs, m, dt, ctx, dist);
     case 'popup': return popup(mobs, m, dt, ctx, dist);
+    case 'daemon': return daemon(mobs, arrows, m, dt, ctx, dist);
+    case 'glitch': return glitch(mobs, m, dt, ctx, dist);
   }
 }
 
@@ -170,6 +172,51 @@ function popup(mobs, m, dt, ctx, dist) {
   if (dd < d.contact.range && m.data.cool <= 0) { m.data.cool = d.contact.everyS; mobs.events.push({ type: 'overlay', mob: m, seconds: d.contact.overlayS }); }
 }
 
+/** A fast fire imp: dashes at you, then lobs a fireball (4 dmg and 2 s of burning), strafing in between. */
+function daemon(mobs, arrows, m, dt, ctx, dist) {
+  const d = m.def, P = ctx.player, ux = (P.x - m.x) / (dist || 1), uz = (P.z - m.z) / (dist || 1);
+  m.data.dash = Math.max(0, (m.data.dash ?? 0) - dt); m.data.dashCool = Math.max(0, (m.data.dashCool ?? 0) - dt);
+  if (m.data.dash > 0) { m.vx = ux * d.dash.speed; m.vz = uz * d.dash.speed; m.yaw = Math.atan2(-ux, -uz); m.driven = true; if (dist < 1.3) { m.data.dash = 0; if (m.data.cool <= 0) { m.data.cool = 1.2; hitPlayer(mobs, m, ctx, 3, 5); } } return; }
+  if (dist < d.dash.range && dist > 3 && m.data.dashCool <= 0 && m.onGround) { m.data.dash = d.dash.durS; m.data.dashCool = d.dash.everyS; mobs.events.push({ type: 'dash', mob: m }); return; }
+  if (dist > 7) chase(mobs, m, dt, ctx, P.x, P.z, d.speed);
+  else { m.data.strafe = m.data.strafe ?? (mobs.rand() < 0.5 ? -1 : 1); m.data.strafeT = (m.data.strafeT ?? 1.2) - dt; if (m.data.strafeT <= 0) { m.data.strafeT = 0.8 + mobs.rand(); m.data.strafe *= -1; } mobs.steer(m, m.x - uz * m.data.strafe * 3, m.z + ux * m.data.strafe * 3, d.speed * 0.8, dt, 9); }
+  m.yaw += (Math.atan2(-ux, -uz) - m.yaw) * Math.min(1, 8 * dt);
+  if (dist < d.fire.range && hasLine(mobs, m, P)) {
+    if (m.data.fireDraw === undefined && m.data.cool <= 0) { m.data.fireDraw = d.fire.drawS; mobs.events.push({ type: 'draw', mob: m, fire: true }); }
+    if (m.data.fireDraw !== undefined) {
+      m.data.fireDraw -= dt;
+      if (m.data.fireDraw <= 0) {
+        m.data.fireDraw = undefined; m.data.cool = d.fire.everyS * (0.8 + mobs.rand() * 0.4);
+        const ex = m.x, ey = m.y + 1.0, ez = m.z, tx = P.x, ty = P.y + 1.1, tz = P.z, dd = Math.hypot(tx - ex, ty - ey, tz - ez);
+        arrows.shoot(ex, ey, ez, (tx - ex) / dd, (ty - ey) / dd, (tz - ez) / dd, d.fire.speed, d.fire.damage, { shooter: m, fire: true, burnS: d.fire.burnS });
+        mobs.events.push({ type: 'shoot', mob: m, fire: true });
+      }
+    }
+  } else m.data.fireDraw = undefined;
+}
+
+/** A flickering cube: walks at you; every 4 s it teleports next to you and rewrites up to 3 blocks around itself with random Underlayer blocks. */
+function glitch(mobs, m, dt, ctx, dist) {
+  const d = m.def, c = d.melee, P = ctx.player, t = d.teleport;
+  m.data.tp = (m.data.tp ?? t.everyS) - dt;
+  if (m.data.tp <= 0 && dist > 3) {
+    m.data.tp = t.everyS;
+    const a = mobs.rand() * TAU, nx = P.x + Math.cos(a) * 1.8, nz = P.z + Math.sin(a) * 1.8;
+    let y = Math.floor(P.y) + 2;
+    for (; y > Math.floor(P.y) - 4; y--) if (BLOCKS[mobs.world.getBlock(Math.floor(nx), y - 1, Math.floor(nz))]?.solid && !BLOCKS[mobs.world.getBlock(Math.floor(nx), y, Math.floor(nz))]?.solid && !BLOCKS[mobs.world.getBlock(Math.floor(nx), y + 1, Math.floor(nz))]?.solid) break;
+    if (y > Math.floor(P.y) - 4) {
+      m.x = nx; m.y = y; m.z = nz; m.vx = m.vz = m.vy = 0; m.data.path = null;
+      mobs.events.push({ type: 'glitch-swap', mob: m, picks: Array.from({ length: t.swaps }, () => [Math.floor(mobs.rand() * 5) - 2, Math.floor(mobs.rand() * 3) - 1, Math.floor(mobs.rand() * 5) - 2, Math.floor(mobs.rand() * 6)]) });
+      mobs.events.push({ type: 'teleport', mob: m });
+    }
+  }
+  chase(mobs, m, dt, ctx, P.x, P.z, d.speed);
+  if (dist < c.reach && Math.abs(P.y - m.y) < 1.6) {
+    if (m.data.windup === undefined && m.data.cool <= 0) m.data.windup = c.windupS;
+    if (m.data.windup !== undefined) { m.data.windup -= dt; if (m.data.windup <= 0) { m.data.windup = undefined; m.data.cool = c.everyS; if (dist < c.reach + 0.3) { hitPlayer(mobs, m, ctx, c.damage, c.knockback); mobs.events.push({ type: 'swing', mob: m }); } } }
+  } else m.data.windup = undefined;
+}
+
 // ---------------------------------------------------------------- spawning
 export class Spawner {
   constructor(mobs, { rand = Math.random } = {}) { this.mobs = mobs; this.rand = rand; this.t = 0; this.despawnT = new Map(); this.stats = { spawned: 0, despawned: 0, tries: 0 }; }
@@ -199,8 +246,8 @@ export class Spawner {
     if (this.t > 0) return [];
     this.t = CONFIG.hostiles.everyS;
     if (env.peaceful) return [];
-    const mobs = this.mobs, count = mobs.list.filter((m) => m.def.kind === 'hostile' && !m.dead).length;
-    if (count >= this.cap(env.difficulty)) return [];
+    const mobs = this.mobs, count = mobs.list.filter((m) => m.def.kind === 'hostile' && !m.dead).length, under = env.dim === 'underlayer';
+    if (count >= (under ? CONFIG.underlayer.cap : this.cap(env.difficulty))) return [];
     const P = env.player, out = [];
     for (let tries = 0; tries < CONFIG.hostiles.tries; tries++) {
       this.stats.tries++;
@@ -210,18 +257,19 @@ export class Spawner {
       if (y === null || y === undefined) continue;
       const l = env.lightAt(x, y, z);
       if (!l) continue;
-      if (effectiveLight(l.sky, l.blk, env.dayT) > CONFIG.hostiles.maxLight) continue;
+      if (!under && effectiveLight(l.sky, l.blk, env.dayT) > CONFIG.hostiles.maxLight) continue;                          // the Underlayer is always dark enough
       if (env.inView?.(x + 0.5, y + 1, z + 0.5) && tries < CONFIG.hostiles.tries - 3) continue;       // not in view, unless it takes too long to find a spot
-      const type = this.pick(env, l);
+      const type = under ? (this.rand() < 0.65 ? 'daemon' : 'glitch') : this.pick(env, l);
       if (!type) continue;
       const def = mobs.defs?.[type] ?? null;
       void def;
-      const n = type === 'shambler' ? 2 + Math.floor(this.rand() * 3) : type === 'creepcrawler' ? 1 + Math.floor(this.rand() * 2) : 1;
-      for (let k = 0; k < n && mobs.list.filter((m) => m.def.kind === 'hostile' && !m.dead).length < this.cap(env.difficulty); k++) {
+      const n = type === 'shambler' ? 2 + Math.floor(this.rand() * 3) : type === 'creepcrawler' ? 1 + Math.floor(this.rand() * 2) : type === 'daemon' ? 2 + Math.floor(this.rand() * 2) : 1;
+      const capNow = under ? CONFIG.underlayer.cap : this.cap(env.difficulty);
+      for (let k = 0; k < n && mobs.list.filter((m) => m.def.kind === 'hostile' && !m.dead).length < capNow; k++) {
         const gx = x + (k ? Math.floor(this.rand() * 5) - 2 : 0), gz = z + (k ? Math.floor(this.rand() * 5) - 2 : 0), gy = k ? env.ground(gx, gz, y + 3) : y;
         if (gy === null || gy === undefined || Math.abs(gy - y) > 2) continue;
         const gl = env.lightAt(gx, gy, gz);
-        if (!gl || effectiveLight(gl.sky, gl.blk, env.dayT) > CONFIG.hostiles.maxLight) continue;
+        if (!gl || (!under && effectiveLight(gl.sky, gl.blk, env.dayT) > CONFIG.hostiles.maxLight)) continue;
         const m = mobs.spawn(type, gx + 0.5, gy, gz + 0.5);
         if (type === 'popup') m.y += 3;
         out.push(m); this.stats.spawned++;

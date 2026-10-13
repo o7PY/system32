@@ -93,7 +93,7 @@ const plankTile = async () => raw('kenney_voxel-pack/PNG/Tiles/wood.png');
 const REDS = [[200, 40, 40], [160, 24, 30]];
 
 Object.assign(generated, {
-  async basalt() { const c = await raw('kenney_voxel-pack/PNG/Tiles/greystone.png'); tint(c, [0.3, 0.3, 0.34]); return speckle(speckle(c, hash('basalt'), 60, [[14, 14, 18], [66, 66, 78]]), hash('basalt2'), 12, [[90, 92, 104]], 1); },
+  async basalt() { const c = await raw('kenney_voxel-pack/PNG/Tiles/greystone.png'); tint(c, [0.5, 0.5, 0.58]); return speckle(speckle(c, hash('basalt'), 60, [[22, 22, 28], [96, 96, 112]]), hash('basalt2'), 12, [[90, 92, 104]], 1); },
   async scorched_stone() { const c = await raw('kenney_voxel-pack/PNG/Tiles/stone.png'); tint(c, [0.5, 0.42, 0.42]); const r = rng(hash('scorch')); for (let i = 0; i < 7; i++) { const x = Math.floor(r() * T), y = Math.floor(r() * T); rect(c, x, y, 4 + Math.floor(r() * 5), 3 + Math.floor(r() * 4), [28, 20, 20]); } return speckle(c, hash('ember'), 7, [[230, 90, 30], [255, 150, 40]], 1); },
   async chest_top() { const c = await plankTile(); rect(c, 0, 0, T, 2, [70, 42, 18]); rect(c, 0, T - 2, T, 2, [70, 42, 18]); rect(c, 0, 0, 2, T, [70, 42, 18]); rect(c, T - 2, 0, 2, T, [70, 42, 18]); return c; },
   async chest_side() { const c = await plankTile(); rect(c, 0, 0, T, 2, [70, 42, 18]); rect(c, 0, T - 2, T, 2, [70, 42, 18]); rect(c, 0, 12, T, 3, [70, 42, 18]); return c; },

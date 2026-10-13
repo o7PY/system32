@@ -211,5 +211,27 @@ const run = (env, secs, ctx, dt = 1 / 30) => { for (let t = 0; t < secs - 1e-9; 
   check('6 HP: one iron sword hit pops it, and it drops the Ad Block item', r.killed && r.drops.some((d) => d.id === 'popup'));
 }
 
+// ---------------------------------------------------------------- the Underlayer monsters
+{
+  check('Daemon: 24 HP, groups of 2-3, drops ash dust and 15% a cobalt nugget; Glitch: 30 HP, melee 5, teleports every 4 s, swaps 3 blocks, drops glitch dust', MOBS.daemon.hp === 24 && MOBS.daemon.group.join() === '2,3' && MOBS.daemon.drops[0][0] === 'ash_dust' && MOBS.daemon.drops[1][0] === 'cobalt_nugget' && MOBS.daemon.drops[1][3] === 0.15 && MOBS.daemon.drops[1][1] === 1 && MOBS.glitch.hp === 30 && MOBS.glitch.melee.damage === 5 && MOBS.glitch.teleport.everyS === 4 && MOBS.glitch.teleport.swaps === 3 && MOBS.glitch.drops[0][0] === 'glitch_dust');
+  const nug = (() => { const e = world(floor(), 71); let n = 0; for (let i = 0; i < 2000; i++) { const m = e.mobs.spawn('daemon', 0, 12, 0); if (e.mobs.damage(m, 99, {}).drops.some((d) => d.id === 'cobalt_nugget')) n++; e.mobs.list.length = 0; } return n / 2000; })();
+  check('a Daemon drops a cobalt nugget about 15% of the time', Math.abs(nug - 0.15) < 0.03, `${nug}`);
+  // a Daemon dashes (an event) then lobs fireballs that burn
+  const env = world(floor(), 72), P = { x: 0, z: 0 }; hurts.length = 0;
+  const d = env.mobs.spawn('daemon', 11.5, 12, 0.5); let dashes = 0, shots = 0, hit = [];
+  for (let t = 0; t < 12; t += 1 / 30) { env.mobs.update(1 / 30, mkCtx(P, { surfaceRules: false, dayT: 0.25, lightAt: () => ({ sky: 15, blk: 0 }) })); env.arrows.update(1 / 30, { x: 0, y: 12, z: 0, w: 0.6, h: 1.8 }); for (const e of env.mobs.takeEvents()) { if (e.type === 'dash') dashes++; if (e.type === 'shoot' && e.fire) shots++; } for (const e of env.arrows.takeEvents()) if (e.type === 'hit-player') hit.push(e.arrow); }
+  check('a Daemon dashes and throws fireballs; they fly straight, hit for 4 and carry 2 s of burning', dashes >= 1 && shots >= 1 && hit.every((a) => a.fire && a.damage === 4 && a.burnS === 2), `${dashes} dashes ${shots} fireballs ${hit.length} hits`);
+  check('the sun does not touch Underlayer monsters even at noon on a surface-lit cell', env.mobs.list.includes(d));
+  const fb = world(floor().fill(5, 12, -5, 5, 14, 5, B.stone), 73); const f = fb.arrows.shoot(10, 13, 0.5, -1, 0, 0, 13, 4, { fire: true, burnS: 2 });
+  for (let t = 0; t < 2; t += 1 / 60) fb.arrows.update(1 / 60, null);
+  check('a fireball bursts on a wall instead of sticking, and it does not drop (no gravity)', f.dead && fb.arrows.takeEvents().some((e) => e.type === 'burst') && Math.abs(f.y - 13) < 1e-6);
+  // Glitch: teleports next to you and rewrites blocks
+  const g = world(floor(), 74), gl = g.mobs.spawn('glitch', 14.5, 12, 0.5); let swaps = null, tps = 0;
+  for (let t = 0; t < 4.3; t += 1 / 30) { g.mobs.update(1 / 30, mkCtx(P, { surfaceRules: false })); for (const e of g.mobs.takeEvents()) { if (e.type === 'glitch-swap') swaps = e.picks; if (e.type === 'teleport') tps++; } }
+  check('a Glitch teleports to a spot next to you after 4 s (once) and asks for 3 block swaps around itself', tps === 1 && Math.hypot(gl.x, gl.z) < 3.5 && swaps && swaps.length === 3 && swaps.every((p) => p.length === 4), `${tps} tps, d ${Math.hypot(gl.x, gl.z)}`);
+  hurts.length = 0; run(g, 8, mkCtx(P, { surfaceRules: false }));
+  check('then it hits for 5 in melee', hurts.some(([a]) => a === 5));
+}
+
 console.log(`\nStrata hostiles: ${fails ? `${fails} FAILED` : 'all passed'}`);
 process.exit(fails ? 1 : 0);

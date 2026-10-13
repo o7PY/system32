@@ -16,7 +16,7 @@ export const CONFIG = {
   gen: {
     caveMaxY: 60, caveCheese: 0.62, caveTunnel: 0.07, caveEntrance: 0.55,
     treeAttempts: 20, treeForest: 0.55, treePlains: 0.06, treeMountain: 0.05, cactusDesert: 0.1,
-    coalPerChunk: 14, ironPerChunk: 7, coal: [20, 90], iron: [5, 60], adBlockChunkChance: 0.25, adBlock: [6, 30],
+    coalPerChunk: 14, ironPerChunk: 7, coal: [20, 90], iron: [5, 60], cobaltPerChunk: 2, cobalt: [2, 16], adBlockChunkChance: 0.25, adBlock: [6, 30],
   },
   biomes: ['plains', 'forest', 'desert', 'mountains', 'beach', 'ocean'],
 
@@ -82,6 +82,8 @@ export const CONFIG = {
   // hostiles (STRATA_PART2_SPEC 5.2): spawn on a solid block with light 7 or less, 24-64 blocks from you, cap 30 (Hard x1.5), gone when 64+ blocks away for 30 s,
   // surface ones crumble over 3 s at sunrise; pathsPerStep = A* searches allowed per simulation step for ALL monsters together
   hostiles: { cap: 30, hardMul: 1.5, everyS: 1.5, tries: 8, minDist: 24, maxDist: 64, maxLight: 7, despawnDist: 64, despawnS: 30, lagS: 3, lagDaylight: 0.45, pathRange: 40, pathsPerStep: 2 },
+  // the Underlayer (STRATA_PART2_SPEC 6): a second dimension below the bedrock, 512 x 512 x 96, no sky; Rifts link to the overworld; hostiles ignore light, cap 20
+  underlayer: { size: 512, height: 96, floor: 40, ambient: 0.4, ambientColor: [1, 0.5, 0.38], fog: [0.1, 0.022, 0.016], cap: 20, riftS: 1.0 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 

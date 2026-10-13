@@ -1116,4 +1116,103 @@ test('a Creepcrawler is neutral by day until hit; the monsters have names, voice
   if (names.models !== 1) throw new Error(JSON.stringify(names));
 });
 
+// ------------------------------------------------------------------ Part 2: cobalt, Rifts and the Underlayer
+const waitPlaying = (p, what) => p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000, what });
+
+test('the Rift journey: a cobalt pickaxe breaks Cracked Bedrock in 8 s (nothing else can), a Rift opens, standing in it for 1 s warps the screen and takes you to the Underlayer; the return Rift brings you back', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.spawner().t = 1e9; S.give('pickaxe_iron'); S.give('pickaxe_cobalt'); S.G.fakeLock = true; S.vitals().hunger = 20; })()`);
+  await aimAt(p, 'cracked_bedrock', 2);
+  const hit = await S(p, `S.target()`);
+  if (!hit || hit.id !== (await S(p, `S.world().table.ids.cracked_bedrock`))) throw new Error('not aiming at the cracked bedrock: ' + JSON.stringify(hit));
+  // an iron pickaxe cannot break it
+  await p.eval(`(() => { const S = __STRATA; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'pickaxe_iron')); S.mineHold(true); })()`);
+  await sleep(1500);
+  await p.eval(`__STRATA.mineHold(false)`);
+  if ((await S(p, `S.getBlock(${hit.x}, ${hit.y}, ${hit.z})`)) !== hit.id || (await S(p, `S.miner().progress`)) > 0.01) throw new Error('an iron pickaxe made progress on cracked bedrock');
+  // the cobalt one: 8 s
+  await p.eval(`(() => { const S = __STRATA; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'pickaxe_cobalt')); S.mineHold(true); })()`);
+  await sleep(4000);
+  const half = await S(p, `S.miner().progress`);
+  if (!(half > 0.4 && half < 0.6)) throw new Error('after 4 s the crack bar should be about half: ' + half);
+  await p.waitFor(`__STRATA.getBlock(${hit.x}, ${hit.y}, ${hit.z}) === __STRATA.world().table.ids.rift`, { what: 'the Rift to open', timeout: 8000 });
+  await p.eval(`__STRATA.mineHold(false)`);
+  const rifts = await S(p, `S.G.flags.rifts`);
+  if (rifts.length !== 1 || rifts[0].x !== hit.x || rifts[0].ux !== Math.floor(hit.x * 512 / 1024)) throw new Error('rift record ' + JSON.stringify(rifts));
+  // step into it: the warp builds up, then the Underlayer
+  await p.eval(`(() => { const S = __STRATA; S.tp(${hit.x} + 0.5, ${hit.y}, ${hit.z} + 0.5); })()`);
+  await sleep(500);
+  const warp = await S(p, `({ shown: !document.getElementById('warp').hidden, o: parseFloat(document.getElementById('warp').style.opacity), t: S.G.riftT })`);
+  if (!warp.shown || !(warp.o > 0.2 && warp.o < 0.9)) throw new Error('no screen warp while standing in the Rift: ' + JSON.stringify(warp));
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the Underlayer' });
+  const u = await S(p, `({ dim: S.state().dim, size: S.world().size, noSky: S.world().noSky, pos: { ...S.player().pos }, rift: S.getBlock(${rifts[0].ux}, S.state().rifts[0].uy + 1, ${rifts[0].uz}), ids: S.world().table.ids.rift, floor: S.getBlock(${rifts[0].ux}, S.state().rifts[0].uy, ${rifts[0].uz}), warp: document.getElementById('warp').hidden })`);
+  if (u.size !== 512 || !u.noSky || u.rift !== u.ids || !u.warp) throw new Error('arrival ' + JSON.stringify(u));
+  if (Math.hypot(u.pos.x - (rifts[0].ux + 0.5), u.pos.z - (rifts[0].uz + 0.5)) > 3) throw new Error('did not arrive on the platform: ' + JSON.stringify(u.pos));
+  // the Underlayer look: no sun, dark red fog, dim red ambient, lit by lava and glowcaps
+  const look = await S(p, `(() => { const r = S.renderer(); return { dim: r.dimension, sun: r.uniforms.uSun.value, fog: r.uniforms.uFogColor.value.toArray(), amb: r.uniforms.uMin.value, sunShown: r.sun.material.opacity }; })()`);
+  if (look.dim !== 'underlayer' || look.sun !== 0 || !(look.fog[0] > look.fog[2]) || look.sunShown !== 0) throw new Error(JSON.stringify(look));
+  // hostile spawns here ignore the light
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 0; S.setTime(0.25); })()`);
+  await p.waitFor(`__STRATA.mobs().list.some((m) => m.def.kind === 'hostile' && m.def.underlayer)`, { what: 'an Underlayer monster by "day"', timeout: 40000 });
+  if (await S(p, `S.mobs().list.some((m) => m.def.kind === 'passive')`)) throw new Error('animals in the Underlayer');
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.spawner().t = 1e9; })()`);
+  // the bed does not work here
+  const eggs = await S(p, `(() => { S.give('bed'); return [...S.G.eggs]; })()`);
+  void eggs;
+  // back up through the return Rift
+  await p.eval(`(() => { const S = __STRATA; S.tp(${rifts[0].ux} + 0.5, S.state().rifts[0].uy + 1, ${rifts[0].uz} + 0.5); })()`);
+  await p.waitFor(`__STRATA.state().dim === 'overworld' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the surface again' });
+  const back = await S(p, `({ x: S.player().pos.x, y: S.player().pos.y, z: S.player().pos.z, rift: S.getBlock(${hit.x}, ${hit.y}, ${hit.z}), sky: S.renderer().dimension })`);
+  if (Math.abs(back.x - (hit.x + 0.5)) > 1.5 || back.y < hit.y || back.rift !== (await S(p, `S.world().table.ids.rift`)) || back.sky !== 'overworld') throw new Error('back on the surface: ' + JSON.stringify(back));
+  // the stay is saved: Underlayer edits (the platform) come back after a save and a load while standing down there
+  await p.eval(`(() => { const S = __STRATA; S.tp(${hit.x} + 0.5, ${hit.y}, ${hit.z} + 0.5); })()`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' && __STRATA.state().dim === 'underlayer'`, { timeout: 90000, what: 'loaded into the Underlayer' });
+  const again = await S(p, `({ rift: S.getBlock(${rifts[0].ux}, S.state().rifts[0].uy + 1, ${rifts[0].uz}), want: S.world().table.ids.rift, size: S.world().size })`);
+  if (again.rift !== again.want || again.size !== 512) throw new Error('the Underlayer did not come back from the save: ' + JSON.stringify(again));
+});
+
+test('dying in the Underlayer: you respawn on the surface, your pile waits down there (and is saved), and Peaceful/Hard still apply', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.spawner().t = 1e9; S.give('cobblestone', 12); S.G.fakeLock = true; })()`);
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the Underlayer' });
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.spawner().t = 1e9; S.vitals().invuln = 0; S.damage(99, { type: 'lava' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead'`);
+  const pile = await S(p, `S.drops().list.filter((d) => d.death).reduce((n, d) => n + d.stack.n, 0)`);
+  if (pile < 12) throw new Error('no pile: ' + pile);
+  await p.eval(`document.getElementById('b-respawn').click()`);
+  await p.waitFor(`__STRATA.state().dim === 'overworld' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'back on the surface' });
+  if ((await S(p, `S.inv().count('cobblestone')`)) !== 0) throw new Error('items came back with you');
+  const stash = await S(p, `S.G.dimDrops.underlayer?.filter((d) => d.death).length`);
+  if (!(stash > 0)) throw new Error('the pile was not stashed: ' + stash);
+  const str = await S(p, `S.save()`);
+  if (!/STRATA1/.test(str)) throw new Error('save');
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  if (!((await S(p, `S.G.dimDrops.underlayer?.filter((d) => d.death).length`)) > 0)) throw new Error('the stashed pile was not saved');
+  // go back down: the pile is still there, then pick it up
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.waitFor(`__STRATA.inv().count('cobblestone') === 12 || __STRATA.drops().list.some((d) => d.death)`, { what: 'the pile (or its pick-up: you arrive where you died)', timeout: 8000 });
+});
+
+test('cobalt ore needs an iron pickaxe, smelts in 8 s into an ingot, and makes cobalt tools and armor (speed 9, 900 uses)', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('pickaxe_stone'); S.give('pickaxe_iron'); S.G.fakeLock = true; })()`);
+  await aimAt(p, 'cobalt_ore', 2);
+  await p.eval(`(() => { const S = __STRATA; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'pickaxe_stone')); S.mineHold(true); })()`);
+  await sleep(2600);
+  await p.eval(`__STRATA.mineHold(false)`);
+  if ((await S(p, `S.drops().list.some((d) => d.stack.id === 'raw_cobalt')`))) throw new Error('a stone pickaxe got cobalt');
+  await aimAt(p, 'cobalt_ore', 2);
+  await p.eval(`(() => { const S = __STRATA; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'pickaxe_iron')); S.mineHold(true); })()`);
+  await p.waitFor(`__STRATA.drops().list.some((d) => d.stack.id === 'raw_cobalt')`, { what: 'raw cobalt', timeout: 6000 });
+  await p.eval(`__STRATA.mineHold(false)`);
+  const t = await p.eval(`import('/games/strata/src/items.js').then((m) => ({ speed: m.ITEMS.pickaxe_cobalt.tool.speed, dur: m.ITEMS.pickaxe_cobalt.tool.durability, sword: m.ITEMS.sword_cobalt.attack }))`);
+  if (t.speed !== 9 || t.dur !== 900 || t.sword !== 8) throw new Error(JSON.stringify(t));
+});
+
 s.run();

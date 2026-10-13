@@ -261,7 +261,8 @@ export class Mobs {
   #die(m, opts) {
     m.dead = true; m.deadT = 0; m.hp = 0;
     const drops = [];
-    for (const [id, lo, hi] of m.def.drops ?? []) {
+    for (const [id, lo, hi, chance] of m.def.drops ?? []) {
+      if (chance !== undefined && this.rand() >= chance) continue;                             // an optional 4th number: the chance of the drop at all
       const n = lo + Math.floor(this.rand() * (hi - lo + 1));
       if (n > 0) drops.push({ id, n });
     }

@@ -96,7 +96,7 @@ export class World {
     this.chunks = new Map();
     this.edits = new Map();             // chunkKey -> Map(localIndex -> block id): only blocks that differ from the generator
     this.view = CONFIG.view.default;
-    this.seed = 0; this.flat = false; this.noSky = false; this.voidBelow = false;                // noSky: a dimension without a sky (the Underlayer, the Kernel)
+    this.seed = 0; this.flat = false; this.noSky = false; this.voidBelow = false; this.dim = 'overworld';                // noSky: a dimension without a sky (the Underlayer, the Kernel)
     this.onMesh = null;                 // (chunk, mesh) the renderer uploads it
     this.onUnload = null;               // (chunk)
     this.onGenerated = null;            // (chunk) its blocks are there (edits applied)
@@ -107,18 +107,21 @@ export class World {
     this.stats = { generated: 0, meshed: 0 };
   }
 
-  async setSeed(seed, { flat = false, edits = null } = {}) {
+  /** dim: 'overworld' | 'underlayer' | 'kernel' (a different generator, size and sky); `size` overrides the side length in blocks. */
+  async setSeed(seed, { flat = false, edits = null, dim = 'overworld', size = null } = {}) {
     this.generation++;
     for (const c of this.chunks.values()) this.onUnload?.(c);
     this.chunks.clear(); this.uploads.length = 0; this.order = []; this.orderFor = '';
     this.genInFlight = 0; this.meshInFlight = 0;
-    this.seed = seed >>> 0; this.flat = flat;
+    this.seed = seed >>> 0; this.flat = flat; this.dim = dim;
+    this.noSky = dim !== 'overworld'; this.voidBelow = dim === 'kernel';
+    if (size) this.setSize(size); else if (dim === 'underlayer') this.setSize(CONFIG.underlayer.size); else if (this.mainSize) this.setSize(this.mainSize);       // back from another dimension: the overworld's own size
     this.edits = edits ?? new Map();
-    await this.backend.init({ seed: this.seed, flat, worldSize: this.size, height: H, sea: CONFIG.seaLevel, snow: CONFIG.snowLine, gen: CONFIG.gen, ids: this.table.ids, blocks: this.table.blocks });
+    await this.backend.init({ seed: this.seed, flat, dim, worldSize: this.size, height: H, sea: CONFIG.seaLevel, snow: CONFIG.snowLine, gen: CONFIG.gen, ids: this.table.ids, blocks: this.table.blocks });
   }
 
   /** A world of another size (a loaded save): only valid while no chunks are loaded. */
-  setSize(size) { this.size = size; this.chunksPerSide = size / CS; }
+  setSize(size) { this.size = size; this.chunksPerSide = size / CS; if (this.dim === 'overworld') this.mainSize = size; }
 
   inWorld(cx, cz) { return cx >= 0 && cz >= 0 && cx < this.chunksPerSide && cz < this.chunksPerSide; }
   chunkAt(cx, cz) { return this.chunks.get(chunkKey(cx, cz)); }

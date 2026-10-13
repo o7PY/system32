@@ -118,3 +118,5 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 #ad .adbar button { pointer-events: auto; width: 26px; height: 24px; font: inherit; background: #c0c0c0; border: 2px solid #fff; border-right-color: #404040; border-bottom-color: #404040; cursor: pointer; line-height: 1; }
 #ad .adbody { padding: 22px; background: #fff; font-size: 24px; text-align: center; }
 #ad .adbtn { display: inline-block; margin-top: 8px; background: #1c9f3a; color: #fff; padding: 10px 28px; font-size: 26px; }
+
+#warp { position: fixed; inset: -10%; pointer-events: none; background: radial-gradient(circle at 50% 50%, rgba(150, 90, 255, 0) 0%, rgba(110, 50, 220, .55) 45%, rgba(40, 10, 90, .95) 100%); mix-blend-mode: normal; }

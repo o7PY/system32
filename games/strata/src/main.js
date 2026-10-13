@@ -44,12 +44,13 @@ const G = {
   settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default, difficulty: OPT.peaceful ? 'peaceful' : 'normal' },
   seed: 0, flat: false, worldSize: OPT.worldSize, spawn: { x: 0, y: 0, z: 0 },
   dayT: CONFIG.day.start, flags: {}, eggs: new Set(),
+  dimEdits: {}, dimDrops: {}, dimAnimals: {}, riftT: 0, afterEnter: null,
   keys: new Set(), tapped: new Set(), mouseLeft: false, mouseRight: false, attackClick: false, atk: 1, mobsOn: false, verifyBed: null, eat: null, hitSeen: 0, tilt: 0, dim: 'overworld', minedStep: 0, deathMarker: null, lastPos: null, lastDeath: null, lastW: 0, sprintLatch: false, fakeLock: false,
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
 let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, arrows, spawner, arrowMesh, backendInfo = { kind: '?', reason: '' };
-let chests = new Map();                       // 'x,y,z' -> 27 slots (saved with the world)
+let chests = new Map();                       // 'x,y,z' (overworld) or 'dim|x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
 
 const isLocked = () => G.fakeLock || document.pointerLockElement === $('gl');
@@ -95,8 +96,8 @@ async function boot() {
   mobs = new Mobs({ world }); mobRenderer = new MobRenderer(renderer);
   arrows = new Arrows({ world, mobs }); installHostiles(mobs, arrows); spawner = new Spawner(mobs);
   world.onMesh = (c, m) => renderer.addChunk(c, m);
-  world.onUnload = (c) => { renderer.removeChunk(c); if (G.mobsOn) mobs.chunkUnloaded(c.cx, c.cz, G.seed); };
-  world.onGenerated = (c) => { if (G.mobsOn) mobs.chunkLoaded(c, G.seed); };
+  world.onUnload = (c) => { renderer.removeChunk(c); if (G.mobsOn && G.dim === 'overworld') mobs.chunkUnloaded(c.cx, c.cz, G.seed); };
+  world.onGenerated = (c) => { if (G.mobsOn && G.dim === 'overworld') mobs.chunkLoaded(c, G.seed); };
   world.view = G.settings.viewDistance;
   player = new Player(world); inv = new Inventory(); drops = new Drops(world); miner = new Miner(); vitals = new Vitals();
   bindUI();
@@ -141,9 +142,13 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   G.settings.viewDistance = Math.min(G.settings.viewDistance, OPT.low ? CONFIG.view.low : CONFIG.view.max);
   applySettings();
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); G.draw = null; ui.adOverlay(0);
-  await world.setSeed(seed, { flat, edits: save?.edits ?? new Map() });
-  G.seed = seed; G.flat = flat;
-  mobs.load(save?.animals ?? []);
+  const startDim = save?.player?.dim ?? 'overworld';
+  G.dimEdits = { overworld: save?.edits ?? new Map(), underlayer: save?.dims?.underlayer ?? new Map() };
+  G.dimDrops = { ...(save?.otherDrops ?? {}) }; G.dimAnimals = {}; G.riftT = 0; G.afterEnter = null;
+  await world.setSeed(seed, { flat, dim: startDim, edits: G.dimEdits[startDim] });
+  G.seed = seed; G.flat = flat; G.dim = startDim;
+  renderer.setDimension(startDim); renderer.setWorldSize(world.size);
+  if (startDim === 'overworld') mobs.load(save?.animals ?? []); else G.dimAnimals.overworld = save?.animals ?? [];
   chests = new Map(Object.entries(save?.chests ?? {}));
   G.mobsOn = true;
   G.spawn = save ? save.spawn : await world.backend.spawn();
@@ -155,10 +160,11 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   if (!save) G.settings.difficulty = ui.difficultyText();
   vitals.load(save?.vitals ?? null); vitals.difficulty = G.settings.difficulty;
   if (save?.drops) drops.load(save.drops);
-  G.eat = null; G.mouseRight = false; G.dim = 'overworld'; G.lastDeath = null; G.hitSeen = vitals.hitCount; G.tilt = 0;
+  G.eat = null; G.mouseRight = false; G.lastDeath = null; G.hitSeen = vitals.hitCount; G.tilt = 0;
   for (const [k, f] of Object.entries(save?.furnaces ?? {})) furnaces.set(k, makeFurnace(k, f));
   G.dayT = save?.time ?? CONFIG.day.start;
   G.flags = { ...(save?.flags ?? {}) };
+  if (!Array.isArray(G.flags.rifts)) G.flags.rifts = [];
   G.deathMarker = G.flags.death ?? null;
   G.saveTimer = 0; G.fakeLock = fake;
   G.entering = { title: false, fake, t0: performance.now() };
@@ -167,6 +173,7 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
 
 function enterWorld(fake) {
   G.entering = null;
+  if (G.afterEnter) { const f = G.afterEnter; G.afterEnter = null; f(); }
   ui.show(null); ui.hud(true); ui.renderHotbar(inv);
   if (fake || isLocked()) { G.phase = 'playing'; } else {
     G.phase = 'paused'; ui.pauseNote('Your world is ready. Press Resume to start digging.'); ui.show('pause');
@@ -213,15 +220,22 @@ function applySettings() {
 /** The flags that go into the save: the death marker rides along. */
 function saveFlags() { const f = { ...G.flags }; if (G.deathMarker) f.death = G.deathMarker; else delete f.death; return f; }
 
+/** Everything the save needs: the active dimension's live data, and the stashed data of the other one. */
+function saveState() {
+  const ow = G.dim === 'overworld' ? world.edits : (G.dimEdits.overworld ?? new Map()), under = G.dim === 'underlayer' ? world.edits : (G.dimEdits.underlayer ?? new Map());
+  const other = { ...G.dimDrops }; delete other[G.dim];
+  return {
+    seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, dim: G.dim },
+    inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: ow, dims: { underlayer: under },
+    vitals: vitals.toJSON(), drops: drops.toJSON(), otherDrops: other, animals: G.dim === 'overworld' ? mobs.toJSON() : (G.dimAnimals.overworld ?? []), chests: Object.fromEntries(chests),
+  };
+}
+
 async function saveNow(reason, wait = false) {
   if (!sdk || !world || !(G.phase === 'playing' || G.phase === 'paused') || G.seed === undefined) return;
   if (G.saving) { G.saveQueued = true; return G.saveWait; }
   G.saving = true;
-  const data = await serialize({
-    seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
-    inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits,
-    vitals: vitals.toJSON(), drops: drops.toJSON(), animals: mobs.toJSON(), chests: Object.fromEntries(chests),
-  }, { compress: !OPT.noCompress });
+  const data = await serialize(saveState(), { compress: !OPT.noCompress });
   G.pendingSave = data;
   G.saveWait = new Promise((resolve) => { G.saveDone = resolve; });
   sdk.save(data);
@@ -273,10 +287,11 @@ function bindUI() {
 }
 
 // ---------------------------------------------------------------- menus (inventory, table, furnace)
-const furnaceKey = (x, y, z) => `${x},${y},${z}`;
+const furnaceKey = (x, y, z) => (G.dim === 'overworld' ? `${x},${y},${z}` : `${G.dim}|${x},${y},${z}`);
+const inThisDim = (key) => (G.dim === 'overworld' ? !key.includes('|') : key.startsWith(`${G.dim}|`));
 function makeFurnace(key, state) {
   const f = new Furnace(state);
-  const [x, y, z] = key.split(',').map(Number);
+  const [x, y, z] = key.split('|').pop().split(',').map(Number);
   f.onDone = () => audio.play('furnace.done', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
   return f;
 }
@@ -374,6 +389,14 @@ function breakBlock(hit) {
   if (isFurnace(id)) {
     const key = furnaceKey(hit.x, hit.y, hit.z), f = furnaces.get(key);
     if (f) { for (const s of [f.input, f.fuel, f.output]) if (s) drops.spawn(at.x, at.y, at.z, s); furnaces.delete(key); }
+  }
+  if (id === B.cracked_bedrock) {
+    world.setBlock(hit.x, hit.y, hit.z, B.rift);
+    registerRift(hit.x, hit.y, hit.z);
+    audio.play('vault.open', { at, listener: listener(), vol: 0.9 }); mobRenderer.puff(at.x, at.y + 0.5, at.z, 14, 0x9b6bff);
+    ui.subtitle('The bedrock gives way. A Rift opens.', 4500);
+    if (held && isTool(held.id)) wear(inv.selected, 1);
+    return;
   }
   if (BLOCKS[id].use === 'chest') { const key = furnaceKey(hit.x, hit.y, hit.z); for (const s of chests.get(key) ?? []) if (s) drops.spawn(at.x, at.y, at.z, s); chests.delete(key); }
   const bed = BLOCKS[id].bed, mate = bed ? bedMate(hit.x, hit.y, hit.z, bed) : null;
@@ -581,7 +604,7 @@ function groundAt(x, z, y0) {
 function spawnEnv(ctx) {
   const e = player.eye(), d = player.dir();
   return {
-    player: ctx.player, dayT: G.dayT, peaceful: vitals.peaceful, difficulty: vitals.difficulty, lightAt: ctx.lightAt, ground: groundAt,
+    player: ctx.player, dayT: G.dayT, peaceful: vitals.peaceful, difficulty: vitals.difficulty, lightAt: ctx.lightAt, dim: G.dim, ground: (x, z, y0) => groundAt(x, z, G.dim === 'underlayer' ? Math.min(y0, CONFIG.underlayer.height - 5) : y0),
     inView: (x, y, z) => { const dx = x - e.x, dy = y - e.y, dz = z - e.z, l = Math.hypot(dx, dy, dz) || 1; return (dx * d.x + dy * d.y + dz * d.z) / l > 0.5; },
   };
 }
@@ -592,13 +615,15 @@ function arrowEvents() {
     const a = ev.arrow, at = { x: a.x, y: a.y, z: a.z };
     if (ev.type === 'hit-player') {
       const from = a.shooter ? { x: a.shooter.x, z: a.shooter.z } : null;
-      vitals.damage(a.damage, { type: 'arrow', name: `a ${a.shooter?.def?.name ?? 'Rattler'}`, from });
+      vitals.damage(a.damage, { type: a.fire ? 'fireball' : 'arrow', name: `a ${a.shooter?.def?.name ?? 'Rattler'}`, from });
+      if (a.fire) vitals.burn = Math.max(vitals.burn, a.burnS);
       audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
     } else if (ev.type === 'hit-mob') {
       mobs.damage(ev.mob, a.damage, { from: player.pos, knockback: 2.5, type: 'player' });
       audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
       if (ev.mob.def.kind === 'hostile') ev.mob.data.angry = true;
-    } else if (ev.type === 'stick') audio.play('arrow.hit', { at, listener: listener(), vol: 0.5 });
+    } else if (ev.type === 'burst') mobRenderer.puff(a.x, a.y, a.z, 8, 0xff7a2a);
+    else if (ev.type === 'stick') audio.play('arrow.hit', { at, listener: listener(), vol: 0.5 });
     else if (ev.type === 'pickup') { const left = inv.add(stack('arrow', 1)); if (left) drops.spawn(player.pos.x, player.pos.y + 1, player.pos.z, left); audio.play('pickup', { vol: 0.6 }); }
   }
 }
@@ -612,7 +637,10 @@ function mobEvents() {
     else if (ev.type === 'hurt') { audio.voice(m.def.voice, 'hurt', { at, listener: L }); subtitle(`${m.def.name} hurt`, at); }
     else if (ev.type === 'crumble') { mobRenderer.puff(m.x, m.y + 0.8, m.z, 12, 0xbbbbbb); }
     else if (ev.type === 'draw') { audio.play('bow.draw', { at, listener: L, vol: 0.7 }); subtitle(`${m.def.name} draws a bow`, at); }
-    else if (ev.type === 'shoot') audio.play('bow.shoot', { at, listener: L, vol: 0.8 });
+    else if (ev.type === 'shoot') audio.play(ev.fire ? 'boss.stomp' : 'bow.shoot', { at, listener: L, vol: ev.fire ? 0.5 : 0.8 });
+    else if (ev.type === 'dash') { audio.voice(m.def.voice, 'hurt', { at, listener: L, vol: 0.8 }); subtitle(`${m.def.name} dashes`, at); }
+    else if (ev.type === 'teleport') { mobRenderer.puff(m.x, m.y + 0.6, m.z, 10, 0xff3cdc); audio.voice(m.def.voice, 'idle', { at, listener: L }); }
+    else if (ev.type === 'glitch-swap') glitchSwap(m, ev.picks);
     else if (ev.type === 'swing') audio.play('sword.swing', { at, listener: L, vol: 0.7 });
     else if (ev.type === 'pounce') { audio.voice(m.def.voice, 'hurt', { at, listener: L, vol: 0.9 }); subtitle(`${m.def.name} pounces`, at); }
     else if (ev.type === 'overlay') { ui.adOverlay(ev.seconds); audio.voice('popup', 'idle', { vol: 1 }); subtitle('Pop-up beeps', at); }
@@ -625,7 +653,18 @@ function mobEvents() {
     }
   }
 }
-const VOICE_VERB = { pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks', shambler: 'groans', rattler: 'rattles', crawler: 'hisses', popup: 'beeps' };
+const GLITCH_BLOCKS = [B.basalt, B.ash, B.scorched_stone, B.air, B.scorched_stone, B.basalt];
+/** The Glitch rewrites a few blocks around where it lands (never bedrock, Rifts, vault parts, or the cell you stand in). */
+function glitchSwap(m, picks) {
+  const pb = player.box();
+  for (const [dx, dy, dz, k] of picks) {
+    const x = Math.floor(m.x) + dx, y = Math.floor(m.y) + dy, z = Math.floor(m.z) + dz, cur = BLOCKS[world.getBlock(x, y, z)], nb = GLITCH_BLOCKS[k];
+    if (!cur || cur.hardness < 0 || cur.rift || cur.emit >= 12 || BLOCKS[nb].solid && x + 1 > pb.x0 && x < pb.x1 && y + 1 > pb.y0 && y < pb.y1 && z + 1 > pb.z0 && z < pb.z1) continue;
+    if (cur.name === 'lava' || cur.name === 'water') continue;
+    world.setBlock(x, y, z, nb);
+  }
+}
+const VOICE_VERB = { daemon: 'crackles', glitch: 'glitches', pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks', shambler: 'groans', rattler: 'rattles', crawler: 'hisses', popup: 'beeps' };
 /** "Pig oinks (left)": the direction of a sound relative to where you look. */
 function subtitle(text, at) {
   if (!G.settings.subtitles) return;
@@ -697,6 +736,7 @@ function simulate(dt) {
   } else if (state === 'broke') { G.mineTick = 0; breakBlock(hit); }
   else G.mineTick = 0;
 
+  checkRift(dt);
   if (G.draw) { G.draw.t += dt; if (!(G.mouseRight && locked && !open && inv.held()?.id === 'bow')) releaseBow(); else ui.eating(Math.min(1, G.draw.t)); }
   // eating: hold the right button with food in hand (1.6 s), only while hungry
   const heldNow = inv.held(), food = heldNow && ITEMS[heldNow.id].food;
@@ -715,7 +755,7 @@ function simulate(dt) {
     arrows.update(dt, ctx.player);
     arrows.pickup({ x: player.pos.x, y: player.pos.y, z: player.pos.z });
     arrowEvents();
-    mobs.trickle(dt, player.pos, grassNear);
+    if (G.dim === 'overworld') mobs.trickle(dt, player.pos, grassNear);
     for (const m of mobs.list) { const dx = player.pos.x - m.x, dz = player.pos.z - m.z; m.look.yaw = Math.max(-0.9, Math.min(0.9, Math.atan2(-dx, -dz) - m.yaw)) * (Math.hypot(dx, dz) < 8 ? 1 : 0); }
     mobEvents();
   }
@@ -727,7 +767,8 @@ function simulate(dt) {
   if (picks.length) { audio.play('pickup', { vol: 0.8 }); }
   for (const [k, f] of furnaces) {
     f.update(dt);
-    const [fx, fy, fz] = k.split(',').map(Number), cur = world.getBlock(fx, fy, fz), want = f.burning ? B.furnace_lit : B.furnace;
+    if (!inThisDim(k)) continue;
+    const [fx, fy, fz] = k.split('|').pop().split(',').map(Number), cur = world.getBlock(fx, fy, fz), want = f.burning ? B.furnace_lit : B.furnace;
     if (isFurnace(cur) && cur !== want) world.setBlock(fx, fy, fz, want);       // a burning furnace glows (light 13)
   }
   G.dayT = (G.dayT + dt / CONFIG.day.lengthS) % 1;
@@ -800,10 +841,76 @@ function respawn() {
   if (G.phase !== 'dead') return;
   const p = respawnPoint();
   vitals.respawn(); vitals.difficulty = G.settings.difficulty; G.hitSeen = vitals.hitCount;
-  player.teleport(p.x, p.y, p.z); player.peakY = p.y; player.lastFall = 0;
-  G.phase = 'playing'; ui.show(null); ui.hud(true);
   if (!G.fakeLock) $('gl').requestPointerLock?.();
   audio.unlock();
+  if (G.dim !== 'overworld') { travel('overworld', p); return; }                       // dying below ground brings you back to the surface
+  player.teleport(p.x, p.y, p.z); player.peakY = p.y; player.lastFall = 0;
+  G.phase = 'playing'; ui.show(null); ui.hud(true);
+}
+
+// ---------------------------------------------------------------- dimensions: Rifts, the Underlayer
+const DIM_NAMES = { overworld: 'the surface', underlayer: 'the Underlayer', kernel: 'the Kernel' };
+/** Leave the current dimension for `to`, arriving at `at` ({x, y, z} feet). The old one's edits, drops and animals are stashed (and saved), the new one is generated from the same seed. */
+async function travel(to, at, { afterEnter = null, text = null } = {}) {
+  if (G.phase === 'loading' || G.phase === 'entering') return;
+  const from = G.dim;
+  if (G.menu) closeMenu(false);
+  G.phase = 'loading'; G.keys.clear(); G.mouseLeft = false; G.mouseRight = false; G.eat = null; G.draw = null; G.riftT = 0; ui.warp(0); ui.adOverlay(0);
+  ui.progress(0.15, text ?? `Entering ${DIM_NAMES[to]}…`); ui.show('loading'); ui.hud(false);
+  G.dimEdits[from] = world.edits; G.dimDrops[from] = drops.toJSON();
+  if (from === 'overworld') G.dimAnimals.overworld = mobs.toJSON();
+  G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); drops.clear(); miner.reset();
+  await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: G.dimEdits[to] ?? new Map() });
+  G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size);
+  drops.load(G.dimDrops[to] ?? []);
+  if (to === 'overworld') mobs.load(G.dimAnimals.overworld ?? []);
+  G.mobsOn = true;
+  player.teleport(at.x, at.y, at.z); player.peakY = at.y; player.lastFall = 0;
+  G.afterEnter = afterEnter;
+  G.entering = { title: false, fake: G.fakeLock, t0: performance.now() };
+  G.phase = 'entering';
+}
+
+/** The Underlayer position an overworld Rift leads to: the same x and z, scaled to its smaller size. */
+const riftLink = (x, z) => ({ ux: Math.max(8, Math.min(CONFIG.underlayer.size - 9, Math.floor(x * CONFIG.underlayer.size / G.worldSize))), uz: Math.max(8, Math.min(CONFIG.underlayer.size - 9, Math.floor(z * CONFIG.underlayer.size / G.worldSize))) });
+function registerRift(x, y, z) {
+  let r = G.flags.rifts.find((q) => q.x === x && q.y === y && q.z === z);
+  if (!r) { r = { x, y, z, ...riftLink(x, z) }; G.flags.rifts.push(r); }
+  return r;
+}
+
+/** A 5 x 5 basalt platform with room to stand and the return Rift in the middle, at the floor of the cavern under (ux, uz). Returns where to stand. */
+function buildArrival(ux, uz) {
+  let fy = 40;
+  for (let y = CONFIG.underlayer.height - 5; y > 3; y--) if (isSolid(world.getBlock(ux, y, uz)) && !isSolid(world.getBlock(ux, y + 1, uz))) { fy = y; break; }
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    world.setBlock(ux + dx, fy, uz + dz, B.basalt);
+    for (let k = 1; k <= 4; k++) world.setBlock(ux + dx, fy + k, uz + dz, B.air);
+  }
+  world.setBlock(ux, fy + 1, uz, B.rift);
+  return { x: ux + 0.5, y: fy + 1, z: uz + 2.5 - 1 + 0.01, fy };
+}
+
+/** Standing inside a Rift for CONFIG.underlayer.riftS seconds takes you through. */
+function useRift(blockId, cell) {
+  if (BLOCKS[blockId].rift === 'purple' && G.dim === 'overworld') {
+    const r = registerRift(cell.x, cell.y, cell.z);
+    travel('underlayer', { x: r.ux + 0.5, y: 60, z: r.uz + 0.5 }, { text: 'Falling through the floor…', afterEnter: () => { const a = buildArrival(r.ux, r.uz); r.uy = a.fy; player.teleport(a.x, a.y, a.z); player.peakY = a.y; saveNow('rift'); } });
+  } else if (BLOCKS[blockId].rift === 'purple' && G.dim === 'underlayer') {
+    const here = { x: cell.x, z: cell.z }, r = G.flags.rifts.slice().sort((a, b) => Math.hypot(a.ux - here.x, a.uz - here.z) - Math.hypot(b.ux - here.x, b.uz - here.z))[0];
+    const back = r ? { x: r.x + 0.5, y: r.y + 1, z: r.z + 0.5 } : { ...G.spawn };
+    travel('overworld', back, { text: 'Climbing back up…', afterEnter: () => saveNow('rift') });
+  }
+}
+
+function checkRift(dt) {
+  const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z);
+  let found = null;
+  for (const dy of [0, 1]) { const y = Math.floor(player.pos.y + 0.1) + dy, id = world.getBlock(x, y, z); if (BLOCKS[id]?.rift) { found = { id, cell: { x, y, z } }; break; } }
+  if (found && G.phase === 'playing') {
+    G.riftT += dt; ui.warp(G.riftT / CONFIG.underlayer.riftS);
+    if (G.riftT >= CONFIG.underlayer.riftS) { G.riftT = 0; ui.warp(0); useRift(found.id, found.cell); }
+  } else if (G.riftT > 0) { G.riftT = Math.max(0, G.riftT - dt * 2); ui.warp(G.riftT / CONFIG.underlayer.riftS); }
 }
 
 // ---------------------------------------------------------------- frame
@@ -887,14 +994,14 @@ function installHooks() {
       phase: G.phase, screen: ui.screen, menu: G.menu?.kind ?? null, pos: { ...player.pos }, vel: { ...player.vel }, yaw: player.yaw, pitch: player.pitch, onGround: player.onGround, inWater: player.inWater,
       chunks: world.loadedCount, meshed: world.meshedCount, queue: world.queueLength, backend: backendInfo.kind, backendReason: backendInfo.reason, seed: G.seed, flat: G.flat,
       dayT: G.dayT, edits: world.editCount(), drops: drops.list.length, selected: inv.selected, held: inv.held(), saving: G.saving, saveBytes: G.lastSaveBytes, saveResult: G.lastSaveResult ?? null,
-      eggs: [...G.eggs], settings: { ...G.settings }, hp: vitals.hp, hunger: vitals.hunger, air: vitals.air, dead: vitals.dead, locked: isLocked(), draws: renderer.info.calls, flags: { ...G.flags }, sound: { allowed: audio.allowed, ctx: !!audio.ctx, count: audio.count, played: [...audio.played] },
+      eggs: [...G.eggs], settings: { ...G.settings }, hp: vitals.hp, hunger: vitals.hunger, air: vitals.air, dead: vitals.dead, locked: isLocked(), draws: renderer.info.calls, flags: { ...G.flags }, dim: G.dim, rifts: G.flags.rifts, riftT: G.riftT, sound: { allowed: audio.allowed, ctx: !!audio.ctx, count: audio.count, played: [...audio.played] },
     }),
     getBlock: (x, y, z) => world.getBlock(x, y, z),
     setBlock: (x, y, z, id) => world.setBlock(x, y, z, typeof id === 'string' ? B[id] : id),
     give: (item, n = 1) => inv.add(hasDurability(item) ? stack(item) : stack(item, n)),
     tp: (x, y, z) => { player.teleport(x, y, z); },
     setTime: (t) => { G.dayT = t; },
-    save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits, vitals: vitals.toJSON(), drops: drops.toJSON(), animals: mobs.toJSON(), chests: Object.fromEntries(chests) }, { compress: !OPT.noCompress }),
+    save: () => serialize(saveState(), { compress: !OPT.noCompress }),
     load: async (str) => { const s = await deserialize(str); await startGame({ seed: s.seed, flat: s.flat, save: s, fake: true }); return s; },
     newWorld: (o = {}) => startGame({ seed: o.seed ?? 1, flat: !!o.flat, fake: o.fake !== false }),
     settle: async (radius = 2, ms = 60000) => { const t0 = performance.now(); while (world.missingMeshes(player.pos.x, player.pos.z, radius) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50)); return world.missingMeshes(player.pos.x, player.pos.z, radius); },
@@ -903,6 +1010,7 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
+    travel, goto: (dim) => { const at = dim === 'underlayer' ? { x: CONFIG.underlayer.size / 2 + 0.5, y: 60, z: CONFIG.underlayer.size / 2 + 0.5 } : { ...G.spawn }; return travel(dim, at, dim === 'underlayer' ? { afterEnter: () => { const a = buildArrival(CONFIG.underlayer.size / 2, CONFIG.underlayer.size / 2); player.teleport(a.x, a.y, a.z); } } : {}); },
     arrows: () => arrows, spawner: () => spawner, mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
     vitals: () => vitals, die, respawn, hold: (on) => { G.mouseRight = !!on; },
     setHealth: (n) => { vitals.hp = n; }, setHunger: (n) => { vitals.hunger = n; }, damage: (n, o) => vitals.damage(n, o),

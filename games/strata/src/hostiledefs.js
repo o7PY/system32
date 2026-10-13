@@ -71,4 +71,33 @@ export const HOSTILE = {
   },
 };
 
+// ---- the Underlayer (STRATA_PART2_SPEC 5.4): they ignore light and never crumble
+HOSTILE.daemon = {
+  name: 'Daemon', kind: 'hostile', w: 0.6, h: 1.3, hp: 24, speed: 4.4, eyeH: 1.0, voice: 'daemon', ai: 'daemon', underlayer: true,
+  dash: { range: 9, speed: 11, everyS: 2.6, durS: 0.4 }, fire: { range: 14, damage: 4, burnS: 2, everyS: 3.2, speed: 13, drawS: 0.5 }, sight: 30, group: [2, 3],
+  drops: [['ash_dust', 0, 2], ['cobalt_nugget', 1, 1, 0.15]],
+  model: {
+    anim: 'biped',
+    tex: {
+      body: { base: '#7a2a1c', alt: '#4d1810', pattern: 'plates' }, head: { base: '#a53a22', alt: '#6c2314', pattern: 'solid', face: 'imp' },
+      arm: { base: '#a53a22', alt: '#6c2314', pattern: 'solid' }, leg: { base: '#3a1a14', alt: '#24100c', pattern: 'stripes' }, horn: { base: '#e8d9b0', pattern: 'solid' },
+    },
+    parts: [
+      q(0, 13, 0, 7, 9, 4, 'body'), q(0, 21, 0, 8, 7, 7, 'head', { head: true }), q(-3, 26, 0, 2, 4, 2, 'horn', { head: true }), q(3, 26, 0, 2, 4, 2, 'horn', { head: true }),
+      limb('armL', -5, 17, 0, 3, 9, 3, 'arm', 'x', 0.7, 0, { chase: -1.3 }), limb('armR', 5, 17, 0, 3, 9, 3, 'arm', 'x', -0.7, 0, { chase: -1.3 }),
+      limb('legL', -2, 8.5, 0, 3, 8, 3, 'leg', 'x', 0.9, 0), limb('legR', 2, 8.5, 0, 3, 8, 3, 'leg', 'x', 0.9, 1),
+    ],
+  },
+};
+HOSTILE.glitch = {
+  name: 'Glitch', kind: 'hostile', w: 0.9, h: 1.2, hp: 30, speed: 2.8, eyeH: 0.8, voice: 'glitch', ai: 'glitch', underlayer: true, flicker: true,
+  melee: { damage: 5, reach: 1.5, everyS: 1.1, windupS: 0.25, knockback: 5 }, teleport: { everyS: 4, swaps: 3, radius: 2 }, sight: 30, group: [1, 1],
+  drops: [['glitch_dust', 1, 2]],
+  model: {
+    anim: 'biped',
+    tex: { cube: { base: '#222', alt: '#ff3cdc', pattern: 'grid', face: 'glitch' }, shard: { base: '#3cfff0', alt: '#ff3cdc', pattern: 'stripes' } },
+    parts: [q(0, 8, 0, 11, 11, 11, 'cube', { head: true }), q(7, 14, 3, 3, 3, 3, 'shard'), q(-7, 4, -3, 3, 3, 3, 'shard')],
+  },
+};
+
 export const HOSTILE_KINDS = Object.keys(HOSTILE);

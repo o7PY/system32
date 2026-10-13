@@ -272,6 +272,21 @@ export class Renderer {
     this.uniforms.uStride.value = stride / atlas.size;
   }
 
+  /** 'overworld' (the sky, sun, moon, stars, clouds) or a sky-less dimension: a fixed dark fog, no celestial bodies, a dim coloured floor of light. */
+  setDimension(dim) {
+    this.dimension = dim;
+    const c = CONFIG.underlayer, under = dim === 'underlayer', kernel = dim === 'kernel';
+    if (dim === 'overworld') { this.setAmbient(0.035, [0.8, 0.85, 1]); return; }
+    this.setAmbient(under ? c.ambient : 0.05, under ? c.ambientColor : [0.35, 1, 0.55]);
+    const fog = under ? c.fog : [0.01, 0.03, 0.02];
+    this.uniforms.uFogColor.value.set(...fog); this.gl.setClearColor(new THREE.Color(...fog));
+    this.uniforms.uSun.value = 0; this.uniforms.uTint.value.set(1, 1, 1);
+    this.skyMat.uniforms.uTop.value.set(...fog); this.skyMat.uniforms.uHorizon.value.set(...fog); this.skyMat.uniforms.uGlow.value = 0;
+    this.stars.material.opacity = 0; this.sun.material.opacity = 0; this.moon.material.opacity = 0;
+    if (this.cloudMat) this.clouds.visible = false;
+    void kernel;
+  }
+
   /** The least light anywhere and its colour (a dimension without a sky has a dim red floor of light). */
   setAmbient(min, col = [0.8, 0.85, 1]) { this.uniforms.uMin.value = min; this.uniforms.uMinCol.value.set(...col); }
 
@@ -333,6 +348,8 @@ export class Renderer {
   /** t: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight. Returns the daylight 0..1. */
   setTime(t, now = 0) {
     this.time = t;
+    if (this.dimension && this.dimension !== 'overworld') { this.uniforms.uTime.value = now; return 0; }
+    if (this.clouds) this.clouds.visible = true;
     const a = t * Math.PI * 2, sunH = Math.sin(a);
     this.sunDir.set(Math.cos(a), sunH, 0.25).normalize();
     const day = smooth(-0.12, 0.2, sunH), glow = Math.exp(-((sunH / 0.2) ** 2));

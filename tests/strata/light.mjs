@@ -89,7 +89,7 @@ const g = makeGen({ flat: true });
   // animated tiles carry their frame count
   const a = floor(); a[cell(24, 11, 24)] = B.rift; a[cell(26, 11, 24)] = B.server_rack; a[cell(28, 11, 24)] = B.stone;
   const am = g.meshRegion(a);
-  check('animated tiles carry their frame count (Rift 4, server rack front 2, torch 2), still ones 0', Math.max(...am.opaque.an) === 4 && am.opaque.an.includes(2) && am.opaque.an.includes(0) && Math.max(...m.cut.an) === 2);
+  check('animated tiles carry their frame count (Rift 4 in the cutout layer, server rack front 2, torch 2), still ones 0', Math.max(...am.cut.an) === 4 && Math.max(...am.opaque.an) === 2 && am.opaque.an.includes(0) && Math.max(...m.cut.an) === 2);
   // plants: two crossed quads
   const p = floor(); p[cell(24, 11, 24)] = B.glowcap; p[cell(26, 11, 24)] = B.berry_bush;
   const pm = g.meshRegion(p);
