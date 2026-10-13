@@ -119,4 +119,31 @@ HOSTILE.warden = {
   },
 };
 
+// ---- the Kernel (STRATA_PART2_SPEC 7.3): the Garbage Collector and its Pointers. The boss is driven by boss.js (ai 'boss' does nothing in the ordinary AI).
+HOSTILE.pointer = {
+  name: 'Pointer', kind: 'hostile', w: 0.6, h: 0.6, hp: 6, speed: 4.0, eyeH: 0.3, voice: 'popup', ai: 'pointer', flying: true, underlayer: true, noDespawn: true, minion: true, sight: 80, group: [1, 1],
+  dive: { everyS: 3.2, speed: 11, durS: 0.9, damage: 3, hover: 3.6 }, drops: [],
+  model: {
+    anim: 'flyer',
+    tex: { cube: { base: '#1d6b45', alt: '#7dffb0', pattern: 'grid', face: 'core' } },
+    parts: [q(0, 5, 0, 9, 9, 9, 'cube', { head: true })],
+  },
+};
+HOSTILE.gc = {
+  name: 'The Garbage Collector', kind: 'hostile', w: 2.6, h: 8, hp: 300, speed: 2.4, eyeH: 6.8, voice: 'warden', ai: 'boss', boss: 'gc', heavy: true, underlayer: true, noDespawn: true, sight: 120, group: [1, 1],
+  drops: [],
+  model: {
+    anim: 'biped',
+    tex: {
+      body: { base: '#6b6f75', alt: '#41454b', pattern: 'plates' }, head: { base: '#7a7f86', alt: '#4b5057', pattern: 'solid', face: 'bin' }, lid: { base: '#8a8f96', alt: '#575c63', pattern: 'stripes' },
+      arm: { base: '#5c6066', alt: '#3a3d42', pattern: 'plates' }, leg: { base: '#4a4d52', alt: '#2f3236', pattern: 'plates' }, core: { base: '#1fa35e', alt: '#0e5c35', pattern: 'grid', face: 'core' },
+    },
+    parts: [
+      q(0, 76, 0, 42, 56, 20, 'body'), q(0, 80, -11.5, 18, 18, 3, 'core'), q(0, 114, 0, 28, 20, 28, 'head', { head: true }), q(0, 126.5, 0, 36, 5, 36, 'lid', { head: true }),
+      limb('armL', -26, 100, 0, 11, 62, 11, 'arm', 'x', 0.5, 0, { chase: -1.25 }), limb('armR', 26, 100, 0, 11, 62, 11, 'arm', 'x', -0.5, 0, { chase: -1.25 }),
+      limb('legL', -10, 48, 0, 14, 48, 14, 'leg', 'x', 0.45, 0), limb('legR', 10, 48, 0, 14, 48, 14, 'leg', 'x', 0.45, 1),
+    ],
+  },
+};
+
 export const HOSTILE_KINDS = Object.keys(HOSTILE);

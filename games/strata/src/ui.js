@@ -197,6 +197,14 @@ export class UI {
     if (!b) return;
     e.firstElementChild.textContent = b.name; e.lastElementChild.firstElementChild.style.width = `${Math.max(0, Math.min(1, b.frac)) * 100}%`; e.classList.toggle('green', !!b.green);
   }
+  /** The drifting green log text of the Kernel's sky (built once, on and off). */
+  logs(on) {
+    const e = $('logs');
+    e.hidden = !on;
+    if (!on || e.childElementCount) return;
+    const lines = ['[gc] marking reachable objects…', '[gc] 0 bytes freed', '[gc] sweep: heap fragmented 61%', '[gc] compacting arena…', '[gc] root set: 1 (player.exe)', '[gc] finalizers: 0', '[gc] WARNING: unreachable object found: you', '[gc] collection pending', '[gc] pause: 4096 ms', '[gc] mark phase 3/3'];
+    lines.forEach((t, i) => { const d = document.createElement('div'); d.textContent = t; d.style.top = `${6 + (i * 9.3) % 78}%`; d.style.animationDuration = `${70 + (i * 13) % 50}s`; d.style.animationDelay = `-${(i * 17) % 60}s`; d.style.opacity = String(0.35 + (i % 4) * 0.12); e.append(d); });
+  }
   burning(on) { $('burning').hidden = !on; }
   eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }

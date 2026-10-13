@@ -62,4 +62,19 @@ s.test('a vault', async (p) => {
   await sleep(3500);
   await p.screenshot(`${out}/vault-inside.png`);
 });
+s.test('the Kernel', async (p) => {
+  await p.goto('/games/strata/index.html?debug=1&seed=77');
+  await p.waitFor(`window.__STRATA?.state().phase === 'title'`, { timeout: 90000 });
+  await p.eval(`__STRATA.newWorld({ seed: 77 })`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.giveKit('cobalt'); S.G.settings.viewDistance = 8; S.world().view = 8; S.renderer().setView(8); })()`);
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && __STRATA.mobs().list.some((m) => m.type === 'gc')`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.vitals().invuln = 1e9; S.boss().markIn = 1e9; S.settle(5); S.face(0, 0.05); })()`);
+  await sleep(4000);
+  await p.screenshot(`${out}/kernel.png`);
+  await p.eval(`(() => { const S = __STRATA, b = S.boss(); b.markIn = 0; S.tp(64.5, 61, 74.5); S.face(0, 0.2); })()`);
+  await sleep(1500);
+  await p.screenshot(`${out}/kernel-marks.png`);
+});
 s.run();

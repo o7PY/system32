@@ -86,6 +86,7 @@ export const CONFIG = {
   underlayer: { size: 512, height: 96, floor: 40, ambient: 0.4, ambientColor: [1, 0.5, 0.38], fog: [0.1, 0.022, 0.016], cap: 20, riftS: 1.0 },
   // the vaults: the loot of a Data Vault chest; a Kernel Shard in it is the point
   vault: { loot: [['cobalt_ingot', 1, 3], ['cooked_beef', 2, 4], ['arrow', 4, 10], ['iron_ingot', 2, 5]], shardsNeeded: 3, spawnerEveryS: 6, spawnerMax: 4, spawnerRange: 22, wardenRange: 34 },
+  kernel: { size: 128 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 

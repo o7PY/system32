@@ -7,6 +7,8 @@ import { Renderer } from './renderer.js';
 import { Mobs } from './entities.js';
 import { installHostiles, Spawner } from './hostile.js';
 import { Arrows, bowDamage, bowSpeed } from './projectiles.js';
+import { Boss } from './boss.js';
+import { ARENA, GATE } from './arena.js';
 import { MobRenderer } from './mobmodel.js';
 import { Player } from './player.js';
 import { raycast, Miner, Drops, dropsFor, useTool } from './interact.js';
@@ -49,7 +51,7 @@ const G = {
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
-let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, arrows, spawner, arrowMesh, backendInfo = { kind: '?', reason: '' };
+let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, arrows, spawner, boss = null, arrowMesh, backendInfo = { kind: '?', reason: '' };
 let chests = new Map();                       // 'x,y,z' (overworld) or 'dim|x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
 
@@ -142,6 +144,7 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   G.settings.viewDistance = Math.min(G.settings.viewDistance, OPT.low ? CONFIG.view.low : CONFIG.view.max);
   applySettings();
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); G.draw = null; ui.adOverlay(0);
+  boss = null; ui.bossBar(null); ui.logs(false); crystalHits.clear();
   const startDim = save?.player?.dim ?? 'overworld';
   G.dimEdits = { overworld: save?.edits ?? new Map(), underlayer: save?.dims?.underlayer ?? new Map() };
   G.dimDrops = { ...(save?.otherDrops ?? {}) }; G.dimAnimals = {}; G.riftT = 0; G.afterEnter = null;
@@ -225,9 +228,9 @@ function saveFlags() { const f = { ...G.flags }; if (G.deathMarker) f.death = G.
 /** Everything the save needs: the active dimension's live data, and the stashed data of the other one. */
 function saveState() {
   const ow = G.dim === 'overworld' ? world.edits : (G.dimEdits.overworld ?? new Map()), under = G.dim === 'underlayer' ? world.edits : (G.dimEdits.underlayer ?? new Map());
-  const other = { ...G.dimDrops }; delete other[G.dim];
+  const other = { ...G.dimDrops }; delete other[G.dim]; delete other.kernel;
   return {
-    seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, dim: G.dim },
+    seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: G.dim === 'kernel' ? { x: GATE.front.x, y: GATE.front.y, z: GATE.front.z, yaw: 0, pitch: 0, dim: 'underlayer' } : { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, dim: G.dim },       // the fight is not saved: quitting in the Kernel leaves you at the Gate
     inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: ow, dims: { underlayer: under },
     vitals: vitals.toJSON(), drops: drops.toJSON(), otherDrops: other, animals: G.dim === 'overworld' ? mobs.toJSON() : (G.dimAnimals.overworld ?? []), chests: Object.fromEntries(chests),
   };
@@ -510,6 +513,7 @@ function useOrPlace() {
   const hit = target(), ent = mobTarget();
   if (ent && (!hit || ent.dist <= hit.dist)) { useOnMob(ent.mob); return; }
   if (!hit) return;
+  if (hit.id === B.vault_door && G.dim === 'underlayer' && inGate(hit) && tryOpenGate()) return;
   const def = BLOCKS[hit.id];
   if (def.use && !player.sneaking) {
     if (def.use === 'crafting') openMenu('table');
@@ -584,7 +588,9 @@ function attack(m) {
   if (crit) dmg *= a.critMul;
   G.atk = 0;
   const at = { x: m.x, y: m.y + 0.5, z: m.z };
-  mobs.damage(m, dmg, { from: player.pos, knockback: a.knockback * (0.4 + 0.6 * prog), type: 'player' });
+  const ray = mobs.raycast(player.eye(), player.dir(), a.reach), e0 = player.eye(), dv = player.dir();
+  const point = ray && ray.mob === m ? { x: e0.x + dv.x * ray.dist, y: e0.y + dv.y * ray.dist, z: e0.z + dv.z * ray.dist } : { x: m.x, y: m.y + 1, z: m.z };
+  mobs.damage(m, dmg, { from: player.pos, knockback: a.knockback * (0.4 + 0.6 * prog), type: 'player', point });
   audio.play(held?.id?.startsWith('sword') ? 'hit.heavy' : 'hit.melee', { at, listener: listener(), vol: 0.9 });
   if (crit && G.settings.subtitles) ui.subtitle('Critical hit', 1200);
   if (held && ITEMS[held.id].tool) wear(inv.selected, held.id.startsWith('sword') ? 1 : 2);
@@ -626,11 +632,14 @@ function arrowEvents() {
       if (a.fire) vitals.burn = Math.max(vitals.burn, a.burnS);
       audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
     } else if (ev.type === 'hit-mob') {
-      mobs.damage(ev.mob, a.damage, { from: player.pos, knockback: 2.5, type: 'player' });
+      mobs.damage(ev.mob, a.damage, { from: player.pos, knockback: 2.5, type: 'player', point: { x: a.x, y: a.y, z: a.z } });
       audio.play('arrow.hit', { at, listener: listener(), vol: 0.9 });
       if (ev.mob.def.kind === 'hostile') ev.mob.data.angry = true;
     } else if (ev.type === 'burst') mobRenderer.puff(a.x, a.y, a.z, 8, 0xff7a2a);
-    else if (ev.type === 'stick') audio.play('arrow.hit', { at, listener: listener(), vol: 0.5 });
+    else if (ev.type === 'stick') {
+      audio.play('arrow.hit', { at, listener: listener(), vol: 0.5 });
+      if (a.mine && a.cell?.id === B.kernel_crystal) crystalHit(a.cell);
+    }
     else if (ev.type === 'pickup') { const left = inv.add(stack('arrow', 1)); if (left) drops.spawn(player.pos.x, player.pos.y + 1, player.pos.z, left); audio.play('pickup', { vol: 0.6 }); }
   }
 }
@@ -763,7 +772,8 @@ function simulate(dt) {
   // drops, furnaces, time, autosave, music
   if (G.mobsOn) {
     const ctx = hostileCtx();
-    spawner.update(dt, spawnEnv(ctx));
+    if (G.dim !== 'kernel') spawner.update(dt, spawnEnv(ctx));
+    if (boss) bossStep(dt, ctx);
     mobs.update(dt, ctx);
     arrows.update(dt, ctx.player);
     arrows.pickup({ x: player.pos.x, y: player.pos.y, z: player.pos.z });
@@ -870,13 +880,14 @@ async function travel(to, at, { afterEnter = null, text = null } = {}) {
   if (G.menu) closeMenu(false);
   G.phase = 'loading'; G.keys.clear(); G.mouseLeft = false; G.mouseRight = false; G.eat = null; G.draw = null; G.riftT = 0; ui.warp(0); ui.adOverlay(0);
   ui.progress(0.15, text ?? `Entering ${DIM_NAMES[to]}…`); ui.show('loading'); ui.hud(false);
-  G.dimEdits[from] = world.edits; G.dimDrops[from] = drops.toJSON();
+  if (from !== 'kernel') { G.dimEdits[from] = world.edits; G.dimDrops[from] = drops.toJSON(); }
   if (from === 'overworld') G.dimAnimals.overworld = mobs.toJSON();
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); drops.clear(); miner.reset();
-  await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: G.dimEdits[to] ?? new Map() });
-  G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size);
+  boss = null; ui.bossBar(null); ui.logs(false);
+  await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: to === 'kernel' ? new Map() : (G.dimEdits[to] ?? new Map()) });       // the Kernel is regenerated from scratch every time: its edits are never kept
+  G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size); ui.logs(to === 'kernel');
   G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
-  drops.load(G.dimDrops[to] ?? []);
+  drops.load(to === 'kernel' ? [] : (G.dimDrops[to] ?? []));
   if (to === 'overworld') mobs.load(G.dimAnimals.overworld ?? []);
   G.mobsOn = true;
   player.teleport(at.x, at.y, at.z); player.peakY = at.y; player.lastFall = 0;
@@ -938,6 +949,7 @@ function checkRaided() {
 
 /** Per step in the Underlayer: the sealed doors follow the saved state, the spawners spawn, the Wardens wake up when you come near. */
 function vaultTick(dt) {
+  ensureGate();
   G.vaultT -= dt;
   if (G.vaultT > 0) return;
   G.vaultT = CONFIG.vault.spawnerEveryS / 3;
@@ -991,8 +1003,80 @@ function compassHud() {
   ui.compass(true, heading, items);
 }
 
+// ---------------------------------------------------------------- the Kernel Gate and the Garbage Collector
+const inGate = (c) => c.x >= GATE.frame.x0 && c.x <= GATE.frame.x1 && c.y >= GATE.frame.y0 && c.y <= GATE.frame.y1 && c.z === GATE.z;
+/** Right click on the dark frame with the Kernel Key: the key is used up and the frame fills with a white Rift. The Gate stays open for good. */
+function tryOpenGate() {
+  if (G.flags.gate) return false;
+  const slot = inv.slots.findIndex((s) => s?.id === 'kernel_key');
+  if (slot < 0) { ui.subtitle('The frame is dark. It needs a Kernel Key.', 3000); return true; }
+  inv.takeOne(slot);
+  G.flags.gate = true; ensureGate(true);
+  audio.play('vault.open', { vol: 1 }); shake(0.8); ui.subtitle('The Gate opens. Something white hums inside.', 4500);
+  return true;
+}
+/** Make the opening match the saved state: white Rift when opened, vault-door panels while closed. */
+function ensureGate(force = false) {
+  if (G.dim !== 'underlayer' || !G.flags.gate) return;
+  const c = GATE.inner, mx = (c.x0 + c.x1) >> 1;
+  if (!world.has(mx, GATE.z)) return;
+  if (!force && world.getBlock(mx, c.y0, GATE.z) === B.rift_white) return;
+  for (let x = c.x0; x <= c.x1; x++) for (let y = c.y0; y <= c.y1; y++) if (world.getBlock(x, y, GATE.z) === B.vault_door) world.setBlock(x, y, GATE.z, B.rift_white);
+}
+
+/** Walk through the white Rift: the Kernel, a fresh arena every time, and the Garbage Collector in it. */
+function enterKernel() {
+  travel('kernel', { ...ARENA.spawn }, { text: 'Entering the Kernel…', afterEnter: () => { startBoss(); player.yaw = 0; player.pitch = 0; ui.subtitle('[gc] unreachable object found.', 4000); } });
+}
+function startBoss() {
+  boss = new Boss({ mobs, world, difficulty: vitals.difficulty });
+  boss.start();
+}
+const crystalHits = new Map();
+/** An arrow that stuck in a Kernel crystal: three of them break it. */
+function crystalHit(c) {
+  const key = `${c.x},${c.y},${c.z}`, n = (crystalHits.get(key) ?? 0) + 1;
+  crystalHits.set(key, n);
+  audio.play('boss.crystal', { at: { x: c.x + 0.5, y: c.y + 0.5, z: c.z + 0.5 }, listener: listener(), vol: 0.8 });
+  if (n >= 3) { world.setBlock(c.x, c.y, c.z, B.air); crystalHits.delete(key); mobRenderer.puff(c.x + 0.5, c.y + 0.5, c.z + 0.5, 14, 0x6dffb0); audio.play('boss.crystal', { vol: 1 }); ui.subtitle('A Kernel crystal shatters.', 2500); }
+}
+function bossStep(dt, ctx) {
+  boss.setDifficulty(vitals.difficulty);
+  const bctx = { player: { ...ctx.player, onGround: player.onGround }, hurt: ctx.hurt, knock: ctx.knock, peaceful: vitals.peaceful };
+  boss.step(dt, bctx);
+  for (const ev of boss.takeEvents()) bossEvent(ev);
+  ui.bossBar(boss.alive || boss.state === 'dying' ? boss.bar() : null);
+  if (boss.core && boss.stepCore(dt, { x: player.pos.x, y: player.pos.y, z: player.pos.z })) bossEvent({ type: 'win' });
+}
+function bossEvent(ev) {
+  const m = boss.m, at = { x: m.x, y: m.y + 3, z: m.z }, L = listener();
+  switch (ev.type) {
+    case 'shake': shake(ev.k); break;
+    case 'roar': audio.voice('warden', 'hurt', { at, listener: L, vol: 1 }); subtitle('The Garbage Collector roars', at); ui.subtitle('It is going to charge!', 1800); break;
+    case 'charge': audio.play('boss.stomp', { at, listener: L, vol: 0.8 }); break;
+    case 'swipe-wind': audio.play('sword.swing', { at, listener: L, vol: 0.6 }); break;
+    case 'swipe': audio.play('boss.stomp', { at, listener: L, vol: 0.7 }); break;
+    case 'mark': audio.play('boss.crystal', { at, listener: L, vol: 0.7 }); ui.subtitle('Marked blocks: move!', 1500); break;
+    case 'delete': audio.play('vault.open', { at, listener: L, vol: 0.5 }); break;
+    case 'stomp-wind': ui.subtitle('The ground shakes…', 1200); break;
+    case 'stomp': audio.play('boss.stomp', { at, listener: L, vol: 1 }); ui.subtitle('The core is exposed. Strike it!', 2500); break;
+    case 'phase': ui.subtitle(['', '', 'Phase 2: Sweep', 'Phase 3: Compact'][ev.phase] ?? '', 3000); break;
+    case 'pointers': ui.subtitle('Pointers!', 2000); break;
+    case 'shrink': ui.subtitle('The arena is compacting.', 2500); break;
+    case 'dying': audio.voice('warden', 'die', { at, listener: L, vol: 1 }); ui.subtitle('[gc] collection failing…', 3000); break;
+    case 'trash': mobRenderer.puff(ev.x, ev.y, ev.z, 3, 0x777777); break;
+    case 'core': ui.subtitle('A glowing core floats up. Touch it.', 5000); break;
+    case 'win': onBossDefeated(); break;
+    case 'core-hit': audio.play('hit.heavy', { at, listener: L, vol: 1 }); break;
+    case 'armor-hit': break;
+  }
+}
+/** The Garbage Collector is gone: the ending (phase 10 of the build: credits, System32.complete, the trophy). */
+function onBossDefeated() { ui.subtitle('Garbage collection complete.', 4000); }
+
 /** Standing inside a Rift for CONFIG.underlayer.riftS seconds takes you through. */
 function useRift(blockId, cell) {
+  if (BLOCKS[blockId].rift === 'white' && G.dim === 'underlayer') { enterKernel(); return; }
   if (BLOCKS[blockId].rift === 'purple' && G.dim === 'overworld') {
     const r = registerRift(cell.x, cell.y, cell.z);
     travel('underlayer', { x: r.ux + 0.5, y: 60, z: r.uz + 0.5 }, { text: 'Falling through the floor…', afterEnter: () => { const a = buildArrival(r.ux, r.uz); r.uy = a.fy; player.teleport(a.x, a.y, a.z); player.peakY = a.y; saveNow('rift'); } });
@@ -1057,7 +1141,7 @@ function frame(now) {
   }
   mobRenderer.sync(G.mobsOn && G.phase !== 'title' ? mobs.list : [], G.now, lightOf, dt);
   renderer.setTime(G.dayT, G.now);
-  renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id), light: lightOf(d.x, d.y + 0.2, d.z) })) : [], G.atlasUV);
+  renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id), light: lightOf(d.x, d.y + 0.2, d.z) })).concat(boss?.core && !boss.won ? [{ x: boss.core.x, y: boss.core.y, z: boss.core.z, spin: G.now * 2, visual: { block: B.kernel_core }, light: [0, 1], scale: 3 }] : []) : [], G.atlasUV);
   renderer.render(G.now);
   if (G.f3 && G.phase === 'playing') { G.f3Timer -= dt; if (G.f3Timer <= 0) { G.f3Timer = 0.25; ui.debug(debugText()); } }
 }
@@ -1110,7 +1194,8 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
-    travel, goto: (dim) => { const at = dim === 'underlayer' ? { x: CONFIG.underlayer.size / 2 + 0.5, y: 60, z: CONFIG.underlayer.size / 2 + 0.5 } : { ...G.spawn }; return travel(dim, at, dim === 'underlayer' ? { afterEnter: () => { const a = buildArrival(CONFIG.underlayer.size / 2, CONFIG.underlayer.size / 2); player.teleport(a.x, a.y, a.z); } } : {}); },
+    boss: () => boss, bossPhase: (n) => { if (boss) boss.m.hp = [0, 300, 200, 90][n] ?? 300; }, enterKernel,
+    travel, goto: (dim) => { if (dim === 'kernel') return enterKernel(); const at = dim === 'underlayer' ? { x: CONFIG.underlayer.size / 2 + 0.5, y: 60, z: CONFIG.underlayer.size / 2 + 0.5 } : { ...G.spawn }; return travel(dim, at, dim === 'underlayer' ? { afterEnter: () => { const a = buildArrival(CONFIG.underlayer.size / 2, CONFIG.underlayer.size / 2); player.teleport(a.x, a.y, a.z); } } : {}); },
     arrows: () => arrows, spawner: () => spawner, mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
     vitals: () => vitals, die, respawn, hold: (on) => { G.mouseRight = !!on; },
     setHealth: (n) => { vitals.hp = n; }, setHunger: (n) => { vitals.hunger = n; }, damage: (n, o) => vitals.damage(n, o),

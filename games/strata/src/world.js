@@ -117,7 +117,7 @@ export class World {
     this.genInFlight = 0; this.meshInFlight = 0;
     this.seed = seed >>> 0; this.flat = flat; this.dim = dim;
     this.noSky = dim !== 'overworld'; this.voidBelow = dim === 'kernel';
-    if (size) this.setSize(size); else if (dim === 'underlayer') this.setSize(CONFIG.underlayer.size); else if (this.mainSize) this.setSize(this.mainSize);       // back from another dimension: the overworld's own size
+    if (size) this.setSize(size); else if (dim === 'underlayer') this.setSize(CONFIG.underlayer.size); else if (dim === 'kernel') this.setSize(CONFIG.kernel.size); else if (this.mainSize) this.setSize(this.mainSize);       // back from another dimension: the overworld's own size
     this.edits = edits ?? new Map();
     await this.backend.init({ seed: this.seed, flat, dim, worldSize: this.size, height: H, sea: CONFIG.seaLevel, snow: CONFIG.snowLine, gen: CONFIG.gen, ids: this.table.ids, blocks: this.table.blocks });
   }

@@ -277,7 +277,7 @@ export class Renderer {
     this.dimension = dim;
     const c = CONFIG.underlayer, under = dim === 'underlayer', kernel = dim === 'kernel';
     if (dim === 'overworld') { this.setAmbient(0.035, [0.8, 0.85, 1]); return; }
-    this.setAmbient(under ? c.ambient : 0.05, under ? c.ambientColor : [0.35, 1, 0.55]);
+    this.setAmbient(under ? c.ambient : 0.42, under ? c.ambientColor : [0.55, 1, 0.75]);
     const fog = under ? c.fog : [0.01, 0.03, 0.02];
     this.uniforms.uFogColor.value.set(...fog); this.gl.setClearColor(new THREE.Color(...fog));
     this.uniforms.uSun.value = 0; this.uniforms.uTint.value.set(1, 1, 1);
@@ -429,7 +429,7 @@ export class Renderer {
       m.geometry = this.#dropGeometry(d.visual, atlas);
       m.material = d.visual.block !== undefined ? this.entMat : this.itemMat;
       m.position.set(d.x, d.y, d.z);
-      m.rotation.y = d.spin;
+      m.rotation.y = d.spin; m.scale.setScalar(d.scale ?? 1);
       m.userData.sky = d.light?.[0] ?? 1; m.userData.blk = d.light?.[1] ?? 0;
     });
   }

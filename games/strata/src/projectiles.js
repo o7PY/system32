@@ -30,7 +30,7 @@ export class Arrows {
         if (a.y < -40) { a.dead = true; break; }
         const id = this.world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z));
         if (BLOCKS[id]?.solid && a.fire) { a.dead = true; this.events.push({ type: 'burst', arrow: a }); break; }
-        if (BLOCKS[id]?.solid) { a.x = px; a.y = py; a.z = pz; a.stuck = true; a.stuckAt = a.age; a.wobble = 1; a.vx = a.vy = a.vz = 0; this.events.push({ type: 'stick', arrow: a }); break; }
+        if (BLOCKS[id]?.solid) { a.cell = { x: Math.floor(a.x), y: Math.floor(a.y), z: Math.floor(a.z), id }; a.x = px; a.y = py; a.z = pz; a.stuck = true; a.stuckAt = a.age; a.wobble = 1; a.vx = a.vy = a.vz = 0; this.events.push({ type: 'stick', arrow: a }); break; }
         if (a.mine) {
           const hit = this.mobs?.raycast({ x: px, y: py, z: pz }, norm(a.x - px, a.y - py, a.z - pz), Math.hypot(a.x - px, a.y - py, a.z - pz) + 0.05);
           if (hit) { a.dead = true; this.events.push({ type: 'hit-mob', arrow: a, mob: hit.mob }); break; }

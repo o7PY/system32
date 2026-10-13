@@ -221,6 +221,10 @@
   "bed_pillow": {
    "generate": true,
    "note": "cream pillow on the red blanket"
+  },
+  "memory_marked": {
+   "generate": true,
+   "note": "a memory block the Garbage Collector has marked for deletion: glowing red grid"
   }
  },
  "items": {

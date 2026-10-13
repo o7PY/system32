@@ -246,6 +246,7 @@ export class Mobs {
    */
   damage(m, amount, opts = {}) {
     if (m.dead || amount <= 0) return { killed: false, drops: [] };
+    if (m.data.modify) { amount = m.data.modify(amount, opts); if (amount <= 0) return { killed: false, drops: [] }; }          // a boss decides how much of a hit counts
     if (m.def.shield && m.data.shield > 0) {                                                   // a Warden behind its shield can only be hit from behind
       const fx = -Math.sin(m.yaw), fz = -Math.cos(m.yaw), from = opts.from;
       const front = from ? (from.x - m.x) * fx + (from.z - m.z) * fz : 1;
@@ -253,11 +254,12 @@ export class Mobs {
     }
     m.hp -= amount; m.hurtT = 0.35; m.barT = 3; m.data.angry = true;
     this.events.push({ type: 'hurt', mob: m });
-    if (opts.from) {
+    if (opts.from && !m.def.heavy) {
       const dx = m.x - opts.from.x, dz = m.z - opts.from.z, d = Math.hypot(dx, dz) || 1, k = opts.knockback ?? 0;
       m.vx += dx / d * k; m.vz += dz / d * k; if (k) m.vy = Math.max(m.vy, 4.2);
       if (m.def.kind === 'passive') { m.state = 'flee'; m.fleeFrom = { x: opts.from.x, z: opts.from.z }; m.t = 4; }
     }
+    if (m.hp <= 0 && m.def.boss && m.data.modify) { m.hp = 0; return { killed: false, drops: [], down: true }; }      // a boss does its own dying (boss.js)
     if (m.hp <= 0) return { killed: true, drops: this.#die(m, opts) };
     return { killed: false, drops: [] };
   }

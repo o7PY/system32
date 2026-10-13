@@ -39,7 +39,7 @@ function step(mobs, arrows, m, dt, ctx) {
     m.data.lag = 0; m.lagging = false;
   }
 
-  if (ctx.peaceful) { mobs.remove(m); return; }                                   // switching to Peaceful clears the monsters
+  if (ctx.peaceful && !d.boss && !d.minion) { mobs.remove(m); return; }                                   // switching to Peaceful clears the monsters
 
   // ---- targeting: sees the player within `sight` blocks (and a spider is neutral by day until it is hit)
   const calm = d.neutralByDay && !m.data.angry && daylight(ctx.dayT) > 0.5;
@@ -52,6 +52,8 @@ function step(mobs, arrows, m, dt, ctx) {
     case 'archer': return archer(mobs, arrows, m, dt, ctx, dist);
     case 'spider': return spider(mobs, m, dt, ctx, dist);
     case 'popup': return popup(mobs, m, dt, ctx, dist);
+    case 'boss': return;                                                          // driven by boss.js (called by the game before mobs.update)
+    case 'pointer': return pointer(mobs, m, dt, ctx, dist);
     case 'warden': return warden(mobs, m, dt, ctx, dist);
     case 'daemon': return daemon(mobs, arrows, m, dt, ctx, dist);
     case 'glitch': return glitch(mobs, m, dt, ctx, dist);
@@ -171,6 +173,25 @@ function popup(mobs, m, dt, ctx, dist) {
   m.vy += ((dy / dd) * sp * 0.8 + Math.sin(m.age * 3) * 0.4 - m.vy) * Math.min(1, 3 * dt);
   m.yaw += ((Math.atan2(-dx, -dz)) - m.yaw) * Math.min(1, 5 * dt);
   if (dd < d.contact.range && m.data.cool <= 0) { m.data.cool = d.contact.everyS; mobs.events.push({ type: 'overlay', mob: m, seconds: d.contact.overlayS }); }
+}
+
+/** A Pointer: a small flying cube that hovers over you and dives at you every few seconds (3 dmg), then climbs back. Kill it with a swing as it dives or with an arrow. */
+function pointer(mobs, m, dt, ctx, dist) {
+  const d = m.def, P = ctx.player, c = d.dive, dx = P.x - m.x, dz = P.z - m.z;
+  m.data.diveIn = (m.data.diveIn ?? c.everyS * (0.5 + mobs.rand())) - dt;
+  if (m.data.diving > 0) {
+    m.data.diving -= dt;
+    const tx = P.x - m.x, ty = P.y + 1.0 - m.y, tz = P.z - m.z, dd = Math.hypot(tx, ty, tz) || 1;
+    m.vx = tx / dd * c.speed; m.vy = ty / dd * c.speed; m.vz = tz / dd * c.speed; m.driven = true;
+    if (dd < 1.0 && !m.data.diveHit) { m.data.diveHit = true; hitPlayer(mobs, m, ctx, c.damage, 5); m.data.diving = 0; }
+    if (m.data.diving <= 0) m.data.diveIn = c.everyS;
+    return;
+  }
+  m.data.diveHit = false;
+  const a = m.age * 0.9 + m.id, hx = P.x + Math.cos(a) * 3, hz = P.z + Math.sin(a) * 3, hy = P.y + c.hover;
+  m.vx += (hx - m.x) * 2.2 * dt - m.vx * 1.6 * dt; m.vz += (hz - m.z) * 2.2 * dt - m.vz * 1.6 * dt; m.vy += (hy - m.y) * 3 * dt - m.vy * 2 * dt; m.driven = true;
+  m.yaw += (Math.atan2(-dx, -dz) - m.yaw) * Math.min(1, 6 * dt);
+  if (m.data.diveIn <= 0 && dist < 22) { m.data.diving = c.durS; mobs.events.push({ type: 'dive', mob: m }); }
 }
 
 /** The Vault Warden: slow, heavy melee with knockback, and every 10 s a 3 s shield phase where only a hit from behind counts. It never leaves its room (no pathing needed: the room is open). */

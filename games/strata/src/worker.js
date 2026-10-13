@@ -110,6 +110,7 @@
 
   function generate(cx, cz) {
     if (cfg.dim === 'underlayer') return genUnderlayer(cx, cz);
+    if (cfg.dim === 'kernel') return genKernel(cx, cz);
     var data = new Uint8Array(CS * CS * H), biomes = new Uint8Array(CS * CS);
     var ox = cx * CS, oz = cz * CS, lx, lz, y;
     if (cfg.flat) {
@@ -208,7 +209,8 @@
   /** A dry grassy column near the middle of the world, found by spiralling out. Returns the feet position. */
   function spawn() {
     var mid = cfg.worldSize / 2;
-    if (cfg.dim === 'underlayer') return { x: mid + 0.5, y: 41, z: mid + 0.5 };
+    if (cfg.dim === 'underlayer') return { x: mid + 0.5, y: 41, z: mid + 5.5 };
+    if (cfg.dim === 'kernel') return { x: 64.5, y: 61, z: 92.5 };
     if (cfg.flat) return { x: mid + 0.5, y: cfg.sea + 1, z: mid + 0.5 };
     for (var r = 0; r < 600; r += 2) {
       for (var a = 0; a < Math.max(1, r * 2); a++) {
@@ -384,6 +386,37 @@
     }
   }
 
+  // ---- the Kernel Gate in the middle of the Underlayer: a rack frame (x 253..259, y 40..48 at z 256) around a dark opening of vault_door blocks, a low rack ring around it
+  function gateCell(x, y, z) {
+    var dx = x - 256, dz = z - 256;
+    if (Math.abs(dz) > 7 || Math.abs(dx) > 8 || y < 40 || y > 52) return -1;
+    if (dz === 0 && x >= 253 && x <= 259 && y >= 40 && y <= 48) {                                           // the frame
+      if (x >= 254 && x <= 258 && y >= 41 && y <= 47) return id.vault_door;                                    // the dark opening (a white Rift once the key is used)
+      return id.server_rack;
+    }
+    if (Math.abs(dz) === 7 && Math.abs(dx) <= 5 && y <= 42) return id.server_rack;                          // a low ring of racks round it (north and south walls with gaps at the corners)
+    if (Math.abs(dx) === 8 && Math.abs(dz) <= 6 && y <= 42 && (dz & 1) === 0) return id.server_rack;
+    if (y === 40 && Math.abs(dz) <= 6 && Math.abs(dx) <= 7) return id.basalt;                                // a clean floor
+    if (y > 40 && y <= 52 && Math.abs(dz) <= 6 && Math.abs(dx) <= 7) return id.air;
+    return -1;
+  }
+
+  // ---- the Kernel arena (dim 'kernel'): a floating 64-block platform of memory blocks (3 layers) over a void, with four crystal pillars. Everything is a function of (x, y, z).
+  function arenaCell(x, y, z) {
+    var dx = x + 0.5 - 64, dz = z + 0.5 - 64, r = Math.hypot(dx, dz);
+    if (y >= 58 && y <= 60 && r <= 32) return id.memory_block;
+    var cr = [[44, 44], [84, 44], [44, 84], [84, 84]], i;
+    for (i = 0; i < 4; i++) {
+      if (x === cr[i][0] && z === cr[i][1]) { if (y >= 61 && y <= 66) return id.memory_block; if (y === 67) return id.kernel_crystal; }
+    }
+    return id.air;
+  }
+  function genKernel(cx, cz) {
+    var data = new Uint8Array(CS * CS * H), biomes = new Uint8Array(CS * CS), lx, lz, y, ox = cx * CS, oz = cz * CS;
+    for (lz = 0; lz < CS; lz++) for (lx = 0; lx < CS; lx++) for (y = 56; y <= 70; y++) { var b = arenaCell(ox + lx, y, oz + lz); if (b) data[(y << 8) | (lz << 4) | lx] = b; }
+    return { data: data, biomes: biomes };
+  }
+
   function genUnderlayer(cx, cz) {
     var data = new Uint8Array(CS * CS * H), biomes = new Uint8Array(CS * CS), ox = cx * CS, oz = cz * CS, lx, lz, y;
     for (lz = 0; lz < CS; lz++) for (lx = 0; lx < CS; lx++) {
@@ -411,6 +444,7 @@
       if (!flat && fl > 21 && noise2(x * 0.05 - 200, z * 0.05 + 100) > 0.2 && rand01(x, 31, z, 3) < 0.07) { var g = data[((fl + 1) << 8) | (lz << 4) | lx]; if (g === id.air && data[(fl << 8) | (lz << 4) | lx] !== id.lava) data[((fl + 1) << 8) | (lz << 4) | lx] = id.glowcap; }
     }
     vaultStamps(data, cx, cz);
+    if (cx >= 15 && cx <= 16 && cz >= 15 && cz <= 16) stamp(data, cx, cz, 248, 40, 249, 264, 52, 263, function (x, y, z) { return gateCell(x, y, z); });
     return { data: data, biomes: biomes };
   }
 
@@ -643,7 +677,7 @@
     return true;
   }
   var API = {
-    init: init, generate: generate, mesh: mesh, crackSites: crackSites, vaultSites: vaults, vaultCell: vaultCell, underFloor: underFloor, underCeil: underCeil, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
+    init: init, generate: generate, mesh: mesh, crackSites: crackSites, vaultSites: vaults, vaultCell: vaultCell, gateCell: gateCell, arenaCell: arenaCell, underFloor: underFloor, underCeil: underCeil, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
     noise2: function (x, y) { return noise2(x, y); }, noise3: function (x, y, z) { return noise3(x, y, z); },
     ao: function (s1, s2, c) { return s1 && s2 ? 0 : 3 - (s1 + s2 + c); },
     BIOME: { PLAINS: PLAINS, FOREST: FOREST, DESERT: DESERT, MOUNTAINS: MOUNTAINS, BEACH: BEACH, OCEAN: OCEAN },

@@ -1341,4 +1341,118 @@ test('the Tracer and the compass strip: N, E, S, W follow where you look; the de
   if (!c.some((x) => /◆ Gate/.test(x.t))) throw new Error('with a key the Tracer should point at the Gate: ' + JSON.stringify(c));
 });
 
+// ------------------------------------------------------------------ Part 2: the Kernel Gate and the Garbage Collector
+const toGate = async (p) => {
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.G.fakeLock = true; S.vitals().hunger = 20; })()`);
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the Underlayer' });
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 1e9; S.tp(256.5, 41, 261.5); S.face(0, 0.1); })()`);
+  await p.waitFor(`__STRATA.world().has(256, 256) && __STRATA.getBlock(256, 44, 256) !== 0`, { what: 'the gate chunk', timeout: 60000 });
+  await sleep(300);
+};
+
+test('the Kernel Gate: dark until a Kernel Key is used (the key is consumed), then a white Rift that stays open; walking in takes you to the Kernel arena', async (p) => {
+  await flat(p);
+  await toGate(p);
+  const ids = await S(p, `S.world().table.ids`);
+  // aim at the frame's opening
+  await p.eval(`(() => { const S = __STRATA, e = S.player().eye(); const dx = 256.5 - e.x, dz = 256.5 - e.z, dy = 44.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); })()`);
+  await sleep(150);
+  const hit = await S(p, `S.target()`);
+  if (!hit || hit.id !== ids.vault_door) throw new Error('not aiming at the dark opening: ' + JSON.stringify(hit));
+  await p.eval(`__STRATA.useOrPlace()`);
+  if (!/needs a Kernel Key/.test(await S(p, `document.getElementById('subtitle').textContent`)) || (await S(p, `S.G.flags.gate`))) throw new Error('without a key the gate must stay dark');
+  await p.eval(`(() => { const S = __STRATA; S.give('kernel_shard', 3); S.give('kernel_key'); })()`);
+  await p.eval(`__STRATA.useOrPlace()`);
+  if (!(await S(p, `S.G.flags.gate`)) || (await S(p, `S.inv().count('kernel_key')`)) !== 0) throw new Error('the key was not used up');
+  const frame = await S(p, `(() => { let w = 0, d = 0, r = 0; for (let x = 254; x <= 258; x++) for (let y = 41; y <= 47; y++) { const b = S.getBlock(x, y, 256); if (b === S.world().table.ids.rift_white) w++; else if (b === S.world().table.ids.vault_door) d++; else r++; } return { w, d, r }; })()`);
+  if (frame.w !== 35 || frame.d !== 0) throw new Error('the frame should be 35 white Rift blocks: ' + JSON.stringify(frame));
+  // the state is saved: after a load the opening is still white
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' && __STRATA.state().dim === 'underlayer'`, { timeout: 90000 });
+  await p.waitFor(`__STRATA.world().has(256, 256) && __STRATA.getBlock(256, 44, 256) === __STRATA.world().table.ids.rift_white`, { what: 'the open gate after the load', timeout: 30000 });
+  // walk in
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 1e9; S.tp(256.5, 41, 256.5); })()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the Kernel' });
+  const k = await S(p, `({ size: S.world().size, noSky: S.world().noSky, voidBelow: S.world().voidBelow, pos: { ...S.player().pos }, boss: S.mobs().list.filter((m) => m.type === 'gc').length, bar: !document.getElementById('bossbar').hidden, logs: !document.getElementById('logs').hidden, floor: S.getBlock(64, 60, 70), crystals: S.state().dim })`);
+  if (k.size !== 128 || !k.noSky || !k.voidBelow || k.boss !== 1 || !k.logs || k.floor !== (await S(p, `S.world().table.ids.memory_block`))) throw new Error(JSON.stringify(k));
+  await p.waitFor(`!document.getElementById('bossbar').hidden`, { what: 'the boss bar' });
+  const bar = await S(p, `({ name: document.getElementById('bossbar').firstElementChild.textContent, w: document.getElementById('bossbar').lastElementChild.firstElementChild.style.width })`);
+  if (bar.name !== 'The Garbage Collector' || bar.w !== '100%') throw new Error(JSON.stringify(bar));
+  const gc = await S(p, `(() => { const m = S.mobs().list.find((x) => x.type === 'gc'); return { hp: m.hp, h: m.h, w: m.w }; })()`);
+  if (gc.hp !== 300 || gc.h < 8) throw new Error(JSON.stringify(gc));
+});
+
+test('the fight in the real game: marks glow red then vanish and the player falls and dies in the void keeping his inventory; Kernel and Pointers; the exposed core takes double; leaving mid-fight puts you back at the Gate', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.G.fakeLock = true; S.give('cobblestone', 9); S.giveKit('cobalt'); S.vitals().hunger = 20; S.vitals().hp = 20; })()`);
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && !!__STRATA.boss()`, { timeout: 90000, what: 'the Kernel fight' });
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.G.fakeLock = true; })()`);
+  // restart the boss cleanly (killAll removed it)
+  await p.eval(`(() => { const S = __STRATA; S.enterKernel(); })()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && !!__STRATA.boss() && __STRATA.mobs().list.some((m) => m.type === 'gc')`, { timeout: 90000, what: 'a fresh fight' });
+  const ids = await S(p, `S.world().table.ids`);
+  // a mark under the player: glow red now, gone 3 s later
+  await p.eval(`(() => { const S = __STRATA, b = S.boss(); b.markIn = 0; S.tp(64.5, 61, 80.5); b.m.hp = 300; })()`);
+  await p.waitFor(`__STRATA.world().getBlock(64, 60, 80) === ${ids.memory_marked}`, { what: 'the block under the player to be marked', timeout: 12000 });
+  const mid = await S(p, `({ marked: [...Array(40)].reduce((n, _, i) => n + (S.getBlock(64 + (i % 8) - 4, 60, 80 + Math.floor(i / 8) - 2) === ${ids.memory_marked} ? 1 : 0), 0), subtitle: document.getElementById('subtitle').textContent })`);
+  if (mid.marked < 4) throw new Error('marks: ' + JSON.stringify(mid));
+  await p.waitFor(`__STRATA.world().getBlock(64, 60, 80) === 0`, { what: 'the marked block to be deleted', timeout: 6000 });
+  // standing on it: fell into the void, died, kept the inventory
+  await p.waitFor(`__STRATA.state().phase === 'dead'`, { what: 'the void', timeout: 15000 });
+  const dead = await S(p, `({ cause: document.getElementById('death-cause').textContent, cobble: S.inv().count('cobblestone'), armor: S.vitals().armorPoints, pile: S.drops().list.filter((d) => d.death).length, note: document.getElementById('death-note').textContent })`);
+  if (dead.cause !== 'Fell out of the world' || dead.cobble !== 9 || dead.armor !== 20 || dead.pile !== 0 || !/keep your items/.test(dead.note)) throw new Error('death in the Kernel keeps everything: ' + JSON.stringify(dead));
+  await p.eval(`document.getElementById('b-respawn').click()`);
+  await p.waitFor(`__STRATA.state().dim === 'overworld' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'back on the surface' });
+  if ((await S(p, `S.inv().count('cobblestone')`)) !== 9) throw new Error('lost the inventory');
+  if ((await S(p, `!!S.boss()`))) throw new Error('the boss survived leaving the Kernel');
+  // enter again: the arena is whole (regenerated from scratch), the boss at full health
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && __STRATA.mobs().list.some((m) => m.type === 'gc')`, { timeout: 90000 });
+  const whole = await S(p, `({ hole: S.getBlock(64, 60, 80), hp: S.mobs().list.find((m) => m.type === 'gc').hp, crystals: S.boss().crystalsStanding() })`);
+  if (whole.hole !== ids.memory_block || whole.hp !== 300 || whole.crystals !== 4) throw new Error('the arena was not regenerated: ' + JSON.stringify(whole));
+  // phase 2 brings Pointers
+  await p.eval(`(() => { const S = __STRATA; S.vitals().invuln = 1e9; S.bossPhase(2); })()`);
+  await p.waitFor(`__STRATA.mobs().list.filter((m) => m.type === 'pointer').length === 4`, { what: 'four Pointers', timeout: 8000 });
+  // the core is exposed after a stomp: a hit on it does double (read from the boss's own rule)
+  const dmg = await S(p, `(() => { const b = S.boss(), m = b.m; b.state = 'kneel'; m.yaw = 0; const hp = m.hp; S.mobs().damage(m, 8, { from: { x: m.x, z: m.z + 4 }, point: { x: m.x, y: m.y + 4.4, z: m.z - 1.5 }, type: 'player' }); return hp - m.hp; })()`);
+  if (dmg !== 16) throw new Error('an exposed core hit should do 16: ' + dmg);
+  // quitting mid-fight: the save puts you back at the Gate
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' && __STRATA.state().dim === 'underlayer'`, { timeout: 90000 });
+  const at = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z, boss: !!S.boss() })`);
+  if (Math.abs(at.x - 256.5) > 1 || Math.abs(at.z - 261.5) > 1 || at.boss) throw new Error('after loading a save made in the Kernel: ' + JSON.stringify(at));
+});
+
+test('Kernel crystals: a cobalt pickaxe breaks one in 3 s, 3 arrows break one, and the boss stops healing with fewer than 2 left; the core floats up when it falls and touching it fires the win', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.G.fakeLock = true; S.give('pickaxe_cobalt'); S.give('bow'); S.give('arrow', 12); S.vitals().invuln = 1e9; })()`);
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && __STRATA.mobs().list.some((m) => m.type === 'gc')`, { timeout: 90000 });
+  const ids = await S(p, `S.world().table.ids`);
+  await p.eval(`(() => { const S = __STRATA, b = S.boss(); b.markIn = 1e9; b.chargeIn = 1e9; b.m.def = { ...b.m.def, speed: 0 }; b.state = 'walk'; })()`);
+  const cr = await S(p, `S.boss().constructor.name && [...Array(4)].map((_, i) => ({ x: [44, 84, 44, 84][i], y: 67, z: [44, 44, 84, 84][i] }))`);
+  // 3 s with a cobalt pickaxe: stand on top of the pillar's neighbour... use the hook: break it as the game would (breakInfo says 3 s)
+  const t = await p.eval(`import('/games/strata/src/interact.js').then((m) => m.breakInfo(${ids.kernel_crystal}, { id: 'pickaxe_cobalt', n: 1, dur: 900 }).time)`);
+  if (Math.abs(t - 3) > 1e-9) throw new Error('crystal time ' + t);
+  // 3 arrows: shoot a crystal from the platform
+  await p.eval(`(() => { const S = __STRATA; S.tp(44.5, 61, 56.5); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'bow')); })()`);
+  const shoot = async () => { await p.eval(`(() => { const S = __STRATA, e = S.player().eye(); const dx = 44.5 - e.x, dz = 44.5 - e.z, d = Math.hypot(dx, dz), lift = 0.5 * 22 * Math.pow(d / 36, 2), dy = 67.5 + lift - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, d)); })()`); await sleep(100); await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 400, y: 225, button: 'right', clickCount: 1 }); await sleep(1100); await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 400, y: 225, button: 'right', clickCount: 1 }); await sleep(900); };
+  for (let i = 0; i < 3; i++) await shoot();
+  if ((await S(p, `S.getBlock(44, 67, 44)`)) !== 0) throw new Error('3 arrows did not break the crystal (' + (await S(p, `S.getBlock(44, 67, 44)`)) + ')');
+  if ((await S(p, `S.boss().crystalsStanding()`)) !== 3) throw new Error('crystal count');
+  // the ending hook: kill the boss; the core appears, floats up, touching it fires the win once
+  await p.eval(`(() => { const S = __STRATA, b = S.boss(); S.tp(64.5, 61, 80.5); S.mobs().damage(b.m, 9999, { from: { x: 64, z: 80 }, type: 'player' }); b.m.hp = 0; })()`);
+  await p.waitFor(`!!__STRATA.boss().core`, { what: 'the core', timeout: 12000 });
+  const c0 = await S(p, `({ ...S.boss().core })`);
+  await sleep(1800);
+  const c1 = await S(p, `({ ...S.boss().core })`);
+  if (!(c1.y > c0.y + 0.4 && c1.y > 62.9)) throw new Error('the core did not float up: ' + JSON.stringify([c0, c1]));
+  await p.eval(`(() => { const S = __STRATA, c = S.boss().core; S.tp(c.x, c.y - 0.9, c.z); })()`);
+  await p.waitFor(`__STRATA.boss().won === true`, { what: 'the win', timeout: 8000 });
+});
+
 s.run();

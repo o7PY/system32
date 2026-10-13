@@ -72,6 +72,7 @@ const DEFS = [
   { name: 'wool', tiles: all('wool'), hardness: 0.8, drop: ['wool', 1, 1], group: 'grass' },
   ...['n', 's', 'e', 'w'].map((d) => ({ name: `chest_${d}`, kind: 'box', box: [1, 0, 1, 15, 14, 15], tiles: facing(d, 'chest_top', 'planks', 'chest_side', 'chest_front'), solid: true, hardness: 2.5, tool: 'axe', drop: ['chest', 1, 1], group: 'wood', use: 'chest', item: 'chest', variant: d !== 's' })),
   ...['n', 's', 'e', 'w'].flatMap((d) => [['foot', 'bed_top'], ['head', 'bed_pillow']].map(([part, top]) => ({ name: `bed_${part}_${d}`, kind: 'box', box: [0, 0, 0, 16, 9, 16], tiles: facing(d, top, 'planks', 'bed_side', 'bed_side'), solid: true, hardness: 0.4, drop: ['bed', 1, 1], group: 'wood', use: 'bed', item: 'bed', variant: true, bed: { part, dir: d } }))),
+  { name: 'memory_marked', tiles: all('memory_marked'), hardness: 1.5, tool: 'pickaxe', group: 'glass', emit: 9, item: false },
 ];
 
 export const BLOCKS = DEFS.map((d, id) => ({

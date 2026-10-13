@@ -134,3 +134,8 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 #bossbar div { height: 12px; background: rgba(0, 0, 0, .7); border: 2px solid #000; margin-top: 2px; }
 #bossbar i { display: block; height: 100%; width: 100%; background: #b13a3a; }
 #bossbar.green i { background: #3ab16a; }
+
+/* ---- the Kernel: a starless black sky with drifting green log text in the distance */
+#logs { position: fixed; inset: 0; pointer-events: none; overflow: hidden; color: #2cff8a; font: 14px/1.5 ui-monospace, monospace; opacity: .5; mix-blend-mode: screen; z-index: 0; }
+#logs div { position: absolute; white-space: nowrap; animation: drift linear infinite; text-shadow: 0 0 6px #0f6; }
+@keyframes drift { from { transform: translateX(110vw); } to { transform: translateX(-110%); } }
