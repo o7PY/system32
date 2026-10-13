@@ -5,7 +5,7 @@ import { ITEMS, stack, itemInfo } from '../../games/strata/src/items.js';
 import { Player } from '../../games/strata/src/player.js';
 import { raycast, breakInfo, dropFor, useTool, Miner, Drops } from '../../games/strata/src/interact.js';
 import { matchRecipe, Furnace } from '../../games/strata/src/crafting.js';
-import { Inventory, Menu } from '../../games/strata/src/inventory.js';
+import { Inventory, Menu, catalog, categoryOf, CATEGORIES } from '../../games/strata/src/inventory.js';
 
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !extra ? '' : `\n      ${extra}`}`); if (!ok) fails++; };
@@ -270,6 +270,25 @@ const floorWorld = () => new Grid().fill(-50, 0, -50, 50, 10, 50, B.stone);     
   check('recipe: a Kernel Key is 3 Kernel Shards in a row (any row, a table); two shards or a column make nothing', matchRecipe(['kernel_shard', 'kernel_shard', 'kernel_shard'], 3, 1)?.out.id === 'kernel_key' && matchRecipe(['kernel_shard', 'kernel_shard', null], 3, 1) === null && matchRecipe(['kernel_shard', 'kernel_shard', 'kernel_shard', null, null, null, null, null, null], 3)?.out.id === 'kernel_key');
   check('recipe: the Tracer is a ring of 8 iron ingots around 1 cobalt ingot', matchRecipe(['iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'cobalt_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot'], 3)?.out.id === 'tracer' && matchRecipe(['iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot'], 3) === null);
   check('Kernel Shards stack to 3 (a Key is 3), the Key and the Tracer stack to 1', ITEMS.kernel_shard.stack === 3 && ITEMS.kernel_key.stack === 1 && ITEMS.tracer.stack === 1);
+  // Creative catalog
+  {
+    const all = catalog(), ids = new Set(all.map((e) => e.id));
+    check('Creative catalog: every item of the game is in it exactly once', all.length === Object.keys(ITEMS).length && Object.keys(ITEMS).every((i) => ids.has(i)) && ids.size === all.length);
+    const order = (list) => list.every((e, i) => i === 0 || CATEGORIES.indexOf(list[i - 1].category) < CATEGORIES.indexOf(e.category) || (list[i - 1].category === e.category && list[i - 1].name.localeCompare(e.name) <= 0));
+    check('...sorted by category (Blocks, Tools & Weapons, Armor, Food, Materials) and by name inside each', order(all) && all[0].category === 'Blocks' && all.at(-1).category === 'Materials');
+    check('every category has items; the tabs split the list without losing any', CATEGORIES.every((c) => catalog('', c).length > 0) && CATEGORIES.reduce((n, c) => n + catalog('', c).length, 0) === all.length && categoryOf('pickaxe_cobalt') === 'Tools & Weapons' && categoryOf('iron_helmet') === 'Armor' && categoryOf('cooked_beef') === 'Food' && categoryOf('torch') === 'Blocks' && categoryOf('kernel_shard') === 'Materials');
+    check('search: case-insensitive, by name or id, several words in any order, nothing for nonsense', catalog('COBALT').length >= 8 && catalog('cobalt').every((e) => /cobalt/i.test(e.name)) && catalog('pickaxe cobalt').map((e) => e.id).join() === 'pickaxe_cobalt' && catalog('cobalt pickaxe').length === 1 && catalog('zzzzqq').length === 0 && catalog('stone', 'Blocks').length >= 3 && catalog('cobalt', 'Armor').every((e) => e.category === 'Armor'));
+    const m = new Menu(new Inventory(), 'creative');
+    check('the Creative screen lists everything at first; searching narrows it live', m.list.length === all.length && (m.search('torch'), m.list.length === 1 && m.list[0].id === 'torch') && (m.search('', 'Food'), m.list.every((e) => e.category === 'Food')));
+    m.search('cobblestone', 'All');
+    check('a click takes a full stack (64) into the inventory, a right-click one; with something on the cursor a click deletes it', m.click('cat', 0, 'left') && m.inv.count('cobblestone') === 64 && m.click('cat', 0, 'right') && m.inv.count('cobblestone') === 65 && (m.cursor = { id: 'dirt', n: 5 }, m.click('cat', 0, 'left') && m.cursor === null));
+    m.search('pickaxe cobalt', 'All'); m.click('cat', 0, 'left');
+    check('a tool comes with full durability and a stack of 1', m.inv.slots.some((s) => s?.id === 'pickaxe_cobalt' && s.dur === 900 && s.n === 1));
+    m.cursor = { id: 'dirt', n: 3 };
+    check('the trash slot deletes the cursor stack', m.click('trash', 0) && m.cursor === null && !m.click('trash', 0));
+    const full = new Menu(Object.assign(new Inventory(), {}), 'creative'); full.inv.slots.fill({ id: 'dirt', n: 64 }); full.search('torch');
+    check('with a full inventory a click gives nothing (and does not crash)', full.click('cat', 0, 'left') === false);
+  }
 }
 
 console.log(`\nStrata logic: ${fails ? `${fails} FAILED` : 'all passed'}`);

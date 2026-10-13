@@ -1498,4 +1498,96 @@ test('the ending: the win shows a terminal log, then the credits (skippable only
   if (!/🏆.*2:05/.test(await S(p, `document.getElementById('title-trophy').textContent`))) throw new Error('trophy line');
 });
 
+// ------------------------------------------------------------------ Creative mode
+test('Creative: chosen at New World; E opens a searchable, sorted catalog of every item; clicking gives items; nothing is used up; blocks break at once and drop nothing; no damage or hunger; double-tap Space flies; the mode is saved', async (p) => {
+  await boot(p, '&flat=1');
+  await p.eval(`document.querySelector('[data-act="new"]').click()`);
+  const opts = await S(p, `[...document.querySelectorAll('#new-mode option')].map((o) => o.value)`);
+  if (opts.join() !== 'survival,creative') throw new Error('mode choices ' + opts);
+  await p.eval(`(() => { document.getElementById('new-mode').value = 'creative'; })()`);
+  await p.eval(`document.getElementById('b-start-new').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' || __STRATA.state().phase === 'paused'`, { timeout: 90000, what: 'a creative world' });
+  await p.eval(`(() => { const S = __STRATA; S.G.fakeLock = true; S.G.phase = 'playing'; S.ui().show(null); S.ui().hud(true); S.killAll(); S.spawner().t = 1e9; })()`);
+  if ((await S(p, `S.G.flags.mode`)) !== 'creative' || !(await S(p, `S.G.creative`))) throw new Error('mode not set');
+  await p.eval(`__STRATA.settle(2)`);
+  await p.waitFor(`__STRATA.state().onGround`, { what: 'standing', timeout: 30000 });
+  if (!(await S(p, `document.getElementById('vitals').hidden`))) throw new Error('hearts shown in creative');
+  // E opens the catalog
+  await tap(p, 'e');
+  await p.waitFor(`__STRATA.state().menu === 'creative'`, { what: 'the creative screen' });
+  const total = await S(p, `({ n: document.querySelectorAll('#s-inv .catgrid .slot').length, all: document.querySelector('.crnote').textContent })`);
+  const want = await p.eval(`import('/games/strata/src/items.js').then((m) => Object.keys(m.ITEMS).length)`);
+  if (total.n !== want) throw new Error(`catalog shows ${total.n} of ${want} items`);
+  const tabs = await S(p, `[...document.querySelectorAll('#s-inv .tab')].map((t) => t.textContent)`);
+  if (tabs.join() !== 'All,Blocks,Tools & Weapons,Armor,Food,Materials') throw new Error('tabs ' + tabs);
+  // sorted: names in the first (Blocks) group are alphabetical
+  const names = await S(p, `[...document.querySelectorAll('#s-inv .catgrid .slot')].slice(0, 12).map((s) => s.dataset.i)`);
+  void names;
+  const firstNames = await S(p, `S.G.menu.list.slice(0, 30).filter((e) => e.category === 'Blocks').map((e) => e.name)`);
+  if (JSON.stringify(firstNames) !== JSON.stringify([...firstNames].sort((a, b) => a.localeCompare(b)))) throw new Error('not sorted: ' + firstNames);
+  // search by typing in the box (the game keys must not trigger)
+  await p.eval(`(() => { const i = document.getElementById('cr-search'); i.focus(); })()`);
+  for (const ch of 'cobalt') { await p.send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch }); await p.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch }); }
+  await sleep(200);
+  const found = await S(p, `({ n: document.querySelectorAll('#s-inv .catgrid .slot').length, menu: S.state().menu, val: document.getElementById('cr-search').value, focus: document.activeElement?.id })`);
+  if (found.val !== 'cobalt' || found.menu !== 'creative' || found.n < 8 || found.n > 20 || found.focus !== 'cr-search') throw new Error('search: ' + JSON.stringify(found));
+  // click the first result: a stack arrives; a tab narrows further
+  const press = async (sel, button = 'left') => { const [x, y] = await S(p, `(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: 1 }); await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: 1 }); await sleep(120); };
+  await press('.tab[data-tab="Armor"]');
+  const armor = await S(p, `S.G.menu.list.map((e) => e.id)`);
+  if (armor.length !== 4 || !armor.every((i) => /^cobalt_/.test(i))) throw new Error('armor tab ' + armor);
+  await p.eval(`(() => { const i = document.getElementById('cr-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+  await press('.tab[data-tab="Blocks"]');
+  await p.eval(`(() => { const i = document.getElementById('cr-search'); i.value = 'cobblestone'; i.dispatchEvent(new Event('input')); })()`);
+  await press('#s-inv .catgrid .slot');
+  if ((await S(p, `S.inv().count('cobblestone')`)) !== 64) throw new Error('a click should give 64');
+  await p.eval(`(() => { const i = document.getElementById('cr-search'); i.value = 'pickaxe cobalt'; i.dispatchEvent(new Event('input')); __STRATA.G.menu.search('pickaxe cobalt', 'All'); })()`);
+  await tap(p, 'Escape');
+  await p.eval(`(() => { const S = __STRATA; if (S.state().menu) S.closeMenu(); })()`);
+  // nothing is used up: placing keeps the stack
+  await p.eval(`(() => { const S = __STRATA; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'cobblestone')); S.face(0, -0.9); })()`);
+  await sleep(150);
+  const before = await S(p, `S.inv().count('cobblestone')`);
+  await p.eval(`__STRATA.useOrPlace()`);
+  if ((await S(p, `S.inv().count('cobblestone')`)) !== before) throw new Error('placing used up an item in creative');
+  // breaking: instant, no drop
+  const hit = await S(p, `S.target()`);
+  await p.eval(`__STRATA.mineHold(true)`);
+  await sleep(500);
+  await p.eval(`__STRATA.mineHold(false)`);
+  if ((await S(p, `S.getBlock(${hit.x}, ${hit.y}, ${hit.z})`)) !== 0) throw new Error('the block did not break at once');
+  if ((await S(p, `S.drops().list.length`)) !== 0) throw new Error('creative breaking dropped an item');
+  // no damage, no hunger
+  await p.eval(`(() => { const S = __STRATA; S.vitals().invuln = 0; S.damage(99, { type: 'mob' }); S.damage(99, { type: 'fall' }); S.damage(99, { type: 'lava' }); })()`);
+  if ((await S(p, `S.vitals().hp`)) !== 20 || (await S(p, `S.vitals().dead`))) throw new Error('took damage in creative');
+  await p.eval(`(() => { const S = __STRATA; S.vitals().update(10, { sprintM: 500, jumped: true, mined: 5000 }); })()`);
+  if ((await S(p, `S.vitals().hunger`)) !== 20) throw new Error('hunger dropped in creative');
+  // monsters leave you alone at night
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.setTime(0.75); S.spawn('shambler', P.x + 5, 49, P.z); })()`);
+  await sleep(2500);
+  if ((await S(p, `S.mobs().list.some((m) => m.def.kind === 'hostile')`))) throw new Error('monsters in creative');
+  // flying: double-tap Space
+  await tap(p, ' ', 20); await sleep(120); await tap(p, ' ', 20);
+  await p.waitFor(`__STRATA.player().flying === true`, { what: 'flying' });
+  await sleep(500);                                                       // (a Space press within 0.3 s of the last would toggle flight again)
+  const y0 = await S(p, `S.player().pos.y`);
+  await down(p, ' '); await sleep(700); await up(p, ' ');
+  const y1 = await S(p, `S.player().pos.y`);
+  if (!(y1 > y0 + 3)) throw new Error('flying up: ' + y0 + ' -> ' + y1);
+  await sleep(600);
+  if (!(Math.abs((await S(p, `S.player().pos.y`)) - y1) < 1.5)) throw new Error('no hover while flying');
+  // the mode is saved and comes back
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  if (!(await S(p, `S.G.creative && S.G.flags.mode === 'creative' && document.getElementById('vitals').hidden`))) throw new Error('the mode was lost on load');
+  // a survival world has none of it
+  await p.eval(`__STRATA.newWorld({ seed: 3, flat: true, mode: 'survival' })`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.G.fakeLock = true; })()`);
+  if ((await S(p, `S.G.creative || document.getElementById('vitals').hidden`))) throw new Error('survival world shows creative');
+  await tap(p, 'e');
+  await p.waitFor(`__STRATA.state().menu === 'inventory'`, { what: 'the normal inventory in survival' });
+});
+
 s.run();

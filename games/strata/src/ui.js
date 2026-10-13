@@ -5,6 +5,7 @@ import { CONFIG } from './config.js';
 import { BLOCKS } from './blocks.js';
 import { ITEMS, durabilityOf } from './items.js';
 import { hudIcons } from './hudicons.js';
+import { CATEGORIES } from './inventory.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
@@ -71,6 +72,10 @@ export class UI {
   armReplace() { $('b-start-new').textContent = 'Click again to replace it'; $('overwrite-note').hidden = false; }
   seedText() { return $('seed-input').value.trim(); }
   difficultyText() { return $('new-diff').value; }
+  modeText() { return $('new-mode').value; }
+  setNewMode(m) { $('new-mode').value = m; }
+  /** Creative: no hearts or hunger on the HUD. */
+  creativeHud(on) { $('vitals').hidden = !!on; }
   setNewDifficulty(d) { $('new-diff').value = d; }
   error(title, text) { $('err-title').textContent = title; $('err-text').textContent = text; this.show('error'); }
   pauseNote(t) { $('pause-note').textContent = t; }
@@ -226,7 +231,7 @@ export class UI {
   // ---------------------------------------------------------------- inventory screens
   openMenu(menu) { this.menu = menu; this.show('inv'); this.#renderMenu(true); }
   closeMenu() { this.menu = null; }
-  #sig() { const m = this.menu; return JSON.stringify([m.inv.slots, m.grid, m.out, m.cursor, m.furnace?.toJSON(), m.armor, m.chest]); }
+  #sig() { const m = this.menu; return JSON.stringify([m.inv.slots, m.grid, m.out, m.cursor, m.furnace?.toJSON(), m.armor, m.chest, m.query, m.tab, m.list.length]); }
 
   /** Call every frame while a menu is open: redraws only when something changed (the furnace arrow moves smoothly with it). */
   refresh() { if (this.menu && this.screen === 'inv') this.#renderMenu(false); }
@@ -234,6 +239,8 @@ export class UI {
   #renderMenu(force) {
     const m = this.menu, sig = this.#sig();
     if (!force && sig === this.sigs.menu) return;
+    this.crHad = !!this.crInput && document.activeElement === this.crInput;          // (the search box loses focus when its old panel is thrown away: remember it)
+    this.crSel = this.crHad ? [this.crInput.selectionStart, this.crInput.selectionEnd] : null;
     this.sigs.menu = sig;
     const S = (stk, c, i, cls) => this.slotHTML(stk, c, i, cls);
     let top, title;
@@ -247,13 +254,33 @@ export class UI {
       top = `<div class="grid" style="grid-template-columns:repeat(${m.size},46px)">${m.grid.map((s, i) => S(s, 'craft', i)).join('')}</div><div class="arrow"><i style="width:${m.out ? 100 : 0}%"></i></div>${S(m.out, 'out', 0, 'take')}`;
       if (m.kind === 'inventory' && m.armor) top = `<div class="armorcol">${m.armor.map((s, i) => S(s, 'armor', i, `armor a${i}`)).join('')}<span class="armtotal">${m.armor.reduce((n, s) => n + (s ? ITEMS[s.id]?.armor?.points ?? 0 : 0), 0)} armor</span></div>` + top;
     }
+    if (m.kind === 'creative') {
+      title = 'Creative Inventory';
+      const tabs = ['All', ...CATEGORIES].map((t) => `<button class="tab${m.tab === t ? ' on' : ''}" data-tab="${t}">${t}</button>`).join('');
+      top = `<div class="crtop"><div id="cr-search-host"></div><div class="tabs">${tabs}</div></div><div class="grid catgrid" style="grid-template-columns:repeat(9,46px)">${m.list.map((e, i) => S({ id: e.id, n: 1 }, 'cat', i)).join('') || '<p class="dim">Nothing matches.</p>'}</div>` +
+        `<div class="crnote">${m.list.length} item${m.list.length === 1 ? '' : 's'}. Click: a stack. Right-click: one. Click with an item on the cursor: delete it.</div>`;
+    }
     if (m.kind === 'chest') { title = 'Chest'; top = `<div class="grid chestgrid" style="grid-template-columns:repeat(9,46px)">${m.chest.map((s, i) => S(s, 'chest', i)).join('')}</div>`; }
     const main = Array.from({ length: CONFIG.inv.main }, (_, k) => S(m.inv.slots[CONFIG.inv.hotbar + k], 'inv', CONFIG.inv.hotbar + k)).join('');
     const hot = Array.from({ length: CONFIG.inv.hotbar }, (_, k) => S(m.inv.slots[k], 'inv', k, k === m.inv.selected ? 'sel' : '')).join('');
     $('s-inv').innerHTML = `<div class="panel invp"><h3>${title}</h3><div class="top">${top}</div>` +
       `<div class="grid main" style="grid-template-columns:repeat(9,46px)">${main}</div><div class="grid hot" style="grid-template-columns:repeat(9,46px)">${hot}</div></div>`;
     this.#markHover();
+    if (m.kind === 'creative') this.#mountSearch(m);
     this.#renderCursor();
+  }
+
+  /** The search box is created once and moved into every redraw, so it keeps focus and the cursor while you type. */
+  #mountSearch(m) {
+    if (!this.crInput) {
+      const i = this.crInput = document.createElement('input');
+      i.type = 'text'; i.id = 'cr-search'; i.placeholder = 'Search items…'; i.autocomplete = 'off'; i.spellcheck = false; i.maxLength = 30;
+      i.addEventListener('input', () => { if (this.menu?.kind === 'creative') { this.menu.search(i.value); this.#renderMenu(true); } });
+    }
+    const had = this.crHad, [a, b] = this.crSel ?? [m.query.length, m.query.length];
+    this.crInput.value = m.query;
+    $('cr-search-host').append(this.crInput);
+    if (had) { this.crInput.focus(); this.crInput.setSelectionRange(a, b); }
   }
 
   /** Re-apply the highlight after a redraw (the old element under the pointer is gone, and :hover only catches up on the next mouse move). */
@@ -277,6 +304,8 @@ export class UI {
   #slotAt(el) { const c = el.dataset.c, i = Number(el.dataset.i); return this.menu?.slotRef(c, i)?.get() ?? null; }
 
   #invDown(e) {
+    const tab = e.target.closest?.('.tab');
+    if (tab && this.menu?.kind === 'creative') { this.menu.search(this.menu.query, tab.dataset.tab); this.#renderMenu(true); return; }
     const el = e.target.closest('.slot');
     if (!el || !this.menu) return;
     e.preventDefault();

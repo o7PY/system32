@@ -24,7 +24,7 @@ const num = (k, d) => { const v = Number(params.get(k)); return params.has(k) &&
 const OPT = {
   seed: params.has('seed') ? params.get('seed') : null, flat: params.get('flat') === '1', worldSize: num('worldSize', CONFIG.worldSize),
   low: params.get('quality') === 'low', noWorker: params.get('noWorker') === '1', noCompress: params.get('noCompress') === '1', debug: params.get('debug') === '1',
-  peaceful: params.get('peaceful') === '1',
+  peaceful: params.get('peaceful') === '1', creative: params.get('creative') === '1',
 };
 const sdk = window.System32;
 const $ = (id) => document.getElementById(id);
@@ -136,7 +136,7 @@ function showTitle() {
 
 // ---------------------------------------------------------------- starting and leaving a world
 /** Start (or resume) a world. save = a deserialized save, or null for a new world. */
-async function startGame({ seed, flat = false, save = null, fake = false }) {
+async function startGame({ seed, flat = false, save = null, fake = false, mode = 'survival' }) {
   ui.progress(0, 'Digging in…'); ui.show('loading'); ui.hud(false);
   G.phase = 'loading'; G.menu = null; G.keys.clear(); G.mouseLeft = false;
   const size = save ? save.worldSize : OPT.worldSize;
@@ -169,6 +169,8 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   for (const [k, f] of Object.entries(save?.furnaces ?? {})) furnaces.set(k, makeFurnace(k, f));
   G.dayT = save?.time ?? CONFIG.day.start;
   G.flags = { ...(save?.flags ?? {}) };
+  if (!save) G.flags.mode = mode === 'creative' ? 'creative' : 'survival';
+  G.creative = G.flags.mode === 'creative'; vitals.creative = G.creative; player.flying = false; ui.creativeHud(G.creative);
   if (!Array.isArray(G.flags.rifts)) G.flags.rifts = [];
   if (!G.flags.vaults || typeof G.flags.vaults !== 'object') G.flags.vaults = {};
   G.deathMarker = G.flags.death ?? null;
@@ -272,7 +274,7 @@ function bindUI() {
   ui.on('new', () => { G.armed = false; ui.newWorld({ overwrite: !!G.save }); ui.show('newworld'); $('seed-input').focus(); });
   ui.on('start-new', () => {
     if (G.save && !G.armed) { G.armed = true; ui.armReplace(); return; }                    // a saved world is about to be replaced: ask once more
-    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
+    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat, mode: OPT.creative ? 'creative' : ui.modeText() });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
   });
   ui.on('back-title', () => { showTitle(); });
   ui.on('settings', () => { G.settingsFrom = ui.screen; ui.show('settings'); });
@@ -356,13 +358,14 @@ function onKeyDown(e) {
   }
   if (GAME_KEYS.has(e.code) || e.code === 'Escape') e.preventDefault();
   if (e.code === 'Escape') { if (G.menu) closeMenu(); else pauseGame(); return; }
-  if (e.code === 'KeyE') { if (G.menu) closeMenu(); else openMenu('inventory'); return; }
+  if (e.code === 'KeyE') { if (G.menu) closeMenu(); else openMenu(G.creative ? 'creative' : 'inventory'); return; }
   if (e.code === 'F3') { G.f3 = !G.f3; if (!G.f3) ui.debug(''); return; }
   if (G.menu) return;
   G.keys.add(e.code); G.tapped.add(e.code);                 // a tap shorter than one frame still counts for one simulation step
   if (e.code === 'KeyW' && !e.repeat) { const t = performance.now(); if (t - G.lastW < CONFIG.player.sprintTapS * 1000) G.sprintLatch = true; G.lastW = t; }
   if (e.code.startsWith('Digit')) selectSlot(Number(e.code.slice(5)) - 1);
   if (e.code === 'KeyQ' && !e.repeat) dropHeld();
+  if (e.code === 'Space' && !e.repeat && G.creative) { const t = performance.now(); if (t - (G.lastSpace ?? 0) < 300) { player.flying = !player.flying; ui.subtitle(player.flying ? 'Flying on' : 'Flying off', 1200); } G.lastSpace = t; }
 }
 
 function readInput() {
@@ -393,7 +396,7 @@ const blockAt2 = (x, y, z) => world.getBlock(x, y, z);
 function breakBlock(hit) {
   G.minedStep++; vitals.stats.mined++;
   const id = hit.id, held = inv.held(), at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
-  const stks = dropsFor(id, held);
+  const stks = G.creative ? [] : dropsFor(id, held);
   if (isFurnace(id)) {
     const key = furnaceKey(hit.x, hit.y, hit.z), f = furnaces.get(key);
     if (f) { for (const s of [f.input, f.fuel, f.output]) if (s) drops.spawn(at.x, at.y, at.z, s); furnaces.delete(key); }
@@ -418,7 +421,7 @@ function breakBlock(hit) {
   for (const stk of stks) drops.spawn(at.x, at.y - 0.1, at.z, stk);
   dropUnsupported(hit.x, hit.y, hit.z);
   audio.block('break', id, { at, listener: listener() });
-  if (held && isTool(held.id)) {
+  if (held && isTool(held.id) && !G.creative) {
     const r = useTool(held);
     inv.slots[inv.selected] = r.stack;
     if (r.broke) { audio.play('tool.break'); ui.subtitle(`${ITEMS[held.id].name} broke`, 2500); }
@@ -535,7 +538,7 @@ function useOrPlace() {
   const placed = blockFor(info, hit);
   if (info.id === 'bed') { if (!placeBed(x, y, z)) return; }
   else if (placed === null || !world.setBlock(x, y, z, placed)) return;
-  inv.takeOne(inv.selected);
+  if (!G.creative) inv.takeOne(inv.selected);
   audio.play('place', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
   if (y === CONFIG.height - 1) { eggOnce('strata-cloud'); ui.subtitle('Saved to cloud storage.'); }
 }
@@ -668,7 +671,7 @@ function mobEvents() {
     else if (ev.type === 'die') {
       audio.voice(m.def.voice, 'die', { at, listener: L });
       if (m.type === 'popup' && ev.by === 'player' && inv.slots.slice(0, 9).some((s) => s?.id === 'popup')) { eggOnce('strata-popup-adblock'); ui.subtitle('Ad Block worked as intended.', 4500); }
-      for (const d of ev.drops) drops.spawn(m.x, m.y + 0.4, m.z, stack(d.id, d.n));
+      if (!G.creative) for (const d of ev.drops) drops.spawn(m.x, m.y + 0.4, m.z, stack(d.id, d.n));
       mobRenderer.puff(m.x, m.y + 0.3, m.z, 8);
       if (ev.by === 'player') vitals.stats.mobs++;
       if (m.type === 'warden' && m.data.home) { vaultState(m.data.home.index).warden = true; ui.subtitle('The Vault Warden falls. The chest is yours.', 4000); shake(0.8); }
@@ -714,6 +717,7 @@ function pickBlock() {
   if (!item) return;
   const hot = inv.slots.findIndex((s, i) => i < 9 && s?.id === item);
   if (hot >= 0) { selectSlot(hot); return; }
+  if (G.creative && !inv.slots.some((s) => s?.id === item)) { const left = inv.add(stack(item, ITEMS[item].stack)); void left; const at = inv.slots.findIndex((s, i) => i < 9 && s?.id === item); if (at >= 0) selectSlot(at); return; }
   const main = inv.slots.findIndex((s, i) => i >= 9 && s?.id === item);
   if (main >= 0) { const t = inv.slots[inv.selected]; inv.slots[inv.selected] = inv.slots[main]; inv.slots[main] = t; selectSlot(inv.selected); }
 }
@@ -750,7 +754,11 @@ function simulate(dt) {
   G.attackClick = false;
   ui.attackBar(locked && !open ? G.atk : null);
   renderer.setTarget(hit);
-  const state = miner.update(dt, hit, inv.held(), G.mouseLeft && !open && locked && !hitMob);
+  if (G.creative && G.mouseLeft && !open && locked && !hitMob && hit && BLOCKS[hit.id].hardness >= 0) {        // Creative: blocks break at once (every 0.18 s while held)
+    G.mineTick -= dt;
+    if (G.mineTick <= 0) { G.mineTick = 0.18; breakBlock(hit); miner.reset(); }
+  }
+  const state = G.creative ? 'none' : miner.update(dt, hit, inv.held(), G.mouseLeft && !open && locked && !hitMob);
   renderer.setCrack(miner.target, miner.progress);
   if (state === 'mining') {
     G.mineTick -= dt;
@@ -820,6 +828,7 @@ function survive(dt, moved) {
   const env = { inWater: player.inWater, headInWater: player.headInWater, inLava: player.inLava, headInSolid: player.headInSolid, y: player.pos.y,
     sprintM: player.sprinting ? moved : 0, jumped: player.jumped, mined: G.minedStep, fall: player.takeFall() };
   player.jumped = false; G.minedStep = 0;
+  if (G.creative && player.pos.y < -30) { player.teleport(G.dim === 'kernel' ? ARENA.spawn.x : G.spawn.x, G.dim === 'kernel' ? ARENA.spawn.y : G.spawn.y, G.dim === 'kernel' ? ARENA.spawn.z : G.spawn.z); }
   vitals.update(dt, env);
   if (vitals.hitCount !== G.hitSeen) { G.hitSeen = vitals.hitCount; onHurt(); }
   if (vitals.dead) die();
@@ -1122,7 +1131,7 @@ function skipCredits() { const e = G.end; if (e?.stage === 'credits' && e.skippa
 function finishEnding() {
   const e = G.end; G.end = null;
   ui.endReset(); ui.show(null);
-  if (!G.flags.completed) {
+  if (!G.flags.completed && !G.creative) {                                  // a Creative world never counts as a win
     G.flags.completed = true;
     sdk?.complete({ timeMs: e.timeMs, deaths: e.deaths, difficulty: e.difficulty });
     G.completedSent = (G.completedSent ?? 0) + 1;
@@ -1248,7 +1257,7 @@ function installHooks() {
     setTime: (t) => { G.dayT = t; },
     save: () => serialize(saveState(), { compress: !OPT.noCompress }),
     load: async (str) => { const s = await deserialize(str); await startGame({ seed: s.seed, flat: s.flat, save: s, fake: true }); return s; },
-    newWorld: (o = {}) => startGame({ seed: o.seed ?? 1, flat: !!o.flat, fake: o.fake !== false }),
+    newWorld: (o = {}) => startGame({ seed: o.seed ?? 1, flat: !!o.flat, fake: o.fake !== false, mode: o.mode ?? 'survival' }),
     settle: async (radius = 2, ms = 60000) => { const t0 = performance.now(); while (world.missingMeshes(player.pos.x, player.pos.z, radius) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50)); return world.missingMeshes(player.pos.x, player.pos.z, radius); },
     look: (dx, dy) => player.look(dx, dy, G.settings.sensitivity, G.settings.invertY),
     face: (yaw, pitch) => { player.yaw = yaw; player.pitch = pitch; },

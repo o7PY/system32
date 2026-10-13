@@ -22,6 +22,7 @@ export class Player {
     this.stepDist = 0;                               // distance walked on the ground since the last footstep
     this.inLava = false; this.headInSolid = false;   // survival: lava burns, a head inside an opaque block suffocates
     this.peakY = 0; this.lastFall = 0;               // highest feet position of the current fall, and how far the last fall was (read and cleared by takeFall)
+    this.flying = false;                              // Creative: no gravity, Space up, C down
     this.jumped = false;                             // set when a jump starts (hunger), cleared by the caller
   }
   /** The distance of the fall that just ended (0 = none), cleared on read. Landing in water or lava ends a fall at once. */
@@ -78,6 +79,15 @@ export class Player {
     const acc = (this.onGround || fluid ? c.accel : c.airAccel) * dt;
     v.x = approach(v.x, wx * speed, acc); v.z = approach(v.z, wz * speed, acc);
 
+    if (this.flying) {
+      const fs = (inp.sprint ? 14 : 9);
+      v.x = approach(v.x, wx * fs, 80 * dt); v.z = approach(v.z, wz * fs, 80 * dt);
+      v.y = approach(v.y, (inp.jump ? 1 : 0) * fs - (inp.sneak ? fs : 0), 60 * dt);
+      const hx = this.#move('x', v.x * dt), hz = this.#move('z', v.z * dt), hy = this.#move('y', v.y * dt);
+      if (hx) v.x = 0; if (hz) v.z = 0; if (hy) { if (v.y < 0) this.flying = false; v.y = 0; }               // landing ends the flight
+      this.onGround = hy && !this.flying; this.peakY = p.y; this.lastFall = 0; this.hitX = hx; this.hitZ = hz;
+      return this;
+    }
     // vertical (the position uses the average of the old and new velocity, so a jump is an exact parabola: peak = jump^2 / 2g)
     let vy0;
     if (fluid) {

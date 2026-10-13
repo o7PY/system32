@@ -149,3 +149,13 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 @keyframes roll { from { transform: translateY(0); } to { transform: translateY(-190%); } }
 #end-skip { position: absolute; right: 24px; bottom: 20px; z-index: 2; }
 .trophy { color: #ffd84a; font-size: 24px; margin: 4px 0; }
+
+/* ---- Creative inventory: search, tabs, a sorted catalog */
+.crtop { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+#cr-search { font: inherit; font-size: 20px; padding: 6px 10px; color: var(--ink); background: #1c1f25; border: 3px solid var(--edge); width: 100%; box-sizing: border-box; }
+#cr-search:focus { border-color: var(--accent); outline: none; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { font: inherit; font-size: 16px; padding: 3px 9px; background: #2a2f3a; color: var(--ink); border: 2px solid var(--edge); cursor: pointer; }
+.tab.on { background: #3d6b46; border-color: #fff; }
+.catgrid { max-height: 252px; overflow-y: auto; margin: 6px 0; padding: 2px; }
+.crnote { font-size: 14px; color: var(--dim); margin-bottom: 4px; }

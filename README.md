@@ -195,6 +195,8 @@ world goes on. `?debug=1` adds the test hooks on `window.__STRATA` (`setHealth`,
 `giveKit('iron'|'cobalt')`, `bossPhase(n)`, `setTime`); `?peaceful=1` starts on Peaceful. Tests: `tests/strata/{static,world,logic,light,survival,entities,hostile,underlayer,boss}.mjs`
 (Node) and `run.mjs`, `shell.mjs`, `shell-game.mjs` (headless Chrome). Saves are version 2 and still load version 1 worlds.
 
+**Creative mode** (chosen on New World, or `?creative=1`): `E` opens a searchable, sorted catalog of every item (tabs: All, Blocks, Tools & Weapons, Armor, Food, Materials; click = a stack, right-click = one, click with an item on the cursor = delete); nothing is used up, blocks break instantly and drop nothing, no damage or hunger, monsters leave you alone, double-tap `Space` to fly. A Creative world never counts as a win. See section 15 of `STRATA_PART2_SPEC.md`.
+
 
 ## DOM-ination (Part 2, `games/dom-ination/`)
 

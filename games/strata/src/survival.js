@@ -34,7 +34,8 @@ export class Vitals {
     this.hurtDir = null; this.hurtT = 0; this.nausea = 0;
   }
 
-  get peaceful() { return this.difficulty === 'peaceful'; }
+  /** Creative mode: nothing hurts, hunger never drops, monsters leave you alone. (set by the game from the world's mode) */
+  get peaceful() { return this.difficulty === 'peaceful' || !!this.creative; }
   get armorPoints() { return this.armor.reduce((n, s) => n + (s ? ITEMS[s.id]?.armor?.points ?? 0 : 0), 0); }
   /** Damage taken is multiplied by this (4 % per armor point, at most 80 %). */
   get armorFactor() { return 1 - Math.min(this.cfg.armorMax, this.armorPoints * this.cfg.armorPerPoint); }
@@ -45,7 +46,7 @@ export class Vitals {
    * Hard mode adds 50 % to what mobs do; armor removes its share (not for the void, starvation and suffocation) and wears down by 1 per hit.
    */
   damage(amount, opts = {}) {
-    if (this.dead || amount <= 0) return 0;
+    if (this.dead || amount <= 0 || this.creative) return 0;
     const type = opts.type ?? 'generic', over = OVER_TIME.has(type);
     if (this.invuln > 0 && !over) return 0;
     let d = amount;

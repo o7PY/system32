@@ -1,7 +1,31 @@
 // Inventory and the click rules of the inventory screens. No DOM: ui.js only draws the model and forwards clicks. A stack is { id, n, dur? }.
 import { CONFIG } from './config.js';
-import { ITEMS, maxStack, hasDurability, cloneStack } from './items.js';
+import { ITEMS, maxStack, hasDurability, cloneStack, stack } from './items.js';
 import { matchRecipe, smeltsTo, fuelValue } from './crafting.js';
+
+// ---------------------------------------------------------------- the Creative catalog: every item, in categories, sorted by name, searchable
+export const CATEGORIES = ['Blocks', 'Tools & Weapons', 'Armor', 'Food', 'Materials'];
+/** Which tab an item is in. */
+export function categoryOf(id) {
+  const it = ITEMS[id];
+  if (!it) return 'Materials';
+  if (it.armor) return 'Armor';
+  if (it.food) return 'Food';
+  if (it.tool || ['bow', 'arrow', 'shears'].includes(id)) return 'Tools & Weapons';
+  if (it.block !== undefined) return 'Blocks';
+  return 'Materials';
+}
+/**
+ * Every item of the game that matches `query` (a case-insensitive part of its name or id; words may come in any order) and `tab` ('All' or a category), sorted
+ * by category and then by name. Returns [{ id, name, category }].
+ */
+export function catalog(query = '', tab = 'All') {
+  const words = String(query).toLowerCase().split(/\s+/).filter(Boolean);
+  return Object.values(ITEMS)
+    .map((it) => ({ id: it.id, name: it.name, category: categoryOf(it.id) }))
+    .filter((e) => (tab === 'All' || e.category === tab) && words.every((w) => e.name.toLowerCase().includes(w) || e.id.includes(w)))
+    .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category) || a.name.localeCompare(b.name));
+}
 
 const same = (a, b) => !!a && !!b && a.id === b.id && !hasDurability(a.id);
 
@@ -45,10 +69,11 @@ export class Menu {
   /** @param kind 'inventory' | 'table' | 'furnace' ; @param furnace a Furnace for kind 'furnace' */
   constructor(inv, kind = 'inventory', furnace = null, { armor = null, chest = null } = {}) {
     this.inv = inv; this.kind = kind; this.furnace = furnace;
+    this.query = ''; this.tab = 'All'; this.list = kind === 'creative' ? catalog() : [];       // the Creative catalog (search text, tab, and the current matches)
     this.armor = armor; this.chest = chest;           // armor: the 4-slot array of the Vitals; chest: the chest's slot array
     this.cursor = null;
     this.size = kind === 'table' ? 3 : 2;
-    this.grid = kind === 'furnace' || kind === 'chest' ? [] : Array(this.size * this.size).fill(null);
+    this.grid = kind === 'furnace' || kind === 'chest' || kind === 'creative' ? [] : Array(this.size * this.size).fill(null);
     this.out = null;                       // the crafting result
     this.recompute();
   }
@@ -61,6 +86,8 @@ export class Menu {
       case 'in': return { get: () => this.furnace.input, set: (v) => { this.furnace.input = v; } };
       case 'fuel': return { get: () => this.furnace.fuel, set: (v) => { this.furnace.fuel = v; } };
       case 'smelt': return { get: () => this.furnace.output, set: (v) => { this.furnace.output = v; } };
+      case 'cat': return { get: () => (this.list[i] ? { id: this.list[i].id, n: 1 } : null), set: () => {} };
+      case 'trash': return { get: () => null, set: () => {} };
       case 'armor': return { get: () => this.armor[i], set: (v) => { this.armor[i] = v; } };
       case 'chest': return { get: () => this.chest[i], set: (v) => { this.chest[i] = v; } };
       default: throw new Error(`no container ${name}`);
@@ -75,7 +102,9 @@ export class Menu {
     return true;
   }
 
-  recompute() { const m = this.kind === 'furnace' || this.kind === 'chest' ? null : matchRecipe(this.grid.map((s) => s?.id ?? null), this.size); this.out = m ? m.out : null; }
+  search(query, tab = this.tab) { this.query = query; this.tab = tab; this.list = catalog(query, tab); }
+
+  recompute() { const m = this.kind === 'furnace' || this.kind === 'chest' || this.kind === 'creative' ? null : matchRecipe(this.grid.map((s) => s?.id ?? null), this.size); this.out = m ? m.out : null; }
 
   /** Consume one of each ingredient after taking the result. */
   #consume() { this.grid = this.grid.map((s) => (s ? (s.n > 1 ? { ...s, n: s.n - 1 } : null) : null)); this.recompute(); }
@@ -92,6 +121,15 @@ export class Menu {
 
   /** @param button 'left' | 'right' */
   click(name, i, button = 'left', shift = false) {
+    if (name === 'cat') {                                                  // Creative: left = a full stack into your inventory, right = one, with a stack on the cursor = delete it
+      if (this.cursor) { this.cursor = null; return true; }
+      const e = this.list[i];
+      if (!e) return false;
+      const n = button === 'right' ? 1 : maxStack(e.id);
+      const left = this.inv.add(stack(e.id, n));
+      return !left || left.n < n;
+    }
+    if (name === 'trash') { if (!this.cursor) return false; this.cursor = null; return true; }
     if (name === 'out' || name === 'smelt') {
       if (shift) return this.#shiftResult(name);
       return this.#takeResult(name);

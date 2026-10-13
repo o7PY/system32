@@ -302,3 +302,14 @@ Tests (headless; logic, not fps):
 9. **Kernel Gate, arena, Garbage Collector** (phases one at a time, telegraphs first).
 10. **Ending, credits, `complete()`, post-game**, eggs, save v2 + migration.
 11. Full test suite + bot boss run, then your full playthrough and tuning.
+
+---
+
+## 15. Creative mode (added after Part 2)
+
+A game mode chosen on the **New World** screen (*Survival* or *Creative*; `?creative=1` forces it for tests). The mode is stored with the world (`flags.mode`) and survives saving and loading. A Creative world never sends `System32.complete()`: it cannot count as a win.
+
+- **Creative inventory (`E`):** a screen with a **search box**, tabs **All / Blocks / Tools & Weapons / Armor / Food / Materials** and a grid of **every item of the game**, **sorted** by category and then by name. Search is case-insensitive, matches the name or the id, and several words match in any order (`cobalt pickaxe` = `pickaxe cobalt`). Click an item for a full stack (a tool arrives with full durability), right-click for one, click with a stack on the cursor to delete it; a trash slot also deletes. The ordinary hotbar and 27 slots are shown below, and the search box keeps focus while you type (game keys do not fire).
+- **Rules:** nothing is used up (placing, tools, arrows, food), blocks break at once (every 0.18 s while held) and drop nothing, mobs drop nothing, middle-click on a block gives you that item. No damage of any kind, no hunger, no death; hearts and hunger are hidden from the HUD; monsters do not spawn and any that exist leave you alone (Creative counts as Peaceful for the monsters). Falling out of the world puts you back at the spawn.
+- **Flying:** double-tap `Space` to toggle, `Space` up, `C` down, `Shift` faster; landing on the ground ends the flight.
+- **Tests:** `tests/strata/logic.mjs` (catalog: every item exactly once, sorted, tabs, search, click rules) and the `Creative:` test in `tests/strata/run.mjs` (New World choice, search by typing, tabs, clicking, no use-up, instant breaking, no damage or hunger, flying, saving the mode).
