@@ -288,5 +288,345 @@
  "font": {
   "src": "kenney_kenney-fonts/Fonts/Kenney Pixel.ttf",
   "alt": "kenney_kenney-fonts/Fonts/Kenney Mini Square.ttf"
+ },
+ "part2": {
+  "$comment": "PROPOSAL (Part 2 Step 0): roles for STRATA_PART2_SPEC.md. Nothing is built. On approval these merge into tiles/items/sounds above and build-assets.mjs gets the generators for every \"generate\" role. Mobs, the boss, the player model and the HUD icons (hearts, hunger, air, armor) are drawn in game code at startup, not listed here.",
+  "budget": {
+   "totalBytes": 4194304,
+   "soundBytes": 2097152
+  },
+  "tiles": {
+   "lava": {
+    "src": "kenney_voxel-pack/PNG/Tiles/lava.png",
+    "note": "static; light 15"
+   },
+   "cobalt_ore": {
+    "src": "kenney_voxel-pack/PNG/Tiles/stone_diamond.png",
+    "note": "blue crystals on stone; matches the blue-teal diamond tool set used for cobalt"
+   },
+   "basalt": {
+    "generate": true,
+    "note": "greystone darkened to near-black with seeded speckle"
+   },
+   "scorched_stone": {
+    "generate": true,
+    "note": "stone with dark red-black scorch patches"
+   },
+   "ash": {
+    "src": "kenney_voxel-pack/PNG/Tiles/greysand.png",
+    "tint": [
+     0.55,
+     0.52,
+     0.52
+    ],
+    "note": "darkened grey sand, sand-like block"
+   },
+   "glowcap": {
+    "src": "kenney_voxel-pack/PNG/Tiles/mushroom_tan.png",
+    "tint": "cyan",
+    "cutout": true,
+    "note": "cross-plant sprite, tinted cyan with glow dots"
+   },
+   "chest_top": {
+    "generate": true,
+    "note": "planks with a dark rim"
+   },
+   "chest_side": {
+    "generate": true,
+    "note": "planks with a dark band"
+   },
+   "chest_front": {
+    "generate": true,
+    "note": "planks with a metal latch"
+   },
+   "bed_top": {
+    "src": "kenney_voxel-pack/PNG/Tiles/cotton_red.png",
+    "note": "red blanket"
+   },
+   "bed_side": {
+    "generate": true,
+    "note": "planks with a red blanket edge"
+   },
+   "wool": {
+    "src": "kenney_voxel-pack/PNG/Tiles/cotton_tan.png",
+    "note": "cream, reads as undyed wool"
+   },
+   "torch": {
+    "generate": true,
+    "note": "cross-free small 3D mesh: stick with a flame; 2 flicker frames"
+   },
+   "berry_bush": {
+    "src": "kenney_voxel-pack/PNG/Tiles/leaves_transparent.png",
+    "overlay": "red berry dots",
+    "cutout": true
+   },
+   "wild_wheat": {
+    "src": "kenney_voxel-pack/PNG/Tiles/wheat_stage4.png",
+    "cutout": true,
+    "note": "cross-plant sprite"
+   },
+   "cracked_bedrock": {
+    "generate": true,
+    "note": "bedrock with glowing cyan cracks (findable)"
+   },
+   "rift": {
+    "generate": true,
+    "note": "animated dark-purple surface, 4 frames; a white variant for the Kernel Gate"
+   },
+   "rift_white": {
+    "generate": true,
+    "note": "Kernel Gate rift"
+   },
+   "server_rack_front": {
+    "generate": true,
+    "note": "server rack with blinking LEDs, 2 frames"
+   },
+   "server_rack_side": {
+    "generate": true,
+    "note": "dark panel"
+   },
+   "vault_door": {
+    "generate": true,
+    "note": "server rack with a heavy door"
+   },
+   "spawner": {
+    "generate": true,
+    "note": "metal cage with an ember"
+   },
+   "memory_block": {
+    "generate": true,
+    "note": "green grid-patterned block"
+   },
+   "kernel_crystal": {
+    "generate": true,
+    "note": "glowing green crystal"
+   },
+   "kernel_core": {
+    "generate": true,
+    "note": "trophy block: bright green core"
+   }
+  },
+  "items": {
+   "pickaxe_cobalt": {
+    "src": "kenney_voxel-pack/PNG/Items/pick_diamond.png"
+   },
+   "axe_cobalt": {
+    "src": "kenney_voxel-pack/PNG/Items/axe_diamond.png"
+   },
+   "shovel_cobalt": {
+    "src": "kenney_voxel-pack/PNG/Items/shovel_diamond.png"
+   },
+   "sword_cobalt": {
+    "src": "kenney_voxel-pack/PNG/Items/sword_diamond.png"
+   },
+   "raw_cobalt": {
+    "src": "kenney_voxel-pack/PNG/Items/ore_diamond.png"
+   },
+   "apple": {
+    "src": "kenney_voxel-pack/PNG/Items/apple.png"
+   },
+   "bowl": {
+    "src": "kenney_voxel-pack/PNG/Items/bowl.png"
+   },
+   "glowcap_stew": {
+    "src": "kenney_voxel-pack/PNG/Items/stew.png"
+   },
+   "wheat": {
+    "src": "kenney_voxel-pack/PNG/Items/wheat.png"
+   },
+   "bow": {
+    "src": "kenney_voxel-pack/PNG/Items/bow.png"
+   },
+   "arrow": {
+    "src": "kenney_voxel-pack/PNG/Items/arrow.png"
+   },
+   "cobalt_ingot": {
+    "generate": true,
+    "note": "iron ingot shape in blue"
+   },
+   "bread": {
+    "generate": true,
+    "note": "loaf"
+   },
+   "berries": {
+    "generate": true,
+    "note": "red berries"
+   },
+   "shears": {
+    "generate": true,
+    "note": "two iron blades"
+   },
+   "raw_pork": {
+    "generate": true,
+    "note": "pink meat"
+   },
+   "raw_beef": {
+    "generate": true,
+    "note": "red meat"
+   },
+   "raw_mutton": {
+    "generate": true,
+    "note": "pale red meat"
+   },
+   "raw_chicken": {
+    "generate": true,
+    "note": "pale drumstick"
+   },
+   "cooked_pork": {
+    "generate": true,
+    "note": "browned"
+   },
+   "cooked_beef": {
+    "generate": true,
+    "note": "browned"
+   },
+   "cooked_mutton": {
+    "generate": true,
+    "note": "browned"
+   },
+   "cooked_chicken": {
+    "generate": true,
+    "note": "browned drumstick"
+   },
+   "leather": {
+    "generate": true,
+    "note": "brown hide"
+   },
+   "feather": {
+    "generate": true,
+    "note": "white feather"
+   },
+   "string": {
+    "generate": true,
+    "note": "white thread"
+   },
+   "bone": {
+    "generate": true,
+    "note": "bone"
+   },
+   "flint": {
+    "generate": true,
+    "note": "dark grey shard"
+   },
+   "rotten_flesh": {
+    "generate": true,
+    "note": "green-brown scrap"
+   },
+   "armor_leather": {
+    "generate": true,
+    "note": "4 pieces: helmet, chestplate, leggings, boots"
+   },
+   "armor_iron": {
+    "generate": true,
+    "note": "4 pieces"
+   },
+   "armor_cobalt": {
+    "generate": true,
+    "note": "4 pieces"
+   },
+   "kernel_shard": {
+    "generate": true,
+    "note": "glowing green fragment"
+   },
+   "kernel_key": {
+    "generate": true,
+    "note": "key with a green gem"
+   },
+   "tracer": {
+    "generate": true,
+    "note": "compass-like dial"
+   },
+   "ash_dust": {
+    "generate": true,
+    "note": "grey dust"
+   },
+   "cobalt_nugget": {
+    "generate": true,
+    "note": "small blue nugget"
+   },
+   "glitch_dust": {
+    "generate": true,
+    "note": "flickering magenta dust"
+   },
+   "ad_block": {
+    "src": "popup (already generated in Part 1)"
+   }
+  },
+  "sounds": {
+   "hit.melee": [
+    "kenney_impact-sounds/Audio/impactPunch_medium_000.ogg",
+    "kenney_impact-sounds/Audio/impactPunch_medium_001.ogg",
+    "kenney_impact-sounds/Audio/impactPunch_medium_002.ogg"
+   ],
+   "hit.heavy": [
+    "kenney_impact-sounds/Audio/impactPunch_heavy_000.ogg",
+    "kenney_impact-sounds/Audio/impactPunch_heavy_001.ogg",
+    "kenney_impact-sounds/Audio/impactPunch_heavy_002.ogg"
+   ],
+   "player.hurt": [
+    "kenney_impact-sounds/Audio/impactPunch_heavy_003.ogg",
+    "kenney_impact-sounds/Audio/impactPunch_heavy_004.ogg"
+   ],
+   "player.death": [
+    "kenney_impact-sounds/Audio/impactBell_heavy_002.ogg"
+   ],
+   "sword.swing": [
+    "kenney_rpg-audio/Audio/knifeSlice.ogg",
+    "kenney_rpg-audio/Audio/knifeSlice2.ogg"
+   ],
+   "bow.draw": [
+    "kenney_rpg-audio/Audio/drawKnife1.ogg",
+    "kenney_rpg-audio/Audio/drawKnife2.ogg"
+   ],
+   "bow.shoot": [
+    "kenney_rpg-audio/Audio/drawKnife3.ogg",
+    "kenney_rpg-audio/Audio/knifeSlice2.ogg"
+   ],
+   "arrow.hit": [
+    "kenney_impact-sounds/Audio/impactWood_light_000.ogg",
+    "kenney_impact-sounds/Audio/impactWood_light_001.ogg",
+    "kenney_impact-sounds/Audio/impactWood_light_002.ogg"
+   ],
+   "eat": [
+    "kenney_rpg-audio/Audio/handleSmallLeather.ogg",
+    "kenney_rpg-audio/Audio/handleSmallLeather2.ogg",
+    "kenney_rpg-audio/Audio/beltHandle1.ogg"
+   ],
+   "chest.open": [
+    "kenney_rpg-audio/Audio/creak1.ogg",
+    "kenney_rpg-audio/Audio/creak2.ogg"
+   ],
+   "chest.close": [
+    "kenney_rpg-audio/Audio/metalLatch.ogg",
+    "kenney_rpg-audio/Audio/metalClick.ogg"
+   ],
+   "bed.use": [
+    "kenney_rpg-audio/Audio/cloth1.ogg",
+    "kenney_rpg-audio/Audio/cloth2.ogg",
+    "kenney_rpg-audio/Audio/cloth3.ogg"
+   ],
+   "vault.open": [
+    "kenney_rpg-audio/Audio/doorOpen_2.ogg",
+    "kenney_impact-sounds/Audio/impactMetal_heavy_000.ogg"
+   ],
+   "armor.equip": [
+    "kenney_rpg-audio/Audio/clothBelt.ogg",
+    "kenney_rpg-audio/Audio/clothBelt2.ogg"
+   ],
+   "boss.stomp": [
+    "kenney_impact-sounds/Audio/impactPlate_heavy_000.ogg",
+    "kenney_impact-sounds/Audio/impactPlate_heavy_001.ogg"
+   ],
+   "boss.crystal": [
+    "kenney_impact-sounds/Audio/impactGlass_heavy_000.ogg",
+    "kenney_impact-sounds/Audio/impactGlass_heavy_001.ogg"
+   ],
+   "jingle.win": [
+    "kenney_music-jingles/Audio/Steel jingles/jingles_STEEL07.ogg"
+   ]
+  },
+  "notes": [
+   "Mob voices, the boss, the Pop-up beeps, rift hum, lava, fire and the boss music are synthesized with WebAudio (no files)."
+  ]
  }
 }

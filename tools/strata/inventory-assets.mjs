@@ -81,5 +81,22 @@ out.push(`## Fonts: ${fonts.length} files\n`);
 out.push('| File | KB |\n|---|---|');
 for (const f of fonts) out.push(`| ${f.rel} | ${kb(f.bytes)} |`);
 out.push('');
+// ---- 6. Part 2 role candidates (STRATA_PART2_SPEC.md section 11): every source path named under "part2" in assets.json is checked and sized
+const cfg = JSON.parse(readFileSync(join(ROOT, 'tools', 'strata', 'assets.json'), 'utf8'));
+let p2Missing = 0;
+if (cfg.part2) {
+  const fileRow = (f) => { const ok = existsSync(join(SRC, f)); if (!ok) p2Missing++; return ok ? `${f} (${kb(statSync(join(SRC, f)).size)} KB)` : `${f} MISSING`; };
+  out.push('## Part 2 role candidates (proposal, nothing built)\n');
+  out.push('Source: `tools/strata/assets.json` -> `part2`. "generate" = drawn in code by the build script.\n');
+  for (const kind of ['tiles', 'items']) {
+    out.push(`### ${kind}\n`, '| Role | Source | Note |', '|---|---|---|');
+    for (const [role, v] of Object.entries(cfg.part2[kind])) out.push(`| ${role} | ${v.src && v.src.endsWith('.png') ? fileRow(v.src) : v.src ?? 'generate'} | ${v.note ?? ''} |`);
+    out.push('');
+  }
+  out.push('### sounds\n', '| Role | Files |', '|---|---|');
+  for (const [role, files] of Object.entries(cfg.part2.sounds)) out.push(`| ${role} | ${files.map(fileRow).join('<br>')} |`);
+  out.push('');
+}
 writeFileSync(OUT, out.join('\n'));
+if (p2Missing) console.log(`WARNING: ${p2Missing} Part 2 source files are missing`);
 console.log(`${relative(ROOT, OUT)}: ${pngs.length} PNGs, ${audio.reduce((n, p) => n + p.files.length, 0)} audio files, ${fonts.length} fonts`);
