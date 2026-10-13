@@ -73,6 +73,13 @@ export function dropFor(blockId, held, rand = Math.random) {
   return rand() < chance ? stack(item, n) : null;
 }
 
+/** Everything a broken block drops (a list of stacks): each entry [item, n, chance] rolls on its own (leaves: a stick 10 %, an apple 2 %; gravel: flint 10 %). */
+export function dropsFor(blockId, held, rand = Math.random) {
+  const b = BLOCKS[blockId];
+  if (!b?.drops?.length || !breakInfo(blockId, held).drops) return [];
+  return b.drops.filter(([, , chance]) => rand() < chance).map(([item, n]) => stack(item, n));
+}
+
 /** Using a tool costs one durability per block broken (a sword too). Returns the stack to keep (null when it just broke). */
 export function useTool(s) {
   if (!s || !isTool(s.id)) return { stack: s, broke: false };

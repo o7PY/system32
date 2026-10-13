@@ -1,7 +1,8 @@
 // First-person controller: AABB 0.6 x 1.8 x 0.6, eye 1.62, swept per axis (no tunnelling at terminal speed), swimming, sprint and sneak (no walking off edges).
 // Pure: it only needs `world.getBlock(x, y, z)`, so Node tests drive it on a hand-built world. No automatic step-up: jumping is part of the feel.
 import { CONFIG } from './config.js';
-import { B, BLOCKS, isSolid } from './blocks.js';
+import { B, BLOCKS } from './blocks.js';
+import { collidesAt, moveAxis } from './physics.js';
 
 const EPS = 1e-4;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -36,34 +37,13 @@ export class Player {
   }
   box(x = this.pos.x, y = this.pos.y, z = this.pos.z) { const hw = this.cfg.width / 2; return { x0: x - hw, x1: x + hw, y0: y, y1: y + this.cfg.height, z0: z - hw, z1: z + hw }; }
 
-  /** Does the box at (x, y, z) overlap a solid block? */
-  collides(x, y, z) {
-    const b = this.box(x, y, z), w = this.world;
-    for (let by = Math.floor(b.y0); by <= Math.floor(b.y1 - EPS); by++)
-      for (let bz = Math.floor(b.z0); bz <= Math.floor(b.z1 - EPS); bz++)
-        for (let bx = Math.floor(b.x0); bx <= Math.floor(b.x1 - EPS); bx++) if (isSolid(w.getBlock(bx, by, bz))) return true;
-    return false;
-  }
+  /** Does the box at (x, y, z) overlap a solid block (a partial block collides with its own box: a bed is 9/16 high)? */
+  collides(x, y, z) { return collidesAt((a, b, c) => this.world.getBlock(a, b, c), { x, y, z }, this.cfg.width, this.cfg.height); }
   #water(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.water; }
   #lava(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.lava; }
 
   /** Move along one axis in sub-steps of at most cfg.maxStep; on contact snap to the block face. Returns true if it hit something. */
-  #move(axis, d) {
-    if (d === 0) return false;
-    const p = this.pos, hw = this.cfg.width / 2, steps = Math.ceil(Math.abs(d) / this.cfg.maxStep), sd = d / steps;
-    for (let i = 0; i < steps; i++) {
-      const old = p[axis];
-      p[axis] += sd;
-      if (!this.collides(p.x, p.y, p.z)) continue;
-      // snap to the face of the block we ran into
-      if (axis === 'y') p.y = sd > 0 ? Math.floor(p.y + this.cfg.height - EPS) - this.cfg.height - EPS : Math.floor(p.y) + 1 + EPS;
-      else if (sd > 0) p[axis] = Math.floor(p[axis] + hw - EPS) - hw - EPS;
-      else p[axis] = Math.floor(p[axis] - hw) + 1 + hw + EPS;
-      if (this.collides(p.x, p.y, p.z)) p[axis] = old;       // (a snap into another block: stay where we were)
-      return true;
-    }
-    return false;
-  }
+  #move(axis, d) { return moveAxis((a, b, c) => this.world.getBlock(a, b, c), this.pos, this.cfg.width, this.cfg.height, axis, d, this.cfg.maxStep); }
 
   /** Is there ground within `depth` below the box at (x, z) (used to stop a sneaking player at an edge)? */
   #supported(x, z, depth) { return this.collides(x, this.pos.y - depth, z); }

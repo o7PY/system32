@@ -19,7 +19,8 @@ export function findPath(getBlock, start, goal, opts = {}) {
   const free = (x, y, z) => !solid(x, y, z) && !bad(x, y, z);
   const standable = (x, y, z) => free(x, y, z) && free(x, y + 1, z) && (solid(x, y - 1, z) || (climbWalls && wallNear(x, y, z)));
   const wallNear = (x, y, z) => DIRS.some(([dx, dz]) => solid(x + dx, y, z + dz));
-  const h = (x, y, z) => Math.abs(x - goal.x) + Math.abs(z - goal.z) + Math.abs(y - goal.y) * 1.3;
+  const yw = climbWalls ? 0 : 1.3;                                      // a wall-climber does not mind height, or it would never start up a wall
+  const h = (x, y, z) => (Math.abs(x - goal.x) + Math.abs(z - goal.z) + Math.abs(y - goal.y) * yw) * 1.4;      // a weighted A*: a slightly longer path found with far fewer nodes (a mob has 600)
   const open = new Map(), closed = new Set();
   const first = { x: start.x, y: start.y, z: start.z, g: 0, f: h(start.x, start.y, start.z), parent: null };
   open.set(key(first.x, first.y, first.z), first);
@@ -34,6 +35,10 @@ export function findPath(getBlock, start, goal, opts = {}) {
     if (climbWalls && free(cur.x, cur.y + 1, cur.z) && free(cur.x, cur.y + 2, cur.z) && wallNear(cur.x, cur.y + 1, cur.z)) {        // straight up a wall (a spider)
       const k = key(cur.x, cur.y + 1, cur.z);
       if (!closed.has(k)) { const g = cur.g + 1.5, ex = open.get(k); if (!ex || g < ex.g) open.set(k, { x: cur.x, y: cur.y + 1, z: cur.z, g, f: g + h(cur.x, cur.y + 1, cur.z), parent: cur }); }
+    }
+    if (climbWalls && cur.y > 1 && free(cur.x, cur.y - 1, cur.z) && free(cur.x, cur.y, cur.z) && (wallNear(cur.x, cur.y - 1, cur.z) || solid(cur.x, cur.y - 2, cur.z))) {        // straight down a wall
+      const k = key(cur.x, cur.y - 1, cur.z);
+      if (!closed.has(k)) { const g = cur.g + 1.2, ex = open.get(k); if (!ex || g < ex.g) open.set(k, { x: cur.x, y: cur.y - 1, z: cur.z, g, f: g + h(cur.x, cur.y - 1, cur.z), parent: cur }); }
     }
     for (const [dx, dz] of DIRS) {
       const nx = cur.x + dx, nz = cur.z + dz;

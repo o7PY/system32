@@ -41,7 +41,7 @@ export const CONFIG = {
     cobalt: { tier: 4, speed: 9, durability: 900 },
   },
   // melee damage by item (hand 1); other tools are 2 (axe 1) less than the sword of their tier. Cooldown 0.6 s (damage scales with the charge).
-  attack: { hand: 1, sword: { wood: 4, stone: 5, iron: 6, cobalt: 8 }, axeLess: 1, otherLess: 2, cooldownS: 0.6, critMul: 1.5, knockback: 5 },
+  attack: { reach: 3.5, hand: 1, sword: { wood: 4, stone: 5, iron: 6, cobalt: 8 }, axeLess: 1, otherLess: 2, cooldownS: 0.6, critMul: 1.5, knockback: 5 },
   // armor: points per piece [helmet, chestplate, leggings, boots] (a full set: leather 7, iron 15, cobalt 20); damage reduction = points * 4%, at most 80%
   armor: {
     slots: ['helmet', 'chestplate', 'leggings', 'boots'], perPoint: 0.04, maxReduce: 0.8,
@@ -70,13 +70,15 @@ export const CONFIG = {
   inv: { hotbar: 9, main: 27 },
 
   // Furnace: 4 s per item; fuel in items-smelted units
-  furnace: { smeltS: 4, fuel: { coal: 8, planks: 1.5, stick: 0.5 } },
+  furnace: { smeltS: 4, timeFor: { raw_cobalt: 8 }, fuel: { coal: 8, planks: 1.5, stick: 0.5 } },
 
   day: { lengthS: 1200, start: 0.08 },      // 20 minutes per day; 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
   clouds: { y: 112, speed: 1.6 },
 
   save: { autosaveS: 60, version: 1, capBytes: 2.5 * 1024 * 1024 },     // the shell's cap for Strata (two dimensions); a finished world should stay under 1.5 MB
   settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true, difficulty: 'normal', keepInventory: false, compass: true, subtitles: false },
+  // mobs (STRATA_PART2_SPEC 5): animals come with the chunk (40 % of grassy chunks, 2 to 4 of one kind), one more every 2 minutes near you, at most 20 loaded
+  mobs: { chunkChance: 0.4, perChunk: [2, 4], respawnS: 120, passiveCap: 20, deathS: 0.9, hearRange: 24 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 
@@ -98,6 +100,23 @@ export const RECIPES = [
     { id: `shovel_${tier}`, pattern: ['M', 'S', 'S'], key: { M: mat, S: 'stick' }, out: [`shovel_${tier}`, 1] },
     { id: `sword_${tier}`, pattern: ['M', 'M', 'S'], key: { M: mat, S: 'stick' }, out: [`sword_${tier}`, 1] },
   ]),
+  // Part 2: storage, bed, food, shears
+  { id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' }, out: ['chest', 1] },
+  { id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, out: ['bed', 1] },
+  { id: 'bowl', pattern: ['P.P', '.P.'], key: { P: 'planks' }, out: ['bowl', 4] },
+  { id: 'bread', pattern: ['WWW'], key: { W: 'wheat' }, out: ['bread', 1] },
+  { id: 'glowcap_stew', shapeless: ['glowcap', 'glowcap', 'bowl'], out: ['glowcap_stew', 1] },
+  { id: 'shears', pattern: ['.I', 'I.'], key: { I: 'iron_ingot' }, out: ['shears', 1] },
+  // armor: leather from cows, iron, cobalt
+  ...[['leather', 'leather'], ['iron', 'iron_ingot'], ['cobalt', 'cobalt_ingot']].flatMap(([tier, mat]) => [
+    { id: `${tier}_helmet`, pattern: ['MMM', 'M.M'], key: { M: mat }, out: [`${tier}_helmet`, 1] },
+    { id: `${tier}_chestplate`, pattern: ['M.M', 'MMM', 'MMM'], key: { M: mat }, out: [`${tier}_chestplate`, 1] },
+    { id: `${tier}_leggings`, pattern: ['MMM', 'M.M', 'M.M'], key: { M: mat }, out: [`${tier}_leggings`, 1] },
+    { id: `${tier}_boots`, pattern: ['M.M', 'M.M'], key: { M: mat }, out: [`${tier}_boots`, 1] },
+  ]),
 ];
-/** Furnace recipes: input item -> output item. */
-export const SMELTING = { sand: 'glass', raw_iron: 'iron_ingot' };
+/** Furnace recipes: input item -> output item. Meat is cooked, raw cobalt is smelted (8 s), ash turns to glass like sand. */
+export const SMELTING = {
+  sand: 'glass', ash: 'glass', raw_iron: 'iron_ingot', raw_cobalt: 'cobalt_ingot',
+  raw_pork: 'cooked_pork', raw_beef: 'cooked_beef', raw_mutton: 'cooked_mutton', raw_chicken: 'cooked_chicken',
+};

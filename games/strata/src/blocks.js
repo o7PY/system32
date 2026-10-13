@@ -32,11 +32,11 @@ const DEFS = [
   { name: 'dirt', tiles: all('dirt'), hardness: 0.5, tool: 'shovel', drop: ['dirt', 1, 1], group: 'dirt' },
   { name: 'grass', tiles: cube('grass_top', 'dirt', 'grass_side'), hardness: 0.6, tool: 'shovel', drop: ['dirt', 1, 1], group: 'grass' },
   { name: 'sand', tiles: all('sand'), hardness: 0.5, tool: 'shovel', drop: ['sand', 1, 1], group: 'sand' },
-  { name: 'gravel', tiles: all('gravel'), hardness: 0.6, tool: 'shovel', drop: ['gravel', 1, 1], group: 'dirt' },
+  { name: 'gravel', tiles: all('gravel'), hardness: 0.6, tool: 'shovel', drop: ['gravel', 1, 1], drops: [['gravel', 1, 1], ['flint', 1, 0.1]], group: 'dirt' },
   { name: 'cobblestone', tiles: all('cobblestone'), hardness: 2, tool: 'pickaxe', need: { tool: 'pickaxe', tier: 1 }, drop: ['cobblestone', 1, 1], group: 'stone' },
   { name: 'log', tiles: cube('log_top', 'log_top', 'log_side'), hardness: 2, tool: 'axe', drop: ['log', 1, 1], group: 'wood' },
   { name: 'planks', tiles: all('planks'), hardness: 2, tool: 'axe', drop: ['planks', 1, 1], group: 'wood' },
-  { name: 'leaves', kind: 'cutout', tiles: all('leaves'), hardness: 0.2, drop: ['stick', 1, 0.1], group: 'grass' },
+  { name: 'leaves', kind: 'cutout', tiles: all('leaves'), hardness: 0.2, drop: ['stick', 1, 0.1], drops: [['stick', 1, 0.1], ['apple', 1, 0.02]], group: 'grass' },
   { name: 'glass', kind: 'cutout', tiles: all('glass'), hardness: 0.3, group: 'glass' },                      // drops nothing
   { name: 'water', kind: 'water', tiles: all('water'), hardness: -1, group: 'sand' },
   { name: 'coal_ore', tiles: all('coal_ore'), hardness: 3, tool: 'pickaxe', need: { tool: 'pickaxe', tier: 1 }, drop: ['coal', 1, 1], group: 'stone' },
@@ -75,7 +75,7 @@ const DEFS = [
 ];
 
 export const BLOCKS = DEFS.map((d, id) => ({
-  id, kind: 'opaque', hardness: 1, group: 'stone', emit: 0, dim: d.kind === 'cutout' && d.name === 'leaves' || d.kind === 'water' ? 1 : 0, ...d,
+  id, kind: 'opaque', hardness: 1, group: 'stone', emit: 0, drops: d.drops ?? (d.drop ? [d.drop] : []), dim: d.kind === 'cutout' && d.name === 'leaves' || d.kind === 'water' ? 1 : 0, ...d,
   solid: d.solid ?? !['air', 'water', 'lava', 'plant'].includes(d.kind ?? 'opaque'),
   opaque: (d.kind ?? 'opaque') === 'opaque',
 }));

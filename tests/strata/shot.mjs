@@ -21,5 +21,8 @@ s.test('night with torches; day terrain', async (p) => {
   await p.eval(`(() => { const S = __STRATA; S.giveKit('iron'); S.setHealth(7); S.setHunger(13); S.G.fakeLock = true; S.give('torch', 12); S.give('cobalt_ingot', 3); S.selectSlot(0); })()`);
   await sleep(1200);
   await p.screenshot(`${out}/hud.png`);
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); S.setHealth(20); S.setHunger(20); S.killAll(); const x = pl.pos.x, z = pl.pos.z, y = (() => { let yy = pl.pos.y + 4; while (yy > 0 && S.getBlock(Math.floor(x), Math.floor(yy), Math.floor(z - 4)) === 0) yy--; return yy + 1; })(); S.tp(x, pl.pos.y, z); for (const [t, dx, dz] of [['pig', -2, -4], ['cow', 1, -5], ['sheep', 3, -4], ['chicken', 0, -3]]) { let yy = pl.pos.y + 6; while (yy > 0 && S.getBlock(Math.floor(x + dx), Math.floor(yy), Math.floor(z + dz)) === 0) yy--; S.spawn(t, x + dx, yy + 1, z + dz); } S.face(0, -0.12); })()`);
+  await sleep(1800);
+  await p.screenshot(`${out}/mobs.png`);
 });
 s.run();

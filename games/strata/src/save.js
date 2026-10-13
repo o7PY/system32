@@ -68,7 +68,7 @@ async function pipe(bytes, stream) { return new Uint8Array(await new Response(ne
 export async function serialize(s, { compress = true } = {}) {
   const header = new TextEncoder().encode(JSON.stringify({
     v: CONFIG.save.version, seed: s.seed >>> 0, worldSize: s.worldSize, flat: !!s.flat, spawn: s.spawn, player: s.player, inv: s.inv,
-    furnaces: s.furnaces ?? {}, time: s.time, settings: s.settings, flags: s.flags ?? {}, vitals: s.vitals ?? null, drops: s.drops ?? [],
+    furnaces: s.furnaces ?? {}, time: s.time, settings: s.settings, flags: s.flags ?? {}, vitals: s.vitals ?? null, drops: s.drops ?? [], animals: s.animals ?? [], chests: s.chests ?? {},
   }));
   const edits = packEdits(s.edits ?? new Map());
   const box = new Uint8Array(4 + header.length + edits.length);
@@ -92,7 +92,7 @@ export async function deserialize(str) {
   }
   if (box.length < 4) fail('too short');
   const hl = new DataView(box.buffer, box.byteOffset, box.byteLength).getUint32(0, true);
-  if (hl < 2 || hl > 1_000_000 || 4 + hl > box.length) fail('bad header length');
+  if (hl < 2 || hl > 4_000_000 || 4 + hl > box.length) fail('bad header length');
   let h;
   try { h = JSON.parse(new TextDecoder().decode(box.subarray(4, 4 + hl))); } catch { fail('bad header JSON'); }
   if (!h || h.v !== CONFIG.save.version) fail('unknown save version');
@@ -113,8 +113,12 @@ export async function deserialize(str) {
   if (v !== null && (typeof v !== 'object' || (v.armor ?? []).length > 4 || !(v.armor ?? []).every(validStack))) fail('bad vitals');
   const dr = h.drops ?? [];
   if (!Array.isArray(dr) || dr.length > 400 || dr.some((d) => !d || !validStack(d.stack) || !d.stack || !num(d.x, -64, S + 64) || !num(d.y, -64, CONFIG.height + 64) || !num(d.z, -64, S + 64) || !num(d.age ?? 0, 0, 1e7))) fail('bad drops');
+  const an = h.animals ?? [];
+  if (!Array.isArray(an) || an.length > 6000 || an.some((e) => !Array.isArray(e) || e.length !== 3 || !Number.isInteger(e[0]) || !Number.isInteger(e[1]) || !Array.isArray(e[2]) || e[2].length > 64)) fail('bad animals');
+  const ch = h.chests ?? {};
+  if (typeof ch !== 'object' || Array.isArray(ch) || Object.keys(ch).length > 1000 || Object.entries(ch).some(([k, v]) => !/^-?\d+,-?\d+,-?\d+$/.test(k) || !Array.isArray(v) || v.length !== 27 || !v.every(validStack))) fail('bad chests');
   const edits = unpackEdits(box.subarray(4 + hl), S);
-  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false, keepInventory: !!st.keepInventory, compass: st.compass !== false, subtitles: !!st.subtitles }, flags: h.flags ?? {}, vitals: v, drops: dr, edits };
+  return { seed: h.seed, worldSize: S, flat: !!h.flat, spawn: sp, player: p, inv: h.inv, furnaces: fz, time: h.time, settings: { ...st, invertY: !!st.invertY, music: st.music !== false, keepInventory: !!st.keepInventory, compass: st.compass !== false, subtitles: !!st.subtitles }, flags: h.flags ?? {}, vitals: v, drops: dr, animals: an, chests: ch, edits };
 }
 
 /** Human size for the warning: 1.6 MB / 1.5 MB. */

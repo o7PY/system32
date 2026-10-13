@@ -85,6 +85,57 @@ export class StrataAudio {
     return role;
   }
 
+  // ---------------------------------------------------------------- mob voices (always synthesized: filtered oscillators and noise, with pitch envelopes)
+  /** A noise burst through a filter: breath, a snort, a rattle. */
+  #noise(t, dur, { f = 1200, q = 1, type = 'bandpass', gain = 0.3, f1 = null } = {}) {
+    const ctx = this.ctx, n = Math.max(1, Math.floor(ctx.sampleRate * dur)), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = buf; fl.type = type; fl.frequency.setValueAtTime(f, t); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t + dur); fl.Q.value = q;
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl).connect(g); src.start(t);
+    return g;
+  }
+  /** One oscillator with a pitch glide, an optional tremolo and a lowpass: the body of a call. */
+  #tone(t, dur, { type = 'sawtooth', f0 = 200, f1 = 150, gain = 0.25, lp = 1200, trem = 0, attack = 0.02 } = {}) {
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    fl.type = 'lowpass'; fl.frequency.value = lp;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (trem) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = trem; lg.gain.value = gain * 0.6; l.connect(lg).connect(g.gain); l.start(t); l.stop(t + dur + 0.05); }
+    o.connect(fl).connect(g); o.start(t); o.stop(t + dur + 0.05);
+    return g;
+  }
+  /**
+   * A mob voice: name = 'pig' | 'cow' | 'sheep' | 'chicken' (more are added by the mob phases), kind = 'idle' | 'hurt' | 'die'. Positional like play().
+   * Returns what it played (or would have, with sound on) so tests can see it.
+   */
+  voice(name, kind = 'idle', { at = null, listener = null, vol = 1 } = {}) {
+    const id = `voice.${name}.${kind}`;
+    this.played.push(id); if (this.played.length > 50) this.played.shift();
+    if (!this.ctx || !this.active) return false;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01, out = ctx.createGain();
+    let gain = vol, pan = 0;
+    if (at && listener) {
+      const dx = at.x - listener.x, dz = at.z - listener.z, d = Math.hypot(dx, dz, at.y - listener.y);
+      gain *= 1 / (1 + d * 0.12);
+      if (d > 0.5) pan = Math.max(-1, Math.min(1, (dx * Math.cos(listener.yaw) - dz * Math.sin(listener.yaw)) / d));
+    }
+    out.gain.value = gain;
+    const hurt = kind === 'hurt', die = kind === 'die', k = die ? 0.7 : hurt ? 1.25 : 1;
+    const g = (node) => node.connect(out);
+    switch (name) {
+      case 'pig': g(this.#tone(t, 0.16, { f0: 230 * k, f1: 150 * k, gain: 0.3, lp: 1100 })); g(this.#tone(t + 0.2, hurt ? 0.1 : 0.14, { f0: 210 * k, f1: 140 * k, gain: 0.25, lp: 1000 })); g(this.#noise(t, 0.12, { f: 700, q: 0.8, gain: 0.12 })); break;
+      case 'cow': g(this.#tone(t, die ? 0.5 : 0.9, { f0: 120 * k, f1: 92 * k, gain: 0.3, lp: 520, trem: 6 })); g(this.#tone(t, 0.9, { type: 'square', f0: 60 * k, f1: 50 * k, gain: 0.06, lp: 300 })); break;
+      case 'sheep': g(this.#tone(t, 0.5, { f0: 300 * k, f1: 270 * k, gain: 0.25, lp: 1800, trem: 22 })); g(this.#noise(t, 0.4, { f: 1400, q: 2, gain: 0.05 })); break;
+      case 'chicken': for (let i = 0; i < (die ? 2 : 3); i++) g(this.#tone(t + i * 0.09, 0.07, { type: 'square', f0: 900 * k, f1: 1400 * k, gain: 0.12, lp: 3000 })); break;
+      default: g(this.#noise(t, 0.2, { f: 400, gain: 0.2 }));
+    }
+    if (pan) { const p = ctx.createStereoPanner(); p.pan.value = pan; out.connect(p).connect(this.master); } else out.connect(this.master);
+    this.count++;
+    return id;
+  }
+
   /** dig / break / step for a block id (its material group picks the samples). */
   block(kind, blockId, opts) { return this.play(`${kind}.${BLOCKS[blockId]?.group ?? 'stone'}`, opts); }
   ui(name) { return this.play(`ui.${name}`, { vol: 0.8 }); }

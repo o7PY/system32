@@ -1,11 +1,13 @@
 // Strata: boot, the state machine (loading -> title -> entering -> playing <-> paused), input, the frame loop, saving through the shell, test hooks.
 import { CONFIG } from './config.js';
 import { B, BLOCKS, isFurnace, isSolid, itemOfBlock } from './blocks.js';
-import { ITEMS, stack, blockItem, isTool, hasDurability } from './items.js';
+import { ITEMS, stack, blockItem, isTool, hasDurability, durabilityOf } from './items.js';
 import { World, createBackend } from './world.js';
 import { Renderer } from './renderer.js';
+import { Mobs } from './entities.js';
+import { MobRenderer } from './mobmodel.js';
 import { Player } from './player.js';
-import { raycast, Miner, Drops, dropFor, useTool } from './interact.js';
+import { raycast, Miner, Drops, dropsFor, useTool } from './interact.js';
 import { Inventory, Menu } from './inventory.js';
 import { Furnace } from './crafting.js';
 import { UI } from './ui.js';
@@ -40,11 +42,12 @@ const G = {
   settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default, difficulty: OPT.peaceful ? 'peaceful' : 'normal' },
   seed: 0, flat: false, worldSize: OPT.worldSize, spawn: { x: 0, y: 0, z: 0 },
   dayT: CONFIG.day.start, flags: {}, eggs: new Set(),
-  keys: new Set(), tapped: new Set(), mouseLeft: false, mouseRight: false, eat: null, hitSeen: 0, tilt: 0, dim: 'overworld', minedStep: 0, deathMarker: null, lastPos: null, lastDeath: null, lastW: 0, sprintLatch: false, fakeLock: false,
+  keys: new Set(), tapped: new Set(), mouseLeft: false, mouseRight: false, attackClick: false, atk: 1, mobsOn: false, verifyBed: null, eat: null, hitSeen: 0, tilt: 0, dim: 'overworld', minedStep: 0, deathMarker: null, lastPos: null, lastDeath: null, lastW: 0, sprintLatch: false, fakeLock: false,
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
-let ui, audio, renderer, world, player, inv, drops, miner, vitals, backendInfo = { kind: '?', reason: '' };
+let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, backendInfo = { kind: '?', reason: '' };
+let chests = new Map();                       // 'x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
 
 const isLocked = () => G.fakeLock || document.pointerLockElement === $('gl');
@@ -87,8 +90,10 @@ async function boot() {
   const made = await createBackend({ noWorker: OPT.noWorker });
   backendInfo = made.info;
   world = new World({ backend: made.backend, atlas, size: G.worldSize });
+  mobs = new Mobs({ world }); mobRenderer = new MobRenderer(renderer);
   world.onMesh = (c, m) => renderer.addChunk(c, m);
-  world.onUnload = (c) => renderer.removeChunk(c);
+  world.onUnload = (c) => { renderer.removeChunk(c); if (G.mobsOn) mobs.chunkUnloaded(c.cx, c.cz, G.seed); };
+  world.onGenerated = (c) => { if (G.mobsOn) mobs.chunkLoaded(c, G.seed); };
   world.view = G.settings.viewDistance;
   player = new Player(world); inv = new Inventory(); drops = new Drops(world); miner = new Miner(); vitals = new Vitals();
   bindUI();
@@ -102,7 +107,7 @@ async function boot() {
 }
 
 async function startTitleWorld() {
-  G.phase = 'loading';
+  G.phase = 'loading'; G.mobsOn = false; mobs.clear(); mobRenderer.clear();
   world.setSize(CONFIG.worldSize);
   renderer.setWorldSize(CONFIG.worldSize);
   await world.setSeed(0, { flat: false });
@@ -132,8 +137,12 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   Object.assign(G.settings, save?.settings ?? {});
   G.settings.viewDistance = Math.min(G.settings.viewDistance, OPT.low ? CONFIG.view.low : CONFIG.view.max);
   applySettings();
+  G.mobsOn = false; mobs.clear(); mobRenderer.clear();
   await world.setSeed(seed, { flat, edits: save?.edits ?? new Map() });
   G.seed = seed; G.flat = flat;
+  mobs.load(save?.animals ?? []);
+  chests = new Map(Object.entries(save?.chests ?? {}));
+  G.mobsOn = true;
   G.spawn = save ? save.spawn : await world.backend.spawn();
   const p = save ? save.player : { ...G.spawn, yaw: 0, pitch: 0 };
   player.teleport(p.x, p.y, p.z); player.yaw = p.yaw; player.pitch = p.pitch;
@@ -208,7 +217,7 @@ async function saveNow(reason, wait = false) {
   const data = await serialize({
     seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits,
-    vitals: vitals.toJSON(), drops: drops.toJSON(),
+    vitals: vitals.toJSON(), drops: drops.toJSON(), animals: mobs.toJSON(), chests: Object.fromEntries(chests),
   }, { compress: !OPT.noCompress });
   G.pendingSave = data;
   G.saveWait = new Promise((resolve) => { G.saveDone = resolve; });
@@ -268,9 +277,10 @@ function makeFurnace(key, state) {
   f.onDone = () => audio.play('furnace.done', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
   return f;
 }
-function openMenu(kind, furnace = null) {
+function openMenu(kind, furnace = null, extra = {}) {
   if (G.phase !== 'playing' || G.menu) return;
-  G.menu = new Menu(inv, kind, furnace, { armor: vitals.armor });
+  G.menu = new Menu(inv, kind, furnace, { armor: vitals.armor, ...extra });
+  if (kind === 'chest') audio.play('chest.open', { vol: 0.8 });
   G.keys.clear(); G.mouseLeft = false; G.sprintLatch = false;
   if (!G.fakeLock) document.exitPointerLock?.();
   ui.openMenu(G.menu); ui.hud(true);
@@ -278,7 +288,8 @@ function openMenu(kind, furnace = null) {
 }
 function closeMenu(relock = true) {
   if (!G.menu) return;
-  const over = G.menu.close();
+  const was = G.menu.kind, over = G.menu.close();
+  if (was === 'chest') audio.play('chest.close', { vol: 0.8 });
   for (const s of over) drops.spawn(player.pos.x, player.pos.y + 1.2, player.pos.z, s, { delayS: 1.5 });
   G.menu = null; ui.closeMenu();
   if (G.phase === 'playing') ui.show(null);
@@ -296,7 +307,7 @@ function bindInput() {
     audio.unlock();
     if (G.phase !== 'playing' || G.menu) return;
     if (!isLocked()) { canvas.requestPointerLock?.(); return; }
-    if (e.button === 0) G.mouseLeft = true;
+    if (e.button === 0) { G.mouseLeft = true; G.attackClick = true; }
     else if (e.button === 2) { G.mouseRight = true; useOrPlace(); }
     else if (e.button === 1) { e.preventDefault(); pickBlock(); }
   });
@@ -356,13 +367,17 @@ const blockAt2 = (x, y, z) => world.getBlock(x, y, z);
 function breakBlock(hit) {
   G.minedStep++; vitals.stats.mined++;
   const id = hit.id, held = inv.held(), at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
-  const stk = dropFor(id, held);
+  const stks = dropsFor(id, held);
   if (isFurnace(id)) {
     const key = furnaceKey(hit.x, hit.y, hit.z), f = furnaces.get(key);
     if (f) { for (const s of [f.input, f.fuel, f.output]) if (s) drops.spawn(at.x, at.y, at.z, s); furnaces.delete(key); }
   }
+  if (BLOCKS[id].use === 'chest') { const key = furnaceKey(hit.x, hit.y, hit.z); for (const s of chests.get(key) ?? []) if (s) drops.spawn(at.x, at.y, at.z, s); chests.delete(key); }
+  const bed = BLOCKS[id].bed, mate = bed ? bedMate(hit.x, hit.y, hit.z, bed) : null;
   world.setBlock(hit.x, hit.y, hit.z, B.air);
-  if (stk) drops.spawn(at.x, at.y - 0.1, at.z, stk);
+  if (mate && BLOCKS[world.getBlock(mate.x, mate.y, mate.z)]?.bed) world.setBlock(mate.x, mate.y, mate.z, B.air);       // a bed is two blocks and goes as one
+  if (bed && G.flags.bed && [{ x: hit.x, y: hit.y, z: hit.z }, mate].some((c) => c && c.x === G.flags.bed.x && c.y === G.flags.bed.y && c.z === G.flags.bed.z)) G.flags.bed = null;
+  for (const stk of stks) drops.spawn(at.x, at.y - 0.1, at.z, stk);
   dropUnsupported(hit.x, hit.y, hit.z);
   audio.block('break', id, { at, listener: listener() });
   if (held && isTool(held.id)) {
@@ -393,6 +408,7 @@ function blockFor(info, hit) {
     if (hit.ny === -1 || !isSolid(hit.id)) return null;
     return hit.ny === 1 ? B.torch : hit.nx === 1 ? B.torch_px : hit.nx === -1 ? B.torch_nx : hit.nz === 1 ? B.torch_pz : B.torch_nz;
   }
+  if (info.id === 'chest') return B[`chest_${OPPOSITE[facingOf(player.yaw)]}`];                     // the front looks back at you
   return info.block;
 }
 
@@ -403,13 +419,63 @@ function equipArmor() {
   audio.play('armor.equip', { vol: 0.8 });
 }
 
-/** Right click on a block with a use of its own that is not a menu (a bed, a rift, a chest): later phases hook in here. */
-function useBlock() {}
+/** The way a horizontal direction points, as one of n e s w (the player's look). */
+const DIR4 = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+function facingOf(yaw) { const fx = -Math.sin(yaw), fz = -Math.cos(yaw); return Math.abs(fx) > Math.abs(fz) ? (fx > 0 ? 'e' : 'w') : (fz > 0 ? 's' : 'n'); }
+const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' };
+/** The other half of a bed: a foot's head lies one block toward `dir`, a head's foot one block back. */
+function bedMate(x, y, z, bed) { const v = DIR4[bed.dir], k = bed.part === 'foot' ? 1 : -1; return { x: x + v[0] * k, y, z: z + v[1] * k }; }
+
+/** Place a two-block bed: the foot where you aimed, the head one block further the way you look. Both need free air and ground below. */
+function placeBed(x, y, z) {
+  const d = facingOf(player.yaw), v = DIR4[d], hx = x + v[0], hz = z + v[1];
+  const free = (a, b, c) => world.getBlock(a, b, c) === B.air && isSolid(world.getBlock(a, b - 1, c));
+  const pb = player.box();
+  const inPlayer = (a, b, c) => a + 1 > pb.x0 && a < pb.x1 && b + 1 > pb.y0 && b < pb.y1 && c + 1 > pb.z0 && c < pb.z1;
+  if (!free(x, y, z) || !free(hx, y, hz) || inPlayer(x, y, z) || inPlayer(hx, y, hz)) return false;
+  world.setBlock(x, y, z, B[`bed_foot_${d}`]); world.setBlock(hx, y, hz, B[`bed_head_${d}`]);
+  return true;
+}
+
+/** The bed (foot position) you respawn at, if it is still there and its head room is free: a point to stand at, or null. A bed in an unloaded chunk is trusted and checked once it loads. */
+function bedSpawn() {
+  const b = G.flags.bed;
+  if (!b) return null;
+  if (world.has(b.x, b.z)) {
+    const ok = BLOCKS[world.getBlock(b.x, b.y, b.z)]?.bed && !isSolid(world.getBlock(b.x, b.y + 1, b.z)) && !isSolid(world.getBlock(b.x, b.y + 2, b.z));
+    if (!ok) { G.flags.bed = null; ui.subtitle('Your bed was missing or obstructed.', 4000); return null; }
+  } else G.verifyBed = { ...b };
+  return { x: b.x + 0.5, y: b.y + 0.6, z: b.z + 0.5 };
+}
+
+/** Right click on a block with a use of its own that is not a menu: chests and beds. */
+function useBlock(def, hit) {
+  if (def.use === 'chest') {
+    const key = furnaceKey(hit.x, hit.y, hit.z);
+    if (!chests.has(key)) chests.set(key, Array(27).fill(null));
+    openMenu('chest', null, { chest: chests.get(key) });
+  } else if (def.use === 'bed') sleepIn(hit);
+}
+
+/** Right click on a bed: it always sets your respawn point; at night with no monster within 8 blocks it also skips to the morning. */
+function sleepIn(hit) {
+  if (G.dim === 'underlayer' || G.dim === 'kernel') { eggOnce('strata-sleep-underlayer'); ui.subtitle("You can't sleep here. Something is compiling.", 4500); return; }
+  const bed = BLOCKS[hit.id].bed, foot = bed.part === 'foot' ? { x: hit.x, y: hit.y, z: hit.z } : bedMate(hit.x, hit.y, hit.z, bed);
+  G.flags.bed = foot;
+  const night = G.dayT > 0.52 && G.dayT < 0.98;
+  const near = mobs.list.some((m) => !m.dead && m.def.kind === 'hostile' && Math.hypot(m.x - player.pos.x, m.y - player.pos.y, m.z - player.pos.z) < 8);
+  if (!night) { ui.subtitle('Respawn point set. You can only sleep at night.', 3500); return; }
+  if (near) { ui.subtitle("You can't sleep now: there are monsters nearby.", 3500); return; }
+  audio.play('bed.use', { vol: 0.8 });
+  ui.sleepFade();
+  setTimeout(() => { G.dayT = 0; ui.subtitle('Good morning. Respawn point set.', 3000); }, 900);
+}
 
 function useOrPlace() {
   const worn = inv.held();
   if (worn && ITEMS[worn.id].armor) { equipArmor(); return; }
-  const hit = target();
+  const hit = target(), ent = mobTarget();
+  if (ent && (!hit || ent.dist <= hit.dist)) { useOnMob(ent.mob); return; }
   if (!hit) return;
   const def = BLOCKS[hit.id];
   if (def.use && !player.sneaking) {
@@ -427,10 +493,84 @@ function useOrPlace() {
   const b = player.box();
   if (x + 1 > b.x0 && x < b.x1 && y + 1 > b.y0 && y < b.y1 && z + 1 > b.z0 && z < b.z1 && BLOCKS[info.block].solid) return;      // never inside the player
   const placed = blockFor(info, hit);
-  if (placed === null || !world.setBlock(x, y, z, placed)) return;
+  if (info.id === 'bed') { if (!placeBed(x, y, z)) return; }
+  else if (placed === null || !world.setBlock(x, y, z, placed)) return;
   inv.takeOne(inv.selected);
   audio.play('place', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
   if (y === CONFIG.height - 1) { eggOnce('strata-cloud'); ui.subtitle('Saved to cloud storage.'); }
+}
+
+// ---------------------------------------------------------------- mobs: targeting, melee, shearing
+const mobTarget = () => mobs.raycast(player.eye(), player.dir(), CONFIG.attack.reach);
+
+/** A used-up amount of durability from a slot: the item breaks (and the slot empties) at 0. */
+function wear(slot, amount = 1) {
+  const s = inv.slots[slot];
+  if (!s || !hasDurability(s.id)) return;
+  const dur = (s.dur ?? durabilityOf(s.id)) - amount;
+  if (dur <= 0) { inv.slots[slot] = null; audio.play('tool.break'); ui.subtitle(`${ITEMS[s.id].name} broke`, 2500); } else inv.slots[slot] = { ...s, dur };
+}
+
+/** Right click on a mob: shears take the wool of a sheep without killing it (it regrows in 2 minutes). */
+function useOnMob(m) {
+  const held = inv.held();
+  if (held?.id === 'shears' && m.def.shearable && !m.sheared && !m.dead) {
+    m.sheared = true; m.regrow = m.def.woolRegrowS;
+    drops.spawn(m.x, m.y + 0.6, m.z, stack('wool', 2 + Math.floor(Math.random() * 2)));
+    audio.play('bed.use', { at: { x: m.x, y: m.y, z: m.z }, listener: listener(), vol: 0.9 });
+    wear(inv.selected, 1);
+  }
+}
+
+/** One melee hit. Damage is by item (hand 1, wood sword 4 ... cobalt 8) and scales with the cooldown (0.6 s); a hit while falling is a critical (x1.5). */
+function attack(m) {
+  const held = inv.held(), a = CONFIG.attack, base = ITEMS[held?.id]?.attack ?? a.hand, prog = Math.min(1, G.atk / a.cooldownS);
+  let dmg = base * (0.2 + 0.8 * prog);
+  const crit = prog > 0.9 && !player.onGround && player.vel.y < 0 && !player.inWater;
+  if (crit) dmg *= a.critMul;
+  G.atk = 0;
+  const at = { x: m.x, y: m.y + 0.5, z: m.z };
+  mobs.damage(m, dmg, { from: player.pos, knockback: a.knockback * (0.4 + 0.6 * prog), type: 'player' });
+  audio.play(held?.id?.startsWith('sword') ? 'hit.heavy' : 'hit.melee', { at, listener: listener(), vol: 0.9 });
+  if (crit && G.settings.subtitles) ui.subtitle('Critical hit', 1200);
+  if (held && ITEMS[held.id].tool) wear(inv.selected, held.id.startsWith('sword') ? 1 : 2);
+  vitals.addExhaustion(0.1);
+}
+
+/** What the mobs did this step: sounds, drops, smoke. */
+function mobEvents() {
+  const L = listener(), range = CONFIG.mobs.hearRange;
+  for (const ev of mobs.takeEvents()) {
+    const m = ev.mob, at = { x: m.x, y: m.y + m.h * 0.5, z: m.z }, dist = Math.hypot(at.x - L.x, at.z - L.z);
+    if (ev.type === 'voice') { if (dist < range) { audio.voice(m.def.voice, 'idle', { at, listener: L, vol: 0.8 }); subtitle(`${m.def.name} ${VOICE_VERB[m.def.voice] ?? 'calls'}`, at); } }
+    else if (ev.type === 'hurt') { audio.voice(m.def.voice, 'hurt', { at, listener: L }); subtitle(`${m.def.name} hurt`, at); }
+    else if (ev.type === 'die') {
+      audio.voice(m.def.voice, 'die', { at, listener: L });
+      for (const d of ev.drops) drops.spawn(m.x, m.y + 0.4, m.z, stack(d.id, d.n));
+      mobRenderer.puff(m.x, m.y + 0.3, m.z, 8);
+      if (ev.by === 'player') vitals.stats.mobs++;
+    }
+  }
+}
+const VOICE_VERB = { pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks' };
+/** "Pig oinks (left)": the direction of a sound relative to where you look. */
+function subtitle(text, at) {
+  if (!G.settings.subtitles) return;
+  const dx = at.x - player.pos.x, dz = at.z - player.pos.z, side = dx * Math.cos(player.yaw) - dz * Math.sin(player.yaw), front = -(dx * Math.sin(player.yaw) + dz * Math.cos(player.yaw));
+  const dir = Math.abs(side) > Math.abs(front) ? (side > 0 ? 'right' : 'left') : front > 0 ? 'ahead' : 'behind';
+  ui.subtitle(`${text} (${dir})`, 1800);
+}
+
+/** The y a mob would stand at on a grass top near (x, z) (two free blocks above), or null (also when that chunk is not loaded). */
+function grassNear(x, z) {
+  const bx = Math.floor(x), bz = Math.floor(z);
+  if (!world.has(bx, bz)) return null;
+  for (let y = CONFIG.height - 3; y > CONFIG.seaLevel; y--) {
+    const id = world.getBlock(bx, y, bz);
+    if (id === B.air) continue;
+    return id === B.grass && world.getBlock(bx, y + 1, bz) === B.air && world.getBlock(bx, y + 2, bz) === B.air ? y + 1 : null;
+  }
+  return null;
 }
 
 function pickBlock() {
@@ -467,10 +607,15 @@ function simulate(dt) {
   if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 10); cam.updateProjectionMatrix(); }
   $('underwater').hidden = !player.headInWater;
 
-  // interaction
-  const hit = !open && locked ? target() : null;
+  // interaction: a mob in reach and in front of the block is what you hit; otherwise the block is what you mine
+  const blockHit = !open && locked ? target() : null, ent = !open && locked ? mobTarget() : null;
+  const hitMob = !!ent && (!blockHit || ent.dist <= blockHit.dist), hit = hitMob ? null : blockHit;
+  G.atk = Math.min(1, G.atk + dt / CONFIG.attack.cooldownS);
+  if (hitMob && ((G.attackClick) || (G.mouseLeft && G.atk >= 1))) attack(ent.mob);
+  G.attackClick = false;
+  ui.attackBar(locked && !open ? G.atk : null);
   renderer.setTarget(hit);
-  const state = miner.update(dt, hit, inv.held(), G.mouseLeft && !open && locked);
+  const state = miner.update(dt, hit, inv.held(), G.mouseLeft && !open && locked && !hitMob);
   renderer.setCrack(miner.target, miner.progress);
   if (state === 'mining') {
     G.mineTick -= dt;
@@ -489,6 +634,16 @@ function simulate(dt) {
   } else if (G.eat) { G.eat = null; ui.eating(null); }
 
   // drops, furnaces, time, autosave, music
+  if (G.mobsOn) {
+    mobs.update(dt, { player: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, now: G.now });
+    mobs.trickle(dt, player.pos, grassNear);
+    for (const m of mobs.list) { const dx = player.pos.x - m.x, dz = player.pos.z - m.z; m.look.yaw = Math.max(-0.9, Math.min(0.9, Math.atan2(-dx, -dz) - m.yaw)) * (Math.hypot(dx, dz) < 8 ? 1 : 0); }
+    mobEvents();
+  }
+  if (G.verifyBed && world.has(G.verifyBed.x, G.verifyBed.z)) {              // a bed in a chunk that was not loaded at respawn: check it now
+    const b = G.verifyBed; G.verifyBed = null;
+    if (!BLOCKS[world.getBlock(b.x, b.y, b.z)]?.bed) { G.flags.bed = null; player.teleport(G.spawn.x, G.spawn.y, G.spawn.z); ui.subtitle('Your bed was missing or obstructed.', 4000); }
+  }
   const picks = drops.update(dt, player.pos, (s) => inv.add(s));
   if (picks.length) { audio.play('pickup', { vol: 0.8 }); }
   for (const [k, f] of furnaces) {
@@ -501,6 +656,7 @@ function simulate(dt) {
   if (G.saveTimer >= CONFIG.save.autosaveS) { G.saveTimer = 0; saveNow('autosave'); }
   audio.tick(dt);
   ui.renderHotbar(inv);
+  ui.mobBars(mobBarsNow());
   ui.renderVitals(vitals);
   ui.burning(vitals.burn > 0);
   if (G.deathMarker && !drops.list.some((d) => d.death)) G.deathMarker = null;              // the pile was picked up (or timed out)
@@ -540,7 +696,6 @@ function finishEating() {
 
 /** Where the player comes back: the bed (if it is still there and free), else the world spawn. */
 function respawnPoint() { return bedSpawn() ?? { x: G.spawn.x, y: G.spawn.y, z: G.spawn.z }; }
-function bedSpawn() { return null; }                       // beds arrive in phase 5
 
 function die() {
   if (G.phase !== 'playing') return;
@@ -613,12 +768,18 @@ function frame(now) {
     }
     case 'paused': case 'dead': world.update(player.pos.x, player.pos.z); world.pump(); renderer.setTarget(null); renderer.setCrack(null, 0); break;
   }
+  mobRenderer.sync(G.mobsOn && G.phase !== 'title' ? mobs.list : [], G.now, lightOf, dt);
   renderer.setTime(G.dayT, G.now);
   renderer.setDrops(drops && G.phase !== 'title' ? drops.list.map((d) => ({ x: d.x, y: d.y + 0.12 + Math.sin(G.now * 2 + d.id) * 0.05, z: d.z, spin: G.now * 1.5 + d.id, visual: dropVisual(d.stack.id), light: lightOf(d.x, d.y + 0.2, d.z) })) : [], G.atlasUV);
   renderer.render(G.now);
   if (G.f3 && G.phase === 'playing') { G.f3Timer -= dt; if (G.f3Timer <= 0) { G.f3Timer = 0.25; ui.debug(debugText()); } }
 }
 
+/** Health bars of the mobs hit in the last 3 s, in screen pixels. */
+function mobBarsNow() {
+  if (!G.mobsOn || G.phase !== 'playing') return [];
+  return mobs.list.filter((m) => m.barT > 0 && !m.dead).map((m) => { const p = renderer.project(m.x, m.y + m.h + 0.35, m.z); return p && { x: p.x, y: p.y, frac: m.hp / m.maxHp }; }).filter(Boolean);
+}
 /** [sky, block] light 0..1 of a point (an entity's cell); full daylight where the chunk has no light yet. */
 const lightOf = (x, y, z) => { const l = world.lightAt(Math.floor(x), Math.floor(y), Math.floor(z)); return l ? [l.sky / 15, l.blk / 15] : [1, 0]; };
 const dropVisual = (id) => (ITEMS[id].icon.block !== undefined ? { block: ITEMS[id].icon.block } : { sheet: ITEMS[id].icon.sheet });
@@ -653,7 +814,7 @@ function installHooks() {
     give: (item, n = 1) => inv.add(hasDurability(item) ? stack(item) : stack(item, n)),
     tp: (x, y, z) => { player.teleport(x, y, z); },
     setTime: (t) => { G.dayT = t; },
-    save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits, vitals: vitals.toJSON(), drops: drops.toJSON() }, { compress: !OPT.noCompress }),
+    save: () => serialize({ seed: G.seed, worldSize: G.worldSize, flat: G.flat, spawn: G.spawn, player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch }, inv: inv.toJSON(), furnaces: Object.fromEntries([...furnaces].map(([k, f]) => [k, f.toJSON()])), time: G.dayT, settings: G.settings, flags: saveFlags(), edits: world.edits, vitals: vitals.toJSON(), drops: drops.toJSON(), animals: mobs.toJSON(), chests: Object.fromEntries(chests) }, { compress: !OPT.noCompress }),
     load: async (str) => { const s = await deserialize(str); await startGame({ seed: s.seed, flat: s.flat, save: s, fake: true }); return s; },
     newWorld: (o = {}) => startGame({ seed: o.seed ?? 1, flat: !!o.flat, fake: o.fake !== false }),
     settle: async (radius = 2, ms = 60000) => { const t0 = performance.now(); while (world.missingMeshes(player.pos.x, player.pos.z, radius) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50)); return world.missingMeshes(player.pos.x, player.pos.z, radius); },
@@ -662,6 +823,7 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
+    mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
     vitals: () => vitals, die, respawn, hold: (on) => { G.mouseRight = !!on; },
     setHealth: (n) => { vitals.hp = n; }, setHunger: (n) => { vitals.hunger = n; }, damage: (n, o) => vitals.damage(n, o),
     setDifficulty: (d) => { G.settings.difficulty = d; applySettings(); },

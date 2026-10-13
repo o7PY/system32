@@ -36,6 +36,8 @@ export function matchRecipe(grid, w, h = grid.length / w) {
 }
 
 export const smeltsTo = (id) => SMELTING[id] ?? null;
+/** Seconds one item takes in the furnace (raw cobalt is slower). */
+export const smeltTime = (id) => CONFIG.furnace.timeFor?.[id] ?? CONFIG.furnace.smeltS;
 export const fuelValue = (id) => CONFIG.furnace.fuel[id] ?? 0;          // items it can smelt
 
 /** One furnace: input, fuel and output slots, burn and cook timers. Fuel is only burnt while there is something to cook. */
@@ -47,19 +49,19 @@ export class Furnace {
     this.onDone = null;
   }
   get burning() { return this.burn > 0; }
-  get progress() { return this.cook / CONFIG.furnace.smeltS; }
+  get progress() { return this.input ? this.cook / smeltTime(this.input.id) : 0; }
   #canCook() {
     const out = this.input && smeltsTo(this.input.id);
     if (!out) return false;
     return !this.output || (this.output.id === out && this.output.n < maxStack(out));
   }
   update(dt) {
-    const S = CONFIG.furnace.smeltS;
     let left = dt, done = 0;
     while (left > 1e-9 && this.#canCook()) {
+      const S = smeltTime(this.input.id);
       if (this.burn <= 0) {
         if (!this.fuel || !fuelValue(this.fuel.id)) break;               // out of fuel: the progress stays
-        this.burn = fuelValue(this.fuel.id) * S;
+        this.burn = fuelValue(this.fuel.id) * CONFIG.furnace.smeltS;     // a fuel burns the same time whatever is cooking
         this.fuel = this.fuel.n > 1 ? { ...this.fuel, n: this.fuel.n - 1 } : null;
       }
       const step = Math.min(left, this.burn, S - this.cook);

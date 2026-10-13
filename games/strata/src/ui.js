@@ -148,6 +148,22 @@ export class UI {
   }
   /** A red flash at the edge of the screen (the animation restarts on every hit). */
   hurt() { const e = $('hurt'); e.hidden = false; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); }
+  /** Health bars over the mobs that were hit lately: [{ x, y (screen px), frac 0..1, name }]. The divs are pooled. */
+  mobBars(list) {
+    const host = $('bars');
+    while (host.children.length < list.length) host.insertAdjacentHTML('beforeend', '<div class="mbar"><i></i></div>');
+    [...host.children].forEach((el, i) => {
+      const b = list[i];
+      el.hidden = !b;
+      if (!b) return;
+      el.style.transform = `translate(${Math.round(b.x - 22)}px, ${Math.round(b.y)}px)`;
+      el.firstElementChild.style.width = `${Math.round(b.frac * 100)}%`;
+    });
+  }
+  /** The attack cooldown under the crosshair (null hides it). */
+  attackBar(p) { const e = $('atkbar'); e.hidden = p === null || p >= 1; if (!e.hidden) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
+  /** Fade to black and back (sleeping through the night). */
+  sleepFade() { const e = $('sleep'); e.hidden = false; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); setTimeout(() => { e.hidden = true; e.classList.remove('on'); }, 2400); }
   burning(on) { $('burning').hidden = !on; }
   eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }

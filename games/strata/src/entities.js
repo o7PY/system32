@@ -46,6 +46,7 @@ export class Mobs {
   constructor({ world, rand = Math.random } = {}) {
     this.world = world; this.rand = rand;
     this.list = [];
+    this.seeded = new Set();                // chunks that had animals at some point: when all are killed the chunk is saved EMPTY, so they are not generated again
     this.parked = new Map();                // chunkKey -> [saved animals]: animals of chunks that are not loaded (persisted with the world)
     this.events = [];                       // { type: 'hurt' | 'die' | 'voice' | 'drop' | 'puff', ... } for the game to play, drain with takeEvents()
     this.respawnT = CONFIG.mobs.respawnS;
@@ -56,7 +57,7 @@ export class Mobs {
 
   takeEvents() { const e = this.events; this.events = []; return e; }
   count(kind) { return this.list.filter((m) => !m.dead && (!kind || m.def.kind === kind)).length; }
-  clear() { this.list.length = 0; this.parked.clear(); this.events.length = 0; this.respawnT = this.cfg.respawnS; }
+  clear() { this.list.length = 0; this.parked.clear(); this.seeded.clear(); this.events.length = 0; this.respawnT = this.cfg.respawnS; }
 
   spawn(type, x, y, z) {
     const m = new Mob(type, x, y, z, this.rand);
@@ -84,7 +85,7 @@ export class Mobs {
    */
   chunkLoaded(chunk, seed, sea = CONFIG.seaLevel) {
     const key = (chunk.cz << 16) | chunk.cx, saved = this.parked.get(key);
-    if (saved) { for (const a of saved) this.#restore(a); this.parked.delete(key); return; }
+    if (saved) { for (const a of saved) this.#restore(a); this.parked.delete(key); this.seeded.add(key); return; }
     const grassAt = (lx, lz) => {
       const bio = chunk.biomes?.[(lz << 4) | lx];
       if (bio !== 0 && bio !== 1) return null;                                          // plains or forest
@@ -95,7 +96,9 @@ export class Mobs {
       }
       return null;
     };
-    for (const a of Mobs.seedAnimals(seed, chunk.cx, chunk.cz, grassAt)) this.spawn(a.type, a.x, a.y, a.z);
+    const fresh = Mobs.seedAnimals(seed, chunk.cx, chunk.cz, grassAt);
+    for (const a of fresh) this.spawn(a.type, a.x, a.y, a.z);
+    if (fresh.length) this.seeded.add(key);
   }
 
   /** A chunk is about to be unloaded: its animals are parked (kept for the save and for the next load) and removed. */
@@ -104,8 +107,8 @@ export class Mobs {
     for (const m of mine) this.remove(m);
     const key = (cz << 16) | cx;
     if (mine.length) this.parked.set(key, mine.map((m) => Mobs.pack(m)));
-    else if (this.parked.has(key)) this.parked.set(key, []);                             // all killed: it must not be generated again
-    else void seed;
+    else if (this.seeded.has(key)) this.parked.set(key, []);                              // all killed: it must not be generated again
+    void seed;
   }
 
   static pack(m) { return [m.type, +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2), m.hp, m.sheared ? 1 : 0, Math.round(m.regrow)]; }
@@ -128,7 +131,7 @@ export class Mobs {
     return [...by].map(([key, arr]) => [key & 0xffff, key >>> 16, arr]);
   }
   load(data) {
-    this.list.length = 0; this.parked.clear();
+    this.list.length = 0; this.parked.clear(); this.seeded.clear();
     for (const e of Array.isArray(data) ? data : []) {
       if (!Array.isArray(e) || e.length !== 3 || !Array.isArray(e[2])) continue;
       const [cx, cz, arr] = e;

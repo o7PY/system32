@@ -99,6 +99,7 @@ export class World {
     this.seed = 0; this.flat = false; this.noSky = false; this.voidBelow = false;                // noSky: a dimension without a sky (the Underlayer, the Kernel)
     this.onMesh = null;                 // (chunk, mesh) the renderer uploads it
     this.onUnload = null;               // (chunk)
+    this.onGenerated = null;            // (chunk) its blocks are there (edits applied)
     this.uploads = [];
     this.order = []; this.orderFor = '';
     this.generation = 0;                // bumps on setSeed: stale results are ignored
@@ -218,6 +219,7 @@ export class World {
       const e = this.edits.get(chunkKey(cx, cz));
       if (e) for (const [i, id] of e) c.data[i] = id;
       this.stats.generated++;
+      this.onGenerated?.(c);                                               // animals and the like arrive with the chunk
     }, (err) => { if (gen === this.generation) { this.genInFlight--; console.error('[Strata] generation failed', err); } });
     return c;
   }

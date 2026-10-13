@@ -47,7 +47,7 @@ void main() {
 // Both are baked per vertex as 0..1 (level / 15) and bent with a gamma curve so a torch falls off quickly. uMin is the least light anywhere (a cave is not pitch black).
 const CHUNK_FS = `
 uniform sampler2D uMap; uniform float uSun; uniform vec3 uTint; uniform vec3 uWarm; uniform float uFlick; uniform float uMin; uniform vec3 uMinCol;
-uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uAlpha;
+uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uAlpha; uniform float uHurt;
 varying vec2 vUv; varying float vBr; varying float vSky; varying float vBlk; varying float vDist;
 void main() {
   vec4 t = texture2D(uMap, vUv);
@@ -57,6 +57,7 @@ void main() {
   vec3 light = max(vec3(pow(vSky, 1.5) * uSun) * uTint, vec3(pow(vBlk, 1.5) * uFlick) * uWarm);
   light = max(light, uMinCol * uMin);
   vec3 c = t.rgb * vBr * light;
+  c = mix(c, vec3(1.0, 0.18, 0.12), uHurt);                       // a hurt mob flashes red (uHurt is only ever set on entity materials)
   #ifdef WATER
   c *= vec3(0.62, 0.8, 1.0);                       // deeper blue, so the sea floor does not stripe through
   #endif
@@ -145,7 +146,7 @@ export class Renderer {
     this.time = 0.1;
     this.viewBlocks = CONFIG.view.default * CS;
     this.uniforms = {
-      uSun: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uWarm: { value: new THREE.Vector3(1, 0.8, 0.52) }, uFlick: { value: 1 }, uMin: { value: 0.035 }, uMinCol: { value: new THREE.Vector3(0.8, 0.85, 1) }, uStride: { value: 0 }, uFogColor: { value: new THREE.Vector3(0.7, 0.83, 1) },
+      uSun: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uWarm: { value: new THREE.Vector3(1, 0.8, 0.52) }, uFlick: { value: 1 }, uHurt: { value: 0 }, uMin: { value: 0.035 }, uMinCol: { value: new THREE.Vector3(0.8, 0.85, 1) }, uStride: { value: 0 }, uFogColor: { value: new THREE.Vector3(0.7, 0.83, 1) },
       uFogNear: { value: 60 }, uFogFar: { value: 120 }, uTime: { value: 0 }, uWave: { value: low ? 0 : 1 }, uAlpha: { value: 0.82 },
     };
     this.sunDir = new THREE.Vector3(0, 1, 0);
@@ -172,10 +173,20 @@ export class Renderer {
     if (water) defines.WATER = 1;
     if (entity) defines.ENTITY = 1;
     return new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: map }, ...this.uniforms, ...(entity ? { uEnt: { value: new THREE.Vector2(1, 0) } } : {}) }, vertexShader: CHUNK_VS, fragmentShader: CHUNK_FS, defines, side,
+      uniforms: { uMap: { value: map }, ...this.uniforms, ...(entity ? { uEnt: { value: new THREE.Vector2(1, 0) }, uHurt: { value: 0 } } : {}) }, vertexShader: CHUNK_VS, fragmentShader: CHUNK_FS, defines, side,
       transparent: water, depthWrite: !water,
     });
   }
+
+  /** Screen position (px) of a world point, or null when it is behind the camera. */
+  project(x, y, z) {
+    const v = (this._pv ??= new THREE.Vector3()).set(x, y, z).project(this.camera);
+    if (v.z > 1 || v.z < -1) return null;
+    return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (1 - (v.y * 0.5 + 0.5)) * innerHeight };
+  }
+
+  /** A material for models of mobs: lit by the uEnt uniform (set per object) and tinted red by uHurt. */
+  entityMaterial(map, { cutout = false } = {}) { return this.#mat(map, { entity: true, cutout }); }
 
   #materials() {
     this.mat = { opaque: this.#mat(this.tex.atlas), cut: this.#mat(this.tex.atlas, { cutout: true, side: THREE.DoubleSide }), water: this.#mat(this.tex.atlas, { water: true }) };

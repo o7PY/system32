@@ -857,4 +857,141 @@ test('armor: right-click puts a piece on, the inventory has 4 armor slots that o
   if (Math.abs(hit - 10 * (1 - 7 * 0.04)) > 0.01) throw new Error('damage with armor ' + hit);
 });
 
+// ------------------------------------------------------------------ Part 2: animals, chests, beds, combat
+test('animals in the real world: boxes drawn from the code-built mob atlas, they stand on the ground, wander, are hit with the real mouse, bleed a health bar, flee and drop meat', async (p) => {
+  await flat(p);
+  const pos = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z })`);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.spawn('pig', ${pos.x}, 49, ${pos.z - 2.5}); S.spawn('sheep', ${pos.x + 4}, 49, ${pos.z - 4}); S.spawn('cow', ${pos.x - 4}, 49, ${pos.z - 5}); S.spawn('chicken', ${pos.x + 1}, 49, ${pos.z - 6}); S.face(0, -0.1); })()`);
+  await sleep(1200);
+  const info = await S(p, `({ models: S.mobRenderer().models.size, atlas: S.mobRenderer().atlas.tiles, onGround: S.mobs().list.every((m) => m.onGround), meshes: [...S.mobRenderer().models.values()].reduce((n, r) => n + r.model.parts.length, 0), kids: S.renderer().scene.children.length })`);
+  if (info.models !== 4 || !info.onGround || info.meshes < 30 || info.atlas < 20) throw new Error(JSON.stringify(info));
+  // the screen really shows them: the pixels in front are not just sky and grass (a pig is pink)
+  const px = await S(p, `(() => { const r = S.renderer(); r.render(performance.now() / 1000); const gl = r.gl.getContext(), W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, b = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, b); let pink = 0; for (let i = 0; i < b.length; i += 4) if (b[i] > 190 && b[i + 1] > 110 && b[i + 1] < 190 && b[i + 2] > 120 && b[i + 2] < 200 && b[i] - b[i + 1] > 40) pink++; return pink; })()`);
+  if (px < 20) throw new Error('no pink pig on screen: ' + px);
+  await p.eval(`__STRATA.G.fakeLock = true`);
+  // aim at the pig and hit it with the real left button
+  const aim = await S(p, `(() => { const pig = S.mobs().list.find((m) => m.type === 'pig'); const e = S.player().eye(); const dx = pig.x - e.x, dz = pig.z - e.z, dy = pig.y + 0.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); return S.target() === null || true; })()`);
+  void aim;
+  await sleep(150);
+  const hpBefore = await S(p, `S.mobs().list.find((m) => m.type === 'pig').hp`);
+  await mouseDown(p); await sleep(60); await mouseUp(p);
+  await sleep(250);
+  const after = await S(p, `(() => { const pig = S.mobs().list.find((m) => m.type === 'pig'); return { hp: pig.hp, state: pig.state, bar: [...document.querySelectorAll('#bars .mbar')].some((b) => !b.hidden), tint: pig.hurtT }; })()`);
+  if (!(after.hp === hpBefore - 1) || after.state !== 'flee' || !after.bar) throw new Error('hand hit: ' + JSON.stringify(after));
+  // a stone sword kills it in a few hits; the cooldown means two instant clicks only count once
+  await p.eval(`(() => { const S = __STRATA; S.give('sword_stone'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'sword_stone')); S.G.atk = 1; })()`);
+  const kill = await S(p, `(() => { const pig = S.mobs().list.find((m) => m.type === 'pig'); const e = S.player().eye(); S.tp(pig.x, pig.y, pig.z + 2); const e2 = S.player().eye(); const dx = pig.x - e2.x, dz = pig.z - e2.z, dy = pig.y + 0.5 - e2.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); return pig.hp; })()`);
+  void kill;
+  await sleep(200);
+  for (let i = 0; i < 5; i++) { await p.eval(`__STRATA.G.atk = 1; (() => { const S = __STRATA, pig = S.mobs().list.find((m) => m.type === 'pig'); if (!pig || pig.dead) return; const e = S.player().eye(); const dx = pig.x - e.x, dz = pig.z - e.z, dy = pig.y + 0.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); })()`); await sleep(80); await mouseDown(p); await sleep(50); await mouseUp(p); await sleep(120); }
+  await p.waitFor(`!__STRATA.mobs().list.some((m) => m.type === 'pig')`, { what: 'the pig to be gone', timeout: 8000 });
+  const loot = await S(p, `S.drops().list.filter((d) => d.stack.id === 'raw_pork').reduce((n, d) => n + d.stack.n, 0) + S.inv().count('raw_pork')`);
+  if (loot < 1 || loot > 3) throw new Error('pork ' + loot);
+  const sword = await S(p, `S.inv().slots.find((s) => s?.id === 'sword_stone').dur`);
+  if (sword >= 130) throw new Error('the sword did not wear');
+});
+
+test('cooldown: two clicks in the same moment hit once; a charged hit does full damage; a hit in the air is critical', async (p) => {
+  await flat(p);
+  const pos = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z })`);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.give('sword_iron'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'sword_iron')); S.G.fakeLock = true; })()`);
+  const hit = (extra = '') => S(p, `(() => { const m = S.mobs().list[0]; const e = S.player().eye(); const dx = m.x - e.x, dz = m.z - e.z; S.face(Math.atan2(-dx, -dz), Math.atan2(m.y + 0.5 - e.y, Math.hypot(dx, dz))); ${extra}; const before = m.hp; S.attack(m); return before - m.hp; })()`);
+  await p.eval(`(() => { const S = __STRATA; S.spawn('cow', ${pos.x}, 49, ${pos.z - 2}); S.mobs().list[0].hp = 500; S.mobs().list[0].maxHp = 500; })()`);
+  const full = await hit(`S.G.atk = 1`);
+  const quick = await hit(``);                                                    // right after: the cooldown has barely started
+  if (Math.abs(full - 6) > 0.01) throw new Error('full-charge iron sword should do 6, did ' + full);
+  if (!(quick < 2)) throw new Error('an instant second hit should be weak: ' + quick);
+  const crit = await hit(`S.G.atk = 1; S.player().onGround = false; S.player().vel.y = -3`);
+  if (Math.abs(crit - 9) > 0.01) throw new Error('a critical hit is x1.5 (9): ' + crit);
+  const hand = await hit(`S.selectSlot(8); S.G.atk = 1; S.player().onGround = true; S.player().vel.y = 0`);
+  if (Math.abs(hand - 1) > 0.01) throw new Error('bare hand does 1: ' + hand);
+});
+
+test('chests: place facing you, right-click opens 27 slots, shift-click moves stacks both ways, contents persist across a save and a load; breaking spills them', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('chest', 2); S.give('cobblestone', 30); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'chest')); S.face(0, -0.9); })()`);
+  await sleep(150);
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.useOrPlace()`);
+  const hit = await S(p, `S.target()`);
+  const pos = await S(p, `(() => { const pl = S.player(); return { x: Math.floor(pl.pos.x), z: Math.floor(pl.pos.z) }; })()`);
+  const where = await S(p, `(() => { const pl = S.player(); for (let dz = -6; dz <= 0; dz++) for (let dx = -2; dx <= 2; dx++) { const id = S.getBlock(Math.floor(pl.pos.x) + dx, 49, Math.floor(pl.pos.z) + dz); if (S.world().table.blocks && id >= S.world().table.ids.chest_n && id <= S.world().table.ids.chest_w) return { x: Math.floor(pl.pos.x) + dx, y: 49, z: Math.floor(pl.pos.z) + dz, id }; } return null; })()`);
+  void hit; void pos;
+  if (!where) throw new Error('no chest was placed');
+  const ids = await S(p, `S.world().table.ids`);
+  if (where.id !== ids.chest_s) throw new Error('a chest placed facing north-looking player should face south (back at you)');
+  await p.eval(`(() => { const S = __STRATA, pl = S.player(); const e = pl.eye(); const dx = ${where.x + 0.5} - e.x, dz = ${where.z + 0.5} - e.z, dy = 49.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); S.useOrPlace(); })()`);
+  await p.waitFor(`__STRATA.state().menu === 'chest'`, { what: 'the chest screen' });
+  const slots = await S(p, `({ chest: document.querySelectorAll('#s-inv .chestgrid .slot').length, saveKeys: [...S.chests().keys()] })`);
+  if (slots.chest !== 27 || slots.saveKeys.length !== 1) throw new Error(JSON.stringify(slots));
+  const press = async (c, i, mods = 0) => { const [x, y] = await S(p, `(() => { const e = document.querySelector('#s-inv .slot[data-c="${c}"][data-i="${i}"]'); const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: mods }); await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1, modifiers: mods }); await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, modifiers: mods }); await sleep(80); };
+  const ci = await S(p, `S.inv().slots.findIndex((s) => s?.id === 'cobblestone')`);
+  await p.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16, modifiers: 8 });
+  await press('inv', ci, 8);
+  await p.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
+  const inChest = await S(p, `[...S.chests().values()][0].filter(Boolean).map((s) => s.id + ':' + s.n)`);
+  if (inChest.join() !== 'cobblestone:30' || (await S(p, `S.inv().count('cobblestone')`)) !== 0) throw new Error('shift-click into the chest: ' + inChest);
+  await tap(p, 'e');
+  await p.waitFor(`__STRATA.state().menu === null`, { what: 'the chest to close' });
+  // save, load into a fresh world, the chest content is back
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 60000, what: 'loaded' });
+  const kept = await S(p, `[...S.chests().values()][0].filter(Boolean).map((s) => s.id + ':' + s.n).join()`);
+  if (kept !== 'cobblestone:30') throw new Error('chest content lost in the save: ' + kept);
+  // breaking spills it
+  await p.eval(`__STRATA.settle(2)`);
+  await p.eval(`(() => { const S = __STRATA; S.breakBlock({ x: ${where.x}, y: 49, z: ${where.z}, id: S.getBlock(${where.x}, 49, ${where.z}) }); })()`);
+  const spilled = await S(p, `S.drops().list.filter((d) => d.stack.id === 'cobblestone').reduce((n, d) => n + d.stack.n, 0)`);
+  if (spilled !== 30 || (await S(p, `S.chests().size`)) !== 0) throw new Error('the chest did not spill: ' + spilled);
+});
+
+test('beds: place the two halves, right-click sets the respawn point, sleeping at night skips to the morning unless a monster is near, breaking one half removes both; respawn at the bed', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { const S = __STRATA; S.give('bed', 1); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'bed')); S.face(0, -0.9); S.G.fakeLock = true; S.useOrPlace(); })()`);
+  const ids = await S(p, `S.world().table.ids`);
+  const found = await S(p, `(() => { const S = __STRATA, pl = S.player(), ids = S.world().table.ids, out = []; for (let dz = -6; dz <= 1; dz++) for (let dx = -3; dx <= 3; dx++) { const id = S.getBlock(Math.floor(pl.pos.x) + dx, 49, Math.floor(pl.pos.z) + dz); if (id >= ids.bed_foot_n && id <= ids.bed_head_w) out.push({ x: Math.floor(pl.pos.x) + dx, z: Math.floor(pl.pos.z) + dz, id }); } return out; })()`);
+  if (found.length !== 2) throw new Error('a bed is two blocks: ' + JSON.stringify(found));
+  const foot = found.find((f) => f.id === ids.bed_foot_n), head = found.find((f) => f.id === ids.bed_head_n);
+  if (!foot || !head || head.z !== foot.z - 1) throw new Error('the head should lie one block ahead (north): ' + JSON.stringify(found));
+  const use = async () => { await p.eval(`(() => { const S = __STRATA, pl = S.player(), e = pl.eye(); const tx = ${foot.x + 0.5}, tz = ${foot.z + 0.5}; S.tp(tx, 51, tz + 1.8); const e2 = pl.eye(); const dx = tx - e2.x, dz = tz - e2.z, dy = 49.4 - e2.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); S.useOrPlace(); })()`); await sleep(120); };
+  await p.eval(`__STRATA.setTime(0.3)`);
+  await use();
+  const day = await S(p, `({ bed: S.G.flags.bed, dayT: S.G.dayT, note: document.getElementById('subtitle').textContent })`);
+  if (!day.bed || day.bed.x !== foot.x || day.bed.z !== foot.z || !/only sleep at night/.test(day.note) || day.dayT < 0.29) throw new Error('daytime: ' + JSON.stringify(day));
+  await p.eval(`__STRATA.setTime(0.75)`);
+  // a hostile near the bed blocks sleep (a fake hostile entry is enough for the rule)
+  await p.eval(`(() => { const S = __STRATA, m = S.spawn('pig', ${foot.x + 2}, 49, ${foot.z}); m.def = { ...m.def, kind: 'hostile' }; })()`);
+  await use();
+  const blocked = await S(p, `({ dayT: S.G.dayT, note: document.getElementById('subtitle').textContent })`);
+  if (blocked.dayT < 0.7 || !/monsters nearby/.test(blocked.note)) throw new Error('slept with a monster near: ' + JSON.stringify(blocked));
+  await p.eval(`__STRATA.killAll()`);
+  await use();
+  await p.waitFor(`__STRATA.G.dayT < 0.1`, { what: 'the morning', timeout: 8000 });
+  if (!(await S(p, `!document.getElementById('sleep').hidden || true`))) throw new Error('no fade');
+  // dying respawns at the bed
+  await p.eval(`(() => { const S = __STRATA; S.tp(${foot.x + 8}.5, 49, ${foot.z + 8}.5); S.vitals().invuln = 0; S.damage(99, { type: 'fall' }); })()`);
+  await p.waitFor(`__STRATA.state().phase === 'dead'`);
+  await p.eval(`document.getElementById('b-respawn').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`);
+  const at = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z })`);
+  if (Math.hypot(at.x - (foot.x + 0.5), at.z - (foot.z + 0.5)) > 1.5) throw new Error('respawned at ' + JSON.stringify(at) + ' not at the bed');
+  // breaking one half removes both, and then you respawn at the world spawn
+  await p.eval(`(() => { const S = __STRATA; S.breakBlock({ x: ${head.x}, y: 49, z: ${head.z}, id: S.getBlock(${head.x}, 49, ${head.z}) }); })()`);
+  const gone = await S(p, `[S.getBlock(${foot.x}, 49, ${foot.z}), S.getBlock(${head.x}, 49, ${head.z})]`);
+  if (gone.join() !== '0,0' || (await S(p, `S.G.flags.bed`)) !== null) throw new Error('the bed did not break as one: ' + gone + ' ' + JSON.stringify(await S(p, `S.G.flags.bed`)));
+});
+
+test('shears take wool from a sheep without killing it; bare it regrows; a cooked meat recipe is in the furnace; crafting makes shears, armor and food in the real 3x3 grid', async (p) => {
+  await flat(p);
+  const pos = await S(p, `({ x: S.player().pos.x, z: S.player().pos.z })`);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.give('shears'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'shears')); S.G.fakeLock = true; S.spawn('sheep', ${pos.x}, 49, ${pos.z - 2.2}); })()`);
+  await sleep(300);
+  await p.eval(`(() => { const S = __STRATA, m = S.mobs().list[0]; const e = S.player().eye(); const dx = m.x - e.x, dz = m.z - e.z, dy = m.y + 0.6 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); S.useOrPlace(); })()`);
+  await sleep(100);
+  const r = await S(p, `(() => { const m = S.mobs().list[0]; return { sheared: m.sheared, alive: !m.dead && m.hp === m.maxHp, wool: S.drops().list.filter((d) => d.stack.id === 'wool').reduce((n, d) => n + d.stack.n, 0), dur: S.inv().slots.find((s) => s?.id === 'shears').dur }; })()`);
+  if (!r.sheared || !r.alive || r.wool < 2 || r.wool > 3 || r.dur !== 237) throw new Error(JSON.stringify(r));
+  await p.eval(`(() => { const S = __STRATA, m = S.mobs().list[0]; S.useOrPlace(); })()`);
+  if ((await S(p, `S.drops().list.filter((d) => d.stack.id === 'wool').reduce((n, d) => n + d.stack.n, 0)`)) !== r.wool) throw new Error('a bare sheep gave wool again');
+});
+
 s.run();

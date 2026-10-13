@@ -100,3 +100,13 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 .armorcol .slot.armor:empty::before { content: ""; position: absolute; inset: 9px; border: 2px dashed rgba(255, 255, 255, .18); }
 .armtotal { font-size: 14px; color: var(--dim); text-align: center; }
 .chestgrid { margin: 4px 0; }
+
+/* ---- mobs: health bars, attack cooldown, sleeping */
+#bars { position: fixed; left: 0; top: 0; pointer-events: none; }
+.mbar { position: absolute; left: 0; top: 0; width: 44px; height: 6px; background: rgba(0, 0, 0, .65); border: 1px solid #000; }
+.mbar i { display: block; height: 100%; width: 100%; background: #d8402f; }
+#atkbar { position: absolute; left: 50%; top: calc(50% + 18px); width: 40px; height: 4px; margin-left: -20px; background: rgba(0, 0, 0, .55); }
+#atkbar i { display: block; height: 100%; width: 0; background: #fff; }
+#sleep { position: fixed; inset: 0; background: #000; pointer-events: none; opacity: 0; }
+#sleep.on { animation: sleepfade 2.4s ease-in-out forwards; }
+@keyframes sleepfade { 0% { opacity: 0 } 35% { opacity: 1 } 65% { opacity: 1 } 100% { opacity: 0 } }
