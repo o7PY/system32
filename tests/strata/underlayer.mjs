@@ -170,5 +170,39 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  
   check('chunks that only touch a vault edge are filled too (a vault spans several chunks and every border matches)', VROOT.every((v) => v.get(v.s.x - 6, v.s.fy + 5, v.s.z) === B.server_rack && v.get(v.s.x + 6, v.s.fy + 5, v.s.z) === B.server_rack && v.get(v.s.x, v.s.fy + 5, v.s.z + 6) === B.server_rack));
 }
 
+// ---------------------------------------------------------------- save version 2 and the migration from version 1
+{
+  const { MAGIC, toBase64 } = await import('../../games/strata/src/save.js');
+  const mk = async (header, edits = new Uint8Array(0)) => {
+    const h = new TextEncoder().encode(JSON.stringify(header)), box = new Uint8Array(4 + h.length + edits.length);
+    new DataView(box.buffer).setUint32(0, h.length, true); box.set(h, 4); box.set(edits, 4 + h.length);
+    return `${MAGIC}:r:${toBase64(box)}`;
+  };
+  const v1 = { v: 1, seed: 9, worldSize: 1024, flat: false, spawn: { x: 500, y: 60, z: 500 }, player: { x: 501, y: 61, z: 502, yaw: 1, pitch: 0 }, inv: { slots: Array(36).fill(null), selected: 2 }, furnaces: {}, time: 0.4, settings: { sensitivity: 1.5, fov: 80, viewDistance: 6, invertY: true, volume: 0.5, music: false }, flags: { firstIron: true } };
+  const back = await deserialize(await mk(v1));
+  check('a version-1 save (Part 1) loads: Normal difficulty, compass on, no vitals (full health), no animals, chests, Underlayer or drops; the old settings and flags are kept', back.settings.difficulty === 'normal' && back.settings.compass === true && back.settings.keepInventory === false && back.settings.sensitivity === 1.5 && back.settings.invertY === true && back.settings.music === false && back.vitals === null && back.animals.length === 0 && Object.keys(back.chests).length === 0 && Object.keys(back.dims).length === 0 && back.drops.length === 0 && back.flags.firstIron === true && back.player.x === 501 && back.inv.selected === 2);
+  const { Vitals } = await import('../../games/strata/src/survival.js');
+  const vit = new Vitals().load(back.vitals);
+  check('...and its player starts with full health and hunger', vit.hp === 20 && vit.hunger === 20 && vit.difficulty === 'normal');
+  const bad = async (h) => { try { await deserialize(await mk(h)); return false; } catch (e) { return e?.constructor?.name === 'SaveError'; } };
+  check('version 0, a future version (3) and garbage versions are still refused', await bad({ ...v1, v: 0 }) && await bad({ ...v1, v: 3 }) && await bad({ ...v1, v: 'x' }));
+  const now = await deserialize(await serialize({ seed: 9, worldSize: 1024, flat: false, spawn: v1.spawn, player: v1.player, inv: v1.inv, time: 0.1, settings: { ...CONFIG.settings }, flags: {}, edits: new Map() }));
+  check('new saves are version 2', CONFIG.save.version === 2 && now.settings.difficulty === 'normal');
+}
+
+// ---------------------------------------------------------------- a finished world fits the budget
+{
+  const rnd = (() => { let a = 7; return () => { a = (a * 16807) % 2147483647; return a / 2147483647; }; })();
+  const edits = new Map(), put = (cx, cz, i, id) => { const k = (cz << 16) | cx; if (!edits.has(k)) edits.set(k, new Map()); edits.get(k).set(i, id); };
+  for (let n = 0; n < 3000; n++) put(20 + Math.floor(rnd() * 30), 20 + Math.floor(rnd() * 30), Math.floor(rnd() * 32768), Math.floor(rnd() * 20));          // 3,000 scattered edits in the overworld
+  const under = new Map(); for (let n = 0; n < 1500; n++) { const k = ((10 + Math.floor(rnd() * 12)) << 16) | (10 + Math.floor(rnd() * 12)); if (!under.has(k)) under.set(k, new Map()); under.get(k).set(Math.floor(rnd() * 12000), Math.floor(rnd() * 56)); }
+  const chests = {}; for (let n = 0; n < 40; n++) chests[`${100 + n},60,${200 + n}`] = Array.from({ length: 27 }, (_, i) => (i % 3 === 0 ? stack('cobblestone', 20) : null));
+  const animals = Array.from({ length: 400 }, (_, i) => [i % 60, Math.floor(i / 60), [['pig', 20.5, 61, 40.5, 1, 10, 0, 0]]]);
+  const str = await serialize({ seed: 7, worldSize: 1024, flat: false, spawn: { x: 500, y: 60, z: 500 }, player: { x: 256.5, y: 41, z: 256.5, yaw: 0, pitch: 0, dim: 'underlayer' }, inv: { slots: Array(36).fill(null), selected: 0 }, time: 0.3, settings: { ...CONFIG.settings }, flags: { rifts: Array.from({ length: 8 }, (_, i) => ({ x: i * 50, y: 3, z: i * 40, ux: i * 25, uz: i * 20, uy: 40 })), vaults: { 0: { spawner: true, raided: true, warden: true }, 1: { spawner: true, raided: true, warden: true }, 2: { spawner: true, raided: true, warden: true } }, gate: true, completed: true }, edits, dims: { underlayer: under }, chests, animals });
+  const total = [...edits.values()].reduce((n, e) => n + e.size, 0);
+  check(`a "finished" world (3 vaults raided, the Gate open, ${total} overworld edits, 1,500 Underlayer edits, 40 chests, 400 animals) saves under 1.5 MB (${(str.length / 1048576).toFixed(2)} MB)`, str.length < 1.5 * 1048576, `${str.length}`);
+  check('and always under the shell cap of 2.5 MB', str.length < 2.5 * 1048576);
+}
+
 console.log(`\nStrata progression: ${fails ? `${fails} FAILED` : 'all passed'}`);
 process.exit(fails ? 1 : 0);

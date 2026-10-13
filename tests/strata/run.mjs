@@ -1455,4 +1455,47 @@ test('Kernel crystals: a cobalt pickaxe breaks one in 3 s, 3 arrows break one, a
   await p.waitFor(`__STRATA.boss().won === true`, { what: 'the win', timeout: 8000 });
 });
 
+// ------------------------------------------------------------------ Part 2: the ending
+test('the ending: the win shows a terminal log, then the credits (skippable only after 5 s), sends complete() once per world, puts the Kernel Core in the inventory and returns you to the surface; a second win does not resend; the title shows the trophy', async (p) => {
+  await flat(p);
+  await p.eval(`(() => { window.__done = []; const o = System32.complete; System32.complete = (x) => { window.__done.push(x); }; __STRATA.G.fakeLock = true; __STRATA.vitals().stats.timeS = 125; __STRATA.vitals().deaths = 2; })()`);
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing' && __STRATA.mobs().list.some((m) => m.type === 'gc')`, { timeout: 90000 });
+  await p.eval(`__STRATA.endNow()`);
+  await p.waitFor(`__STRATA.state().screen === 'end'`, { what: 'the ending screen' });
+  await sleep(1500);
+  const log = await S(p, `document.getElementById('end-log').textContent`);
+  if (!/\[gc\]/.test(log)) throw new Error('no terminal log: ' + log);
+  await p.waitFor(`!document.getElementById('credits').hidden`, { what: 'the credits', timeout: 12000 });
+  const text = await S(p, `document.getElementById('credits').textContent`);
+  if (!/Pragnya Yadav with Claude Code/.test(text) || !/three\.js/.test(text) || !/Kenney/.test(text) || !/CC0/.test(text)) throw new Error('credits: ' + text.slice(0, 300));
+  await p.eval(`__STRATA.skipCredits()`);
+  await sleep(300);
+  if (await S(p, `S.G.end === null`)) throw new Error('credits were skipped before 5 s');
+  await sleep(5000);
+  await p.eval(`__STRATA.skipCredits()`);
+  await p.waitFor(`__STRATA.state().dim === 'overworld' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'back on the surface' });
+  const done = await S(p, `window.__done`);
+  if (done.length !== 1 || done[0].difficulty !== 'normal' || done[0].deaths !== 2 || !(done[0].timeMs >= 125000)) throw new Error('complete(): ' + JSON.stringify(done));
+  if ((await S(p, `S.inv().count('kernel_core')`)) !== 1) throw new Error('no trophy');
+  // a second win: no second complete()
+  await p.eval(`__STRATA.enterKernel()`);
+  await p.waitFor(`__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`__STRATA.endNow()`);
+  await p.waitFor(`!document.getElementById('credits').hidden`, { timeout: 12000 });
+  await sleep(5200); await p.eval(`__STRATA.skipCredits()`);
+  await p.waitFor(`__STRATA.state().dim === 'overworld' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  if ((await S(p, `window.__done.length`)) !== 1) throw new Error('complete() was sent twice');
+  if ((await S(p, `S.inv().count('kernel_core')`)) !== 2) throw new Error('second trophy');
+  // the Kernel Core thrown into the void comes back (egg)
+  await p.eval(`(() => { const S = __STRATA, P = S.player().pos; S.drops().spawn(P.x + 3, -20, P.z, { id: 'kernel_core', n: 1 }, { vx: 0, vy: 0, vz: 0, delayS: 99 }); })()`);
+  await p.waitFor(`__STRATA.G.eggs.has('strata-recycle')`, { what: 'the recycle egg', timeout: 6000 });
+  if (!/protected by the will of the previous user/.test(await S(p, `document.getElementById('subtitle').textContent`))) throw new Error('no message');
+  // the title screen shows the trophy from INIT
+  await p.eval(`window.postMessage({ source: 'system32-shell', type: 'INIT', payload: { save: null, soundOn: false, completed: { timeMs: 125000, deaths: 2, difficulty: 'normal', at: 1, byDifficulty: { normal: { timeMs: 125000, deaths: 2, at: 1 } } } } }, '*')`);
+  await sleep(200);
+  await p.eval(`__STRATA.G.completed = { timeMs: 125000, byDifficulty: { normal: { timeMs: 125000 } } }; __STRATA.ui().title({ canContinue: false, completed: __STRATA.G.completed })`);
+  if (!/🏆.*2:05/.test(await S(p, `document.getElementById('title-trophy').textContent`))) throw new Error('trophy line');
+});
+
 s.run();

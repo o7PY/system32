@@ -185,6 +185,17 @@ There is no binding with `Ctrl` anywhere (`Ctrl+W` closes the browser tab and a 
   DOM, saving, menus, day / night, audio, eggs, border, streaming), `node tests/strata/shell.mjs` (Part A in the real shell) and `node tests/strata/shell-game.mjs` (the real game in the sandboxed
   window: worker, SAVE / INIT, PAUSE, eggs, sound). Headless Chrome renders with software WebGL, so these check logic, not frame rate.
 
+### Strata Part 2 (STRATA_PART2_SPEC.md): a survival game you can win
+
+Hearts, hunger, air, armor, death and respawn (items stay where you died for 10 minutes; Keep inventory in Settings), three difficulties (Peaceful / Normal / Hard), a real light
+engine with torches, animals (pig, cow, sheep, chicken), night monsters (Shambler, Rattler, Creepcrawler, Pop-up), chests, beds, a bow, cobalt gear, **Cracked Bedrock** and
+**Rifts** into **the Underlayer** (a second, hostile dimension), three **Data Vaults** (spawner, lava parkour, Vault Warden, a Kernel Shard each), the **Kernel Gate**, and the
+**Garbage Collector** in **the Kernel**. Beating it shows the credits, reports `System32.complete()` once per world (best time per difficulty, a green check on the icon) and the
+world goes on. `?debug=1` adds the test hooks on `window.__STRATA` (`setHealth`, `setHunger`, `spawn`, `killAll`, `setDifficulty`, `goto('overworld'|'underlayer'|'kernel')`,
+`giveKit('iron'|'cobalt')`, `bossPhase(n)`, `setTime`); `?peaceful=1` starts on Peaceful. Tests: `tests/strata/{static,world,logic,light,survival,entities,hostile,underlayer,boss}.mjs`
+(Node) and `run.mjs`, `shell.mjs`, `shell-game.mjs` (headless Chrome). Saves are version 2 and still load version 1 worlds.
+
+
 ## DOM-ination (Part 2, `games/dom-ination/`)
 
 `free_prizes.html` → `popup_guard.sys`. Close pop-ups before they multiply; survive 60 s with fewer than 24 open.

@@ -147,9 +147,31 @@ export class StrataAudio {
   block(kind, blockId, opts) { return this.play(`${kind}.${BLOCKS[blockId]?.group ?? 'stone'}`, opts); }
   ui(name) { return this.play(`ui.${name}`, { vol: 0.8 }); }
 
+  // ---------------------------------------------------------------- the boss music (synthesized): a pulsing bass and a minor arpeggio, faster and higher with the phase
+  setBossMusic(phase) { this.boss = phase || 0; if (!phase) return; if (this.nextBoss === undefined || this.nextBoss > (this.ctx?.currentTime ?? 0) + 5) this.nextBoss = 0; }
+  #bossBeat() {
+    if (!this.boss || !this.ctx || !this.active || !this.music) return;
+    const ctx = this.ctx, now = ctx.currentTime;
+    if (this.nextBoss > now + 0.25) return;
+    const step = 0.5 / (1 + (this.boss - 1) * 0.25), t = Math.max(now + 0.02, this.nextBoss ?? now), k = (this.bossStep = ((this.bossStep ?? -1) + 1)), scale = [0, 3, 7, 10, 12, 15, 19, 22], root = 38 + (this.boss === 3 ? 2 : 0);
+    const bass = ctx.createOscillator(), bg = ctx.createGain(), fl = ctx.createBiquadFilter();
+    bass.type = 'sawtooth'; bass.frequency.value = mtof(root - 12 + (k % 8 < 4 ? 0 : (k % 8 < 6 ? -2 : 3)));
+    fl.type = 'lowpass'; fl.frequency.value = 280 + this.boss * 120;
+    bg.gain.setValueAtTime(0.0001, t); bg.gain.linearRampToValueAtTime(0.14, t + 0.02); bg.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.9);
+    bass.connect(fl).connect(bg).connect(this.master); bass.start(t); bass.stop(t + step);
+    if (k % 2 === 1 || this.boss > 1) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'square'; o.frequency.value = mtof(root + 12 + scale[(k * 3) % scale.length]);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.035, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.5);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t + step * 0.6);
+    }
+    this.nextBoss = t + step;
+  }
+
   // ---------------------------------------------------------------- ambient music
   /** Call every frame while playing: every 2.5 to 5 minutes a slow pad of 3 or 4 chords drifts in and out. */
   tick(dt) {
+    this.#bossBeat();
     this.nextMusic -= dt;
     if (this.nextMusic > 0) return;
     const [a, b] = CONFIG.musicEveryS;

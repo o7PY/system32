@@ -75,7 +75,7 @@ export const CONFIG = {
   day: { lengthS: 1200, start: 0.08 },      // 20 minutes per day; 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
   clouds: { y: 112, speed: 1.6 },
 
-  save: { autosaveS: 60, version: 1, capBytes: 2.5 * 1024 * 1024 },     // the shell's cap for Strata (two dimensions); a finished world should stay under 1.5 MB
+  save: { autosaveS: 60, version: 2, capBytes: 2.5 * 1024 * 1024 },     // the shell's cap for Strata (two dimensions); a finished world should stay under 1.5 MB
   settings: { sensitivity: 1, fov: 70, viewDistance: 8, invertY: false, volume: 0.7, music: true, difficulty: 'normal', keepInventory: false, compass: true, subtitles: false },
   // mobs (STRATA_PART2_SPEC 5): animals come with the chunk (40 % of grassy chunks, 2 to 4 of one kind), one more every 2 minutes near you, at most 20 loaded
   mobs: { chunkChance: 0.4, perChunk: [2, 4], respawnS: 120, passiveCap: 20, deathS: 0.9, hearRange: 24 },
@@ -87,6 +87,8 @@ export const CONFIG = {
   // the vaults: the loot of a Data Vault chest; a Kernel Shard in it is the point
   vault: { loot: [['cobalt_ingot', 1, 3], ['cooked_beef', 2, 4], ['arrow', 4, 10], ['iron_ingot', 2, 5]], shardsNeeded: 3, spawnerEveryS: 6, spawnerMax: 4, spawnerRange: 22, wardenRange: 34 },
   kernel: { size: 128 },
+  // the ending (STRATA_PART2_SPEC 7.4): a terminal log, then the credits, skippable after 5 s; then back to the surface with the trophy
+  ending: { logS: 5.5, skipAfterS: 5, creditsS: 42 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 

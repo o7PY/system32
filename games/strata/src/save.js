@@ -83,6 +83,19 @@ export async function serialize(s, { compress = true } = {}) {
 
 const validStack = (s) => s === null || (s && typeof s.id === 'string' && ITEMS[s.id] && Number.isInteger(s.n) && s.n >= 1 && s.n <= ITEMS[s.id].stack && (s.dur === undefined || (Number.isFinite(s.dur) && s.dur >= 1 && s.dur <= durabilityOf(s.id))));
 
+/**
+ * A save of an older version is brought up to date, never rejected. Version 1 (Part 1, before survival): Normal difficulty, full health and hunger, no armor, no animals,
+ * no chests, no Underlayer, nothing finished. Everything the older format did not have is filled in with the defaults of a new game.
+ */
+function migrate(h) {
+  if (h.v >= 2) return h;
+  const m = { ...h, v: 2, vitals: h.vitals ?? null, drops: h.drops ?? [], animals: h.animals ?? [], chests: h.chests ?? {}, dims: h.dims ?? {}, otherDrops: h.otherDrops ?? {} };
+  m.settings = { ...CONFIG.settings, ...(h.settings ?? {}), difficulty: 'normal', keepInventory: false, compass: true, subtitles: false };
+  m.flags = { ...(h.flags ?? {}) };
+  if (m.player && m.player.dim === undefined) m.player = { ...m.player };
+  return m;
+}
+
 /** Parse and validate. Throws SaveError for anything that is not a sane save (wrong magic, garbage, impossible numbers). */
 export async function deserialize(str) {
   if (typeof str !== 'string' || !str.startsWith(`${MAGIC}:`)) fail('not a Strata save');
@@ -98,7 +111,8 @@ export async function deserialize(str) {
   if (hl < 2 || hl > 4_000_000 || 4 + hl > box.length) fail('bad header length');
   let h;
   try { h = JSON.parse(new TextDecoder().decode(box.subarray(4, 4 + hl))); } catch { fail('bad header JSON'); }
-  if (!h || h.v !== CONFIG.save.version) fail('unknown save version');
+  if (!h || !Number.isInteger(h.v) || h.v < 1 || h.v > CONFIG.save.version) fail('unknown save version');
+  h = migrate(h);
   const S = h.worldSize;
   if (!Number.isInteger(S) || S < 64 || S > 4096 || (S & (S - 1)) !== 0) fail('bad world size');
   if (!Number.isInteger(h.seed) || h.seed < 0 || h.seed > 0xffffffff) fail('bad seed');

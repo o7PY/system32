@@ -7,7 +7,7 @@ import { ITEMS, durabilityOf } from './items.js';
 import { hudIcons } from './hudicons.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'death', 'error'];
+const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
 
 
 export class UI {
@@ -51,7 +51,21 @@ export class UI {
   }
   hud(on) { $('hud').hidden = !on; }
   progress(p, text) { $('load-bar').style.width = `${Math.round(p * 100)}%`; if (text) $('load-text').textContent = text; }
-  title({ canContinue, note = '' }) { $('b-continue').disabled = !canContinue; $('title-note').textContent = note; }
+  title({ canContinue, note = '', completed = null }) {
+    $('b-continue').disabled = !canContinue; $('title-note').textContent = note;
+    const t = $('title-trophy');
+    t.hidden = !completed;
+    if (completed) { const best = completed.byDifficulty ? Math.min(...Object.values(completed.byDifficulty).map((r) => r.timeMs)) : completed.timeMs, m = Math.floor(best / 60000), s = Math.floor((best % 60000) / 1000); t.textContent = `🏆 Kernel restored. Best time ${m}:${String(s).padStart(2, '0')}`; }
+  }
+  /** The ending screen: lines are appended to the terminal log; credits() starts the roll. */
+  endLog(text) { const e = $('end-log'); e.textContent = text; }
+  endCredits(lines) {
+    const c = $('credits'); c.hidden = false;
+    c.firstElementChild.innerHTML = lines.map((l) => (l.h ? `<h2>${l.h}</h2>` : `<p class="${l.dim ? 'dim' : ''}">${l.t}</p>`)).join('');
+    c.firstElementChild.style.animation = 'none'; void c.offsetWidth; c.firstElementChild.style.animation = '';
+  }
+  endSkip(on) { $('end-skip').hidden = !on; }
+  endReset() { $('end-log').textContent = ''; $('credits').hidden = true; $('end-skip').hidden = true; }
   newWorld({ overwrite }) { $('overwrite-note').hidden = !overwrite; $('seed-input').value = ''; $('b-start-new').textContent = overwrite ? 'Replace World' : 'Create World'; }
   /** Second step of replacing a saved world. */
   armReplace() { $('b-start-new').textContent = 'Click again to replace it'; $('overwrite-note').hidden = false; }

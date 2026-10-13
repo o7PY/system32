@@ -51,6 +51,7 @@
     <button class="btn" data-act="new">New World</button>
     <button class="btn" data-act="settings">Settings</button>
   </div>
+  <p id="title-trophy" class="trophy" hidden></p>
   <p id="title-note" class="dim small"></p>
 </section>
 
@@ -106,6 +107,12 @@
     <p id="death-note" class="dim small"></p>
     <div class="menu"><button class="btn" data-act="respawn" id="b-respawn">Respawn</button></div>
   </div>
+</section>
+
+<section class="screen" id="s-end" hidden>
+  <pre id="end-log"></pre>
+  <div id="credits" hidden><div class="roll"></div></div>
+  <button class="btn" id="end-skip" data-act="skip-credits" hidden>Skip</button>
 </section>
 
 <section class="screen dim-bg" id="s-error" hidden>

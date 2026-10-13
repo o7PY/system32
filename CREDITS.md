@@ -6,7 +6,7 @@
   https://creativecommons.org/publicdomain/zero/1.0/). The raw pack lives in `assets/source/` and is not committed;
   only processed models inside a game's own folder are. Used by SpaceSaga: 25 models processed by `tools/build-assets.mjs`
   into `games/space-saga/models/` (scaled, meshopt-compressed, textures resized to WebP).
-- **Voxel Pack** by Kenney (kenney.nl), CC0 1.0. Used by Strata: 24 block-face tiles and 14 item icons, downscaled to 32x32 and packed into
+- **Voxel Pack** by Kenney (kenney.nl), CC0 1.0. Used by Strata: block-face tiles and item icons (Part 2 adds lava, cobalt ore, ash, wool, the tool set used for cobalt, bread-and-stew items), downscaled to 32x32 and packed into
   `games/strata/assets/atlas.png` and `items.png` by `tools/strata/build-assets.mjs` (bedrock, the crafting table's side and front, the Ad Block
   ore, the stick, the iron ingot and the pop-up icon are drawn in code, not from the pack).
 - **Impact Sounds**, **RPG Audio**, **Interface Sounds**, **UI Audio** and **Music Jingles** by Kenney (kenney.nl), CC0 1.0. Used by Strata: 62 short
@@ -29,3 +29,5 @@
   Strata's Kenney samples listed above.
 
 <!-- Add new entries above this line, one bullet per asset or library: name, author, license, where it is used. -->
+
+- Part 2 art and sound that is **not** from a pack: every mob, the Garbage Collector, the player-facing hearts / hunger / armor / air icons, the Rift, server racks, chests, torches, the boss music and all mob voices are drawn or synthesized in code. Win jingle: Kenney Music Jingles (Steel jingles).

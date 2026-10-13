@@ -136,4 +136,28 @@ test('pointer lock is allowed by the sandbox: a click on the game canvas locks t
   if (r.phase !== 'playing' && r.phase !== 'paused') throw new Error(JSON.stringify(r));
 });
 
+test('the win in the real shell: the game\'s complete() reaches the shell once (best time per difficulty, toast, egg, check on the icon) and the next INIT carries it back to the title', async (page) => {
+  await open(page);
+  await inFrame(page, `__STRATA.newWorld({ seed: 5, flat: true }).then(() => 0)`);
+  await waitFrame(page, `__STRATA.state().phase === 'playing'`, 90000);
+  await inFrame(page, `(() => { const S = __STRATA; S.G.fakeLock = true; S.vitals().stats.timeS = 300; S.enterKernel(); })()`);
+  await waitFrame(page, `__STRATA.state().dim === 'kernel' && __STRATA.state().phase === 'playing'`, 90000);
+  await inFrame(page, `__STRATA.endNow()`);
+  await waitFrame(page, `!document.getElementById('credits').hidden`, 20000);
+  await sleep(5300);
+  await inFrame(page, `__STRATA.skipCredits()`);
+  await page.waitFor(`import('/js/state.js').then((m) => !!m.state.bonus.completed.strata)`, { what: 'the shell to store the win', timeout: 20000 });
+  const sv = await live(page);
+  const c = sv.bonus.completed.strata;
+  if (c.difficulty !== 'normal' || !(c.timeMs >= 300000) || c.deaths !== 0) throw new Error(JSON.stringify(c));
+  if (!sv.eggsFound.includes('strata-complete')) throw new Error('egg');
+  if (!(await toastTexts(page)).some((t) => t.includes('kernel restored'))) throw new Error('toast ' + JSON.stringify(await toastTexts(page)));
+  await closeWin(page);
+  await page.eval(`import('/js/events.js').then((m) => m.launch('strata'))`);
+  await page.waitFor(`!!document.querySelector('#game-strata iframe')`);
+  await waitFrame(page, `window.__STRATA?.state().phase === 'title'`, 90000);
+  const t = await inFrame(page, `document.getElementById('title-trophy').textContent`);
+  if (!/🏆/.test(t)) throw new Error('title trophy: ' + t);
+});
+
 s.run();

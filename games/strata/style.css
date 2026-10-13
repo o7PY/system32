@@ -139,3 +139,13 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 #logs { position: fixed; inset: 0; pointer-events: none; overflow: hidden; color: #2cff8a; font: 14px/1.5 ui-monospace, monospace; opacity: .5; mix-blend-mode: screen; z-index: 0; }
 #logs div { position: absolute; white-space: nowrap; animation: drift linear infinite; text-shadow: 0 0 6px #0f6; }
 @keyframes drift { from { transform: translateX(110vw); } to { transform: translateX(-110%); } }
+
+/* ---- the ending: a terminal log, then the credits */
+#s-end { background: #000; color: #38ff8a; font: 22px/1.5 var(--font, ui-monospace, monospace); justify-content: flex-start; align-items: flex-start; padding: 6vh 6vw; z-index: 70; overflow: hidden; }
+#end-log { margin: 0; white-space: pre-wrap; text-shadow: 0 0 8px #0f6; width: 100%; }
+#credits { position: absolute; inset: 0; overflow: hidden; text-align: center; color: #e8ffe8; }
+#credits .roll { position: absolute; left: 0; right: 0; top: 100%; animation: roll 42s linear forwards; }
+#credits h2 { color: #38ff8a; margin: 1.6em 0 .3em; font-size: 34px; } #credits p { margin: .2em 0; font-size: 22px; } #credits .dim { color: #8fbf9f; }
+@keyframes roll { from { transform: translateY(0); } to { transform: translateY(-190%); } }
+#end-skip { position: absolute; right: 24px; bottom: 20px; z-index: 2; }
+.trophy { color: #ffd84a; font-size: 24px; margin: 4px 0; }

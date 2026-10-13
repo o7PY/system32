@@ -67,8 +67,9 @@ async function boot() {
   let initResolve; const initGot = new Promise((r) => { initResolve = r; });
   sdk?.onInit((init) => {
     G.save = typeof init?.save === 'string' ? init.save : null;
+    G.completed = init?.completed ?? null;
     G.soundOn = !!init?.soundOn; audio.setAllowed(G.soundOn);
-    if (G.phase === 'title') ui.title({ canContinue: !!G.save });
+    if (G.phase === 'title') ui.title({ canContinue: !!G.save, completed: G.completed });
     initResolve();
   });
   sdk?.onSound((p) => { G.soundOn = !!p?.soundOn; audio.setAllowed(G.soundOn); if (G.soundOn) audio.unlock(); });
@@ -129,7 +130,7 @@ async function startTitleWorld() {
 function showTitle() {
   G.phase = 'title';
   ui.hud(false);
-  ui.title({ canContinue: !!G.save, note: backendInfo.kind === 'inline' ? 'Running without a worker thread (slower chunk loading).' : '' });
+  ui.title({ canContinue: !!G.save, completed: G.completed, note: backendInfo.kind === 'inline' ? 'Running without a worker thread (slower chunk loading).' : '' });
   ui.show('title');
 }
 
@@ -279,6 +280,8 @@ function bindUI() {
   ui.on('settings-change', (s) => { Object.assign(G.settings, s); applySettings(); });
   ui.on('resume', () => resumeGame());
   ui.on('respawn', () => respawn());
+  ui.on('skip-credits', () => skipCredits());
+  addEventListener('keydown', (e) => { if (G.phase === 'ending' && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); skipCredits(); } });
   ui.on('quit', () => quitToTitle());
   ui.on('menu-changed', () => {
     audio.ui('click');
@@ -786,6 +789,10 @@ function simulate(dt) {
     const b = G.verifyBed; G.verifyBed = null;
     if (!BLOCKS[world.getBlock(b.x, b.y, b.z)]?.bed) { G.flags.bed = null; player.teleport(G.spawn.x, G.spawn.y, G.spawn.z); ui.subtitle('Your bed was missing or obstructed.', 4000); }
   }
+  for (const d of drops.list) if (d.stack.id === 'kernel_core' && d.y < -12 && !d.dead) {            // thrown into the void: it comes back (the callback to the Recycle Bin joke)
+    d.dead = true; const left = inv.add({ ...d.stack }); if (left) drops.spawn(player.pos.x, player.pos.y + 1, player.pos.z, left);
+    eggOnce('strata-recycle'); ui.subtitle('This file is protected by the will of the previous user.', 6000); audio.play('pickup', { vol: 0.8 });
+  }
   const picks = drops.update(dt, player.pos, (s) => inv.add(s));
   if (picks.length) { audio.play('pickup', { vol: 0.8 }); }
   for (const [k, f] of furnaces) {
@@ -883,7 +890,7 @@ async function travel(to, at, { afterEnter = null, text = null } = {}) {
   if (from !== 'kernel') { G.dimEdits[from] = world.edits; G.dimDrops[from] = drops.toJSON(); }
   if (from === 'overworld') G.dimAnimals.overworld = mobs.toJSON();
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); drops.clear(); miner.reset();
-  boss = null; ui.bossBar(null); ui.logs(false);
+  boss = null; ui.bossBar(null); ui.logs(false); audio.setBossMusic(0);
   await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: to === 'kernel' ? new Map() : (G.dimEdits[to] ?? new Map()) });       // the Kernel is regenerated from scratch every time: its edits are never kept
   G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size); ui.logs(to === 'kernel');
   G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
@@ -1030,7 +1037,7 @@ function enterKernel() {
 }
 function startBoss() {
   boss = new Boss({ mobs, world, difficulty: vitals.difficulty });
-  boss.start();
+  boss.start(); audio.setBossMusic(1);
 }
 const crystalHits = new Map();
 /** An arrow that stuck in a Kernel crystal: three of them break it. */
@@ -1060,7 +1067,7 @@ function bossEvent(ev) {
     case 'delete': audio.play('vault.open', { at, listener: L, vol: 0.5 }); break;
     case 'stomp-wind': ui.subtitle('The ground shakes…', 1200); break;
     case 'stomp': audio.play('boss.stomp', { at, listener: L, vol: 1 }); ui.subtitle('The core is exposed. Strike it!', 2500); break;
-    case 'phase': ui.subtitle(['', '', 'Phase 2: Sweep', 'Phase 3: Compact'][ev.phase] ?? '', 3000); break;
+    case 'phase': audio.setBossMusic(ev.phase); ui.subtitle(['', '', 'Phase 2: Sweep', 'Phase 3: Compact'][ev.phase] ?? '', 3000); break;
     case 'pointers': ui.subtitle('Pointers!', 2000); break;
     case 'shrink': ui.subtitle('The arena is compacting.', 2500); break;
     case 'dying': audio.voice('warden', 'die', { at, listener: L, vol: 1 }); ui.subtitle('[gc] collection failing…', 3000); break;
@@ -1072,7 +1079,60 @@ function bossEvent(ev) {
   }
 }
 /** The Garbage Collector is gone: the ending (phase 10 of the build: credits, System32.complete, the trophy). */
-function onBossDefeated() { ui.subtitle('Garbage collection complete.', 4000); }
+function onBossDefeated() { if (G.phase === 'playing') startEnding(); }
+
+// ---------------------------------------------------------------- the ending (STRATA_PART2_SPEC 7.4)
+const CREDITS = [
+  { h: 'Strata.exe' }, { t: 'a System32 bonus game' }, { t: 'Garbage collection complete.', dim: true },
+  { h: 'Game' }, { t: 'Made by Pragnya Yadav with Claude Code' },
+  { h: 'Engine' }, { t: 'three.js (MIT License)', dim: false }, { t: 'WebGL, Web Workers and the Web Audio API', dim: true },
+  { h: 'Art and sound' }, { t: 'Kenney Voxel Pack: block faces and item icons' }, { t: 'Kenney Impact Sounds, RPG Audio, UI Audio, Interface Sounds' }, { t: 'Kenney Music Jingles' }, { t: 'Kenney Fonts: Kenney Pixel' }, { t: 'all Kenney assets: CC0 (Creative Commons Zero), kenney.nl', dim: true },
+  { h: 'Drawn in code' }, { t: 'mobs, the Garbage Collector, hearts, hunger, armor and mining icons, the Rift, server racks and every sound of a living thing' },
+  { h: 'Thank you for playing' }, { t: 'You restored the kernel.' }, { t: 'The previous user would be proud.', dim: true },
+];
+/** Fade out, a terminal log, the credits (skippable after 5 s), then System32.complete() (once per world) and back to the surface with the trophy. */
+function startEnding() {
+  if (G.phase !== 'playing') return;
+  G.phase = 'ending'; G.keys.clear(); G.mouseLeft = false; G.mouseRight = false; G.draw = null; G.eat = null; ui.eating(null);
+  document.exitPointerLock?.();
+  ui.bossBar(null); ui.hud(false); ui.adOverlay(0); ui.warp(0);
+  audio.play('jingle.win', { vol: 0.9 });
+  audio.setBossMusic(0);
+  const t = vitals.stats.timeS * 1000;
+  G.end = { t: 0, stage: 'log', skip: false, timeMs: Math.max(1, Math.round(t)), deaths: vitals.deaths, difficulty: vitals.difficulty };
+  ui.endReset(); ui.show('end'); ui.endLog('');
+}
+const END_LOG = ['[gc] mark phase complete.', '[gc] sweep phase complete.', '[gc] compact phase complete.', '[gc] collection complete. 0 bytes freed. strata.exe restored.', '', '> exit 0'];
+function endingStep(dt) {
+  const e = G.end;
+  if (!e) return;
+  e.t += dt;
+  if (e.stage === 'log') {
+    const n = Math.min(END_LOG.length, Math.floor((e.t / CONFIG.ending.logS) * (END_LOG.length + 1)));
+    ui.endLog(END_LOG.slice(0, n).join('\n') + (e.t % 0.8 < 0.4 ? '\n_' : ''));
+    if (e.t >= CONFIG.ending.logS) { e.stage = 'credits'; e.t = 0; ui.endCredits(CREDITS); }
+  } else if (e.stage === 'credits') {
+    ui.endSkip(e.t >= CONFIG.ending.skipAfterS);
+    e.skippable = e.t >= CONFIG.ending.skipAfterS;
+    if (e.t >= CONFIG.ending.creditsS || e.skip) finishEnding();
+  }
+}
+function skipCredits() { const e = G.end; if (e?.stage === 'credits' && e.skippable) e.skip = true; }
+/** The win is reported to the shell ONCE per world; the trophy goes into the inventory; you wake on the surface and the world goes on. */
+function finishEnding() {
+  const e = G.end; G.end = null;
+  ui.endReset(); ui.show(null);
+  if (!G.flags.completed) {
+    G.flags.completed = true;
+    sdk?.complete({ timeMs: e.timeMs, deaths: e.deaths, difficulty: e.difficulty });
+    G.completedSent = (G.completedSent ?? 0) + 1;
+  }
+  const left = inv.add(stack('kernel_core', 1)); if (left) drops.spawn(player.pos.x, player.pos.y + 1, player.pos.z, left);
+  G.phase = 'playing';
+  boss = null; ui.bossBar(null);
+  vitals.hp = CONFIG.survival.maxHp;
+  travel('overworld', { ...G.spawn }, { text: 'Returning to the surface…', afterEnter: () => { ui.hud(true); ui.subtitle('You restored Strata.exe. The world is yours.', 6000); saveNow('ending'); } });
+}
 
 /** Standing inside a Rift for CONFIG.underlayer.riftS seconds takes you through. */
 function useRift(blockId, cell) {
@@ -1138,6 +1198,7 @@ function frame(now) {
       break;
     }
     case 'paused': case 'dead': world.update(player.pos.x, player.pos.z); world.pump(); renderer.setTarget(null); renderer.setCrack(null, 0); break;
+    case 'ending': world.update(player.pos.x, player.pos.z); world.pump(); endingStep(dt); break;
   }
   mobRenderer.sync(G.mobsOn && G.phase !== 'title' ? mobs.list : [], G.now, lightOf, dt);
   renderer.setTime(G.dayT, G.now);
@@ -1194,6 +1255,7 @@ function installHooks() {
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
     world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
+    endNow: () => { if (G.phase === 'playing') startEnding(); }, end: () => G.end, completedSent: () => G.completedSent ?? 0, skipCredits,
     boss: () => boss, bossPhase: (n) => { if (boss) boss.m.hp = [0, 300, 200, 90][n] ?? 300; }, enterKernel,
     travel, goto: (dim) => { if (dim === 'kernel') return enterKernel(); const at = dim === 'underlayer' ? { x: CONFIG.underlayer.size / 2 + 0.5, y: 60, z: CONFIG.underlayer.size / 2 + 0.5 } : { ...G.spawn }; return travel(dim, at, dim === 'underlayer' ? { afterEnter: () => { const a = buildArrival(CONFIG.underlayer.size / 2, CONFIG.underlayer.size / 2); player.teleport(a.x, a.y, a.z); } } : {}); },
     arrows: () => arrows, spawner: () => spawner, mobs: () => mobs, mobRenderer: () => mobRenderer, chests: () => chests, spawn: (type, x, y, z) => mobs.spawn(type, x, y, z), killAll: () => { for (const m of [...mobs.list]) mobs.remove(m); }, attack,
