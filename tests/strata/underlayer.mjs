@@ -38,6 +38,8 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  
     if (within < 8) allOk = false;
   }
   check(`at least 8 Cracked Bedrock sites within 300 blocks of the spawn, for 10 seeds (${seedInfo.join(',')})`, allOk);
+  // the game passes dim: 'overworld' explicitly (regression: a truthy dim once switched the sites off in the real game)
+  check('Cracked Bedrock sites exist when the world is initialised the way the game does it (dim "overworld")', makeGen({ seed: 4, dim: 'overworld' }).crackSites().length === 14 && makeGen({ seed: 4, dim: 'overworld' }).generate(0, 0).data.length > 0 && makeGen({ seed: 4, dim: 'underlayer', worldSize: 512 }).crackSites().length === 0);
   const g = makeGen({ seed: 4 }), sites = g.crackSites();
   const real = sites.filter((s) => { const d = g.generate(s.x >> 4, s.z >> 4).data; return d[idx(s.x & 15, s.y, s.z & 15)] === B.cracked_bedrock; }).length;
   check('every site really is a Cracked Bedrock block in the generated chunk, at y 2 or 3 (the bedrock layer)', real === sites.length && sites.every((s) => s.y >= 2 && s.y <= 3), `${real}/${sites.length}`);
@@ -67,7 +69,7 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  
   check('big caverns: at least a third of the cells between the floor and the ceiling are air', (by.air ?? 0) / total > 0.25, `${((by.air ?? 0) / total).toFixed(2)}`);
   const sp = g.spawn(), cd = g.generate(sp.x >> 4, sp.z >> 4).data;
   check('the centre is a flat, safe platform at y 40 with 20+ blocks of air above it (the Kernel Gate goes here later)', cd[idx(sp.x & 15, 40, sp.z & 15)] !== 0 && cd[idx(sp.x & 15, 41, sp.z & 15)] === 0 && cd[idx(sp.x & 15, 60, sp.z & 15)] === 0);
-  const lavaLow = (() => { let n = 0, bad = 0; for (let cx = 4; cx < 28; cx += 2) for (let cz = 4; cz < 28; cz += 2) { const dd = g.generate(cx, cz).data; for (let y = 0; y < 96; y++) for (let i = 0; i < 256; i++) if (dd[(y << 8) | i] === B.lava) { n++; if (y > 21) bad++; } } return { n, bad }; })();
+  const lavaLow = (() => { let n = 0, bad = 0; for (let cx = 4; cx < 28; cx += 2) for (let cz = 4; cz < 28; cz += 2) { const dd = g.generate(cx, cz).data; for (let y = 0; y < 96; y++) for (let i = 0; i < 256; i++) if (dd[(y << 8) | i] === B.lava) { const wx = cx * 16 + (i & 15), wz = cz * 16 + (i >> 4); if (g.vaultSites().some((s) => Math.abs(s.x - wx) <= 7 && Math.abs(s.z - wz) <= 7)) continue; n++; if (y > 21) bad++; } } return { n, bad }; })();
   check('lava lakes sit in the low basins only (y 20 and below), static, and there is a lot of it', lavaLow.n > 200 && lavaLow.bad === 0, JSON.stringify(lavaLow));
   const sites = g.vaultSites();
   check('three vault sites, 120 to 200 blocks from the centre, 120 degrees apart', sites.length === 3 && sites.every((s) => { const d = Math.hypot(s.x - 256, s.z - 256); return d >= 119 && d <= 201; }) && (() => { const a = sites.map((s) => Math.atan2(s.z - 256, s.x - 256)).sort((x, y) => x - y); const gaps = [a[1] - a[0], a[2] - a[1], a[0] + Math.PI * 2 - a[2]]; return gaps.every((x) => Math.abs(x - Math.PI * 2 / 3) < 0.5); })());
@@ -98,6 +100,74 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  
   check('an old save (no dimension, no Underlayer section) loads in the overworld with no Underlayer edits', old.player.dim === undefined && Object.keys(old.dims).length === 0);
   const bad = async (patch) => { try { await deserialize(await serialize({ ...base, ...patch })); return false; } catch (e) { return e?.constructor?.name === 'SaveError'; } };
   check('a forged dimension name, a forged Underlayer edit and an out-of-range chunk are rejected', await bad({ player: { ...base.player, dim: 'nether' } }) && await bad({ dims: { underlayer: new Map([[(999 << 16) | 999, new Map([[1, 2]])]]) } }) && await bad({ dims: { underlayer: new Map([[(1 << 16) | 1, new Map([[1, 250]])]]) } }));
+}
+
+// ---------------------------------------------------------------- the Data Vaults
+{
+  const VROOT = [];
+  for (const seed of [5, 11, 42]) {
+    const g = makeGen({ seed, dim: 'underlayer', worldSize: 512 }), sites = g.vaultSites();
+    const cache = new Map();
+    const get = (x, y, z) => { const k = `${x >> 4},${z >> 4}`; let d = cache.get(k); if (!d) { d = g.generate(x >> 4, z >> 4).data; cache.set(k, d); } return d[idx(x & 15, y, z & 15)]; };
+    const solid = (x, y, z) => BLOCKS[get(x, y, z)].solid;
+    for (const s of sites) {
+      const arrival = { x: 256, y: 41, z: 256 };
+      void arrival;
+      // flood fill through non-solid cells from the doorway (what "reachable through air" means), with the door closed and open
+      const flood = (open) => {
+        const door = new Set(s.door.map((c) => `${c.x},${c.y},${c.z}`));
+        const blocked = (x, y, z) => (door.has(`${x},${y},${z}`) ? !open : solid(x, y, z));          // an opened door is air
+        const seen = new Set(), q = [[s.entrance.x, s.entrance.y, s.entrance.z]];
+        const key = (x, y, z) => `${x},${y},${z}`;
+        seen.add(key(...q[0]));
+        for (let i = 0; i < q.length && q.length < 200000; i++) {
+          const [x, y, z] = q[i];
+          for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+            const nx = x + dx, ny = y + dy, nz = z + dz;
+            if (Math.abs(nx - s.x) > 12 || Math.abs(nz - s.z) > 12 || ny < s.fy || ny > s.fy + 30 || seen.has(key(nx, ny, nz)) || blocked(nx, ny, nz)) continue;
+            seen.add(key(nx, ny, nz)); q.push([nx, ny, nz]);
+          }
+        }
+        return seen;
+      };
+      const cellAbove = `${s.chest.x},${s.chest.y + 1},${s.chest.z}`;
+      VROOT.push({ seed, s, closed: flood(false), open: flood(true), cellAbove, get, solid });
+    }
+  }
+  check('three vaults for every seed, each 120 to 200 blocks from the centre, a flat pad of basalt with the tower on it', VROOT.length === 9 && VROOT.every((v) => { const d = Math.hypot(v.s.x - 256, v.s.z - 256); return d >= 119 && d <= 201 && v.get(v.s.x + 8, v.s.fy, v.s.z) === B.basalt; }));
+  check('the tower walls are unbreakable server racks (hardness -1) with a doorway: nothing can dig in', VROOT.every((v) => BLOCKS[v.get(v.s.x + 6, v.s.fy + 5, v.s.z)].hardness < 0 && BLOCKS[v.get(v.s.x - 6, v.s.fy + 12, v.s.z + 2)].name === 'server_rack' && v.get(v.s.x, v.s.fy + 1, v.s.z - 6) === 0));
+  check('the entrance hall has a mob spawner (breakable) at its centre and a sealed vault door of 6 blocks across the stairs', VROOT.every((v) => v.get(v.s.spawner.x, v.s.spawner.y, v.s.spawner.z) === B.spawner && v.s.door.length === 6 && v.s.door.every((c) => v.get(c.x, c.y, c.z) === B.vault_door)) && BLOCKS[B.spawner].hardness > 0 && BLOCKS[B.vault_door].hardness < 0);
+  check('the chest is in the shard room with the right facing; the Warden spot is its middle', VROOT.every((v) => [B.chest_e, B.chest_w].includes(v.get(v.s.chest.x, v.s.chest.y, v.s.chest.z)) && v.get(v.s.warden.x | 0, v.s.warden.y | 0, v.s.warden.z | 0) === 0));
+  check('with the door CLOSED the chest cannot be reached from the entrance (the shard room is sealed)', VROOT.every((v) => !v.closed.has(v.cellAbove) && v.closed.size > 200));
+  check('with the door OPEN the chest is reachable through air from the entrance (hall, stairs, lava room, stairs, shard room)', VROOT.every((v) => v.open.has(v.cellAbove)), VROOT.filter((v) => !v.open.has(v.cellAbove)).map((v) => `${v.seed}/${v.s.index}`).join());
+  // a walking check: the standable cells reach the chest with moves of at most a 3-block gap and 1 up (so the parkour is a real, jumpable path)
+  const walk = (v) => {
+    const { s, get, solid } = v, key = (x, y, z) => `${x},${y},${z}`;
+    const stand = (x, y, z) => !solid(x, y, z) && !solid(x, y + 1, z) && solid(x, y - 1, z) && get(x, y - 1, z) !== B.lava;
+    const lava = (x, y, z) => get(x, y, z) === B.lava;
+    const start = [s.entrance.x, s.entrance.y, s.entrance.z], seen = new Set([key(...start)]), q = [start];
+    for (let i = 0; i < q.length; i++) {
+      const [x, y, z] = q[i];
+      for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) for (let dy = -3; dy <= 1; dy++) {
+        const d = Math.max(Math.abs(dx), Math.abs(dz)); if (!d || d > (dy < 0 ? 3 : dy === 0 ? 3 : 2)) continue;
+        if (Math.abs(dx) + Math.abs(dz) > 4) continue;
+        const nx = x + dx, ny = y + dy, nz = z + dz;
+        if (Math.abs(nx - s.x) > 6 || Math.abs(nz - s.z) > 6 || seen.has(key(nx, ny, nz)) || !stand(nx, ny, nz)) continue;
+        // the ground between must not be walled off by a solid at head height along the way (coarse)
+        if (solid(x + Math.sign(dx), y + 1, z + Math.sign(dz)) && d > 1) continue;
+        seen.add(key(nx, ny, nz)); q.push([nx, ny, nz]);
+        void lava;
+      }
+    }
+    return seen;
+  };
+  const walked = VROOT.map((v) => { const open = new Set(v.s.door.map((c) => `${c.x},${c.y},${c.z}`)); const orig = v.get; const v2 = { ...v, get: (x, y, z) => (open.has(`${x},${y},${z}`) ? 0 : orig(x, y, z)), solid: (x, y, z) => (open.has(`${x},${y},${z}`) ? false : v.solid(x, y, z)) }; return walk(v2).has(`${v.s.chest.x},${v.s.chest.y + 1},${v.s.chest.z}`); });
+  check('the chest can also be WALKED to: standable cells connect the doorway to the shard room with hops of 3 blocks at most and 1 up (the lava parkour is passable)', walked.every(Boolean), walked.map((w, i) => `${VROOT[i].seed}/${VROOT[i].s.index}:${w}`).join());
+  check('the parkour room is mostly lava (a lava floor with platforms), and there is no way to skip it: the only air from the hall to the shard room goes through it', VROOT.every((v) => { let lava = 0; for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) if (v.get(v.s.x + dx, v.s.fy + 8, v.s.z + dz) === B.lava) lava++; return lava > 40; }));
+  check('the spire rises 27 blocks above the roof, 3 x 3 of glowing racks (light 6 each), taller than the cavern walls so it shows through the haze', VROOT.every((v) => v.get(v.s.x, v.s.fy + 50, v.s.z) === B.server_rack && BLOCKS[B.server_rack].emit === 6));
+  check('the variation is small and seeded: two platform layouts and four chest corners across the 9 vaults', new Set(VROOT.map((v) => v.s.variant)).size >= 1 && new Set(VROOT.map((v) => `${v.s.chest.x - v.s.x},${v.s.chest.z - v.s.z}`)).size >= 2);
+  check('a vault is the same on every load (pure function of seed and position)', (() => { const a = makeGen({ seed: 5, dim: 'underlayer', worldSize: 512 }), b = makeGen({ seed: 5, dim: 'underlayer', worldSize: 512 }), s = a.vaultSites()[0]; const x = a.generate(s.x >> 4, s.z >> 4).data, y = b.generate(s.x >> 4, s.z >> 4).data; return x.every((v, i) => v === y[i]); })());
+  check('chunks that only touch a vault edge are filled too (a vault spans several chunks and every border matches)', VROOT.every((v) => v.get(v.s.x - 6, v.s.fy + 5, v.s.z) === B.server_rack && v.get(v.s.x + 6, v.s.fy + 5, v.s.z) === B.server_rack && v.get(v.s.x, v.s.fy + 5, v.s.z + 6) === B.server_rack));
 }
 
 console.log(`\nStrata progression: ${fails ? `${fails} FAILED` : 'all passed'}`);

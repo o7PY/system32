@@ -133,6 +133,9 @@ export class StrataAudio {
       case 'rattler': for (let i = 0; i < (die ? 9 : 5); i++) g(this.#noise(t + i * 0.055, 0.045, { f: 2800 + (i % 3) * 600, q: 3, gain: 0.16 })); break;
       case 'crawler': g(this.#noise(t, hurt ? 0.25 : 0.45, { f: 5200, f1: 2400, q: 0.9, type: 'highpass', gain: 0.12 })); g(this.#tone(t, 0.3, { type: 'square', f0: 640 * k, f1: 420 * k, gain: 0.06, lp: 1500 })); break;
       case 'popup': for (let i = 0; i < 2; i++) g(this.#tone(t + i * 0.11, 0.08, { type: 'square', f0: 880 + i * 440, f1: 880 + i * 440, gain: 0.1, lp: 3500 })); break;
+      case 'warden': g(this.#tone(t, 0.9, { f0: 70 * k, f1: 45 * k, gain: 0.35, lp: 300, trem: 5 })); g(this.#noise(t, 0.6, { f: 180, q: 0.6, gain: 0.12, type: 'lowpass' })); break;
+      case 'daemon': g(this.#noise(t, 0.5, { f: 900, f1: 300, q: 1.2, gain: 0.18 })); g(this.#tone(t, 0.35, { type: 'sawtooth', f0: 180 * k, f1: 120 * k, gain: 0.14, lp: 700, trem: 14 })); break;
+      case 'glitch': for (let i = 0; i < 5; i++) g(this.#tone(t + i * 0.04, 0.05, { type: 'square', f0: 300 + ((i * 7919) % 900), f1: 200 + ((i * 104729) % 1200), gain: 0.08, lp: 4000 })); break;
       default: g(this.#noise(t, 0.2, { f: 400, gain: 0.2 }));
     }
     if (pan) { const p = ctx.createStereoPanner(); p.pan.value = pan; out.connect(p).connect(this.master); } else out.connect(this.master);

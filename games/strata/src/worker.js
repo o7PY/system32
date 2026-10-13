@@ -244,7 +244,7 @@
    * small cave pocket above it so that digging down into it opens onto the block. A site is deep: y 2 or 3, in the bedrock layer.
    */
   function crackSites() {
-    if (cfg.flat || cfg.dim) return [];
+    if (cfg.flat || (cfg.dim && cfg.dim !== 'overworld')) return [];
     if (computingSpawn) return [];
     if (crackCache) return crackCache;
     computingSpawn = true;
@@ -279,11 +279,109 @@
     return Math.round(24 + n * 26);
   }
   function underCeil(x, z) { var n = noise2(x * 0.022 - 51, z * 0.022 + 12) * 0.6 + noise2(x * 0.07 + 5, z * 0.07 - 80) * 0.2; return Math.round(70 + n * 16); }
-  /** The vault sites: three towers 120 degrees apart, 120-200 blocks from the centre. */
+  // ---- the Data Vaults (STRATA_PART2_SPEC 6.3): three server-rack towers 120 degrees apart, 120-200 blocks from the centre. A fixed template with small seeded variations:
+  //   hall (dy 1-6): an open doorway, a mob spawner, stairs up behind a sealed vault door -> parkour room (dy 8-14): lava with rack platforms -> stairs -> shard room (dy 16-22):
+  //   a chest and the Vault Warden's spot; a roof and a tall glowing spire (visible through the haze). dy is the height above the vault floor (fy).
+  var VHALF = 6, VPAD = 10;
+  var PLATFORMS = [
+    [[-2, 4], [-4, 2], [-1, 0], [-4, -2]],                  // variant 0: top-left corners of the 2 x 2 platforms, snaking from the walkway (x 0..5, z 5) to the far corner
+    [[-2, 3], [-1, 0], [-4, 1], [-3, -1]],
+  ];
   function vaultSites() {
     var r = rng(hash(555, 9, 3, 0)), a0 = r() * TAU, out = [], i;
-    for (i = 0; i < 3; i++) { var a = a0 + (i / 3) * TAU, d = 120 + r() * 80; out.push({ x: Math.floor(UC + Math.cos(a) * d), z: Math.floor(UC + Math.sin(a) * d) }); }
+    for (i = 0; i < 3; i++) {
+      var a = a0 + (i / 3) * TAU, d = 120 + r() * 80, x = Math.floor(UC + Math.cos(a) * d), z = Math.floor(UC + Math.sin(a) * d);
+      var v = hash(x, z, 77, i), fy = Math.max(26, Math.min(48, underFloor(x, z))), corner = v % 4, cx = (corner & 1 ? 4 : -4), cz = (corner & 2 ? 4 : -4);
+      out.push({
+        x: x, z: z, fy: fy, index: i, variant: (v >> 4) & 1, corner: corner,
+        spawner: { x: x, y: fy + 1, z: z },
+        door: [3, 4, 5].flatMap(function (dx) { return [5, 6].map(function (dy) { return { x: x + dx, y: fy + dy, z: z + 1 }; }); }),
+        chest: { x: x + cx, y: fy + 16, z: z + cz, facing: cx > 0 ? 'w' : 'e' },
+        warden: { x: x + 0.5, y: fy + 17, z: z + 0.5 },
+        entrance: { x: x, y: fy + 1, z: z - VHALF - 3 },
+      });
+    }
     return out;
+  }
+  var vaultCache = null;
+  function vaults() { return vaultCache || (vaultCache = vaultSites()); }
+
+  /** The block of the vault template at offset (dx, dz) from its centre and height dy above its floor; -1 = leave the world alone. */
+  function vaultCell(site, dx, dy, dz) {
+    var ax = Math.abs(dx), az = Math.abs(dz), R = id.server_rack;
+    if (ax > VPAD || az > VPAD || dy < -6 || dy > 52) return -1;
+    if (ax > VHALF || az > VHALF) {                                           // the apron: a flat basalt pad around the tower with air above it
+      if (dy < 0) return id.basalt;
+      if (dy === 0) return id.basalt;
+      return dy <= 12 ? id.air : -1;
+    }
+    if (dy < 0) return id.basalt;                                             // foundation
+    if (dy === 0) return R;                                                   // hall floor
+    var wall = ax === VHALF || az === VHALF, inner = !wall;
+    // ---- the spire: a 3 x 3 rack column above the roof
+    if (dy >= 23) {
+      if (dy === 23) return R;                                                // roof slab (the shard room's ceiling)
+      return ax <= 1 && az <= 1 && dy <= 50 ? R : (dy <= 23 ? R : id.air);
+    }
+    if (wall) {
+      if (dy <= 3 && dz === -VHALF && ax <= 1) return id.air;                 // the doorway
+      if (dy <= 3 && dz === -VHALF && ax === 2) return id.vault_door;         // its frame
+      return R;
+    }
+    // ---- slabs (ceilings): dy 7 over the hall, dy 15 over the parkour room
+    if (dy === 7 || dy === 15) {
+      if (dy === 7 && ax >= 3 && ax <= 5 && dx > 0 && dz >= 2 && dz <= 3) return id.air;          // the stairwell holes
+      if (dy === 15 && dx <= -3 && dx >= -5 && dz >= 2 && dz <= 3) return id.air;
+      // the top steps are part of the stairs (below), the rest is slab
+      if (dy === 7 && dx >= 3 && dz === 4) return R;
+      if (dy === 15 && dx <= -3 && dz === 4) return R;
+      return R;
+    }
+    // ---- the hall (dy 1-6): stairs on the east side, behind the sealed door
+    if (dy >= 1 && dy <= 6) {
+      if (dx === 2 && dz >= -2 && dz <= 5) return R;                           // the west wall of the stair shaft: the only way up is through the door plug
+      if (dx >= 3 && dx <= 5 && dz >= -2 && dz <= 5) { var k = dz + 3; if (dy <= k) return R; if (dz === 1 && dy >= 5 && dy <= 6) return id.vault_door; }   // step k = dz + 3 (k 1..8), the door plug on step 4
+      if (dx === 0 && dz === 0 && dy === 1) return id.spawner;
+      return id.air;
+    }
+    if (dy === 8 && dx >= 3 && dx <= 5 && dz === 5) return R;                 // (the top step of the hall stairs, flush with the parkour floor)
+    if (dy >= 1 && dy <= 8 && dx >= 3 && dx <= 5 && dz === 5) return R;
+    // ---- the parkour room (dy 8-14): the floor layer is dy 8 (lava, rack platforms, rack walkways)
+    if (dy >= 8 && dy <= 14) {
+      if (dy === 8) {
+        if (dz === 5 && dx >= 0 && dx <= 5) return R;                         // the walkway from the stairs
+        if (dx >= 3 && dx <= 5 && dz >= 2 && dz <= 4) return id.air;          // the stairwell (open above the hall stairs)
+        if (dx <= -3 && dz <= -3) return R;                                   // the far landing
+        var pl = PLATFORMS[site.variant], i;
+        for (i = 0; i < pl.length; i++) if (dx >= pl[i][0] && dx <= pl[i][0] + 1 && dz >= pl[i][1] && dz <= pl[i][1] + 1) return R;
+        // the stairs up to the shard room: x -5..-3, z -2..4 (step k = dz + 3: blocks dy 8..8+k-1... see below)
+        if (dx <= -3 && dx >= -5 && dz >= -2 && dz <= 4) return R;
+        return id.lava;
+      }
+      // above the layer: the stairs to the shard room (dx -5..-3), step k at dz = k - 3 (k 1..7) fills dy 8 .. 8 + k
+      if (dx <= -3 && dx >= -5 && dz >= -2 && dz <= 4) { var k2 = dz + 3; if (dy <= 8 + k2) return R; }
+      return id.air;
+    }
+    // ---- the shard room (dy 16-22)
+    if (dy >= 16 && dy <= 22) {
+      var ch = site.chest;
+      if (site.x + dx === ch.x && site.z + dz === ch.z && dy === 16) return chestBlock(ch.facing);
+      if (dx <= -3 && dx >= -5 && dz >= -2 && dz <= 4 && dy === 16 && dz < 4) return id.air;
+      if (dy === 16 && ((dx === 0 && dz === 0) || ax === 3 && az === 3)) return R;               // a plinth and four pillar stubs: a little furniture for the fight
+      return id.air;
+    }
+    return id.air;
+  }
+  function chestBlock(f) { return f === 'e' ? id.chest_e : f === 'w' ? id.chest_w : f === 'n' ? id.chest_n : id.chest_s; }
+
+  /** Write the vault templates that touch the chunk (cx, cz). */
+  function vaultStamps(data, cx, cz) {
+    var list = vaults(), i, s, ox = cx * CS, oz = cz * CS;
+    for (i = 0; i < list.length; i++) {
+      s = list[i];
+      if (s.x + VPAD < ox || s.x - VPAD >= ox + CS || s.z + VPAD < oz || s.z - VPAD >= oz + CS) continue;
+      stamp(data, cx, cz, s.x - VPAD, s.fy - 6, s.z - VPAD, s.x + VPAD, s.fy + 52, s.z + VPAD, (function (site) { return function (x, y, z) { return vaultCell(site, x - site.x, y - site.fy, z - site.z); }; })(s));
+    }
   }
 
   function genUnderlayer(cx, cz) {
@@ -312,6 +410,7 @@
       // glowcap groves on the floor
       if (!flat && fl > 21 && noise2(x * 0.05 - 200, z * 0.05 + 100) > 0.2 && rand01(x, 31, z, 3) < 0.07) { var g = data[((fl + 1) << 8) | (lz << 4) | lx]; if (g === id.air && data[(fl << 8) | (lz << 4) | lx] !== id.lava) data[((fl + 1) << 8) | (lz << 4) | lx] = id.glowcap; }
     }
+    vaultStamps(data, cx, cz);
     return { data: data, biomes: biomes };
   }
 
@@ -540,11 +639,11 @@
 
   // ------------------------------------------------------------------ API
   function init(c) {
-    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0); tabs = null; crackCache = null;
+    cfg = c; id = c.ids; perm = buildPerm(c.seed >>> 0); tabs = null; crackCache = null; vaultCache = null;
     return true;
   }
   var API = {
-    init: init, generate: generate, mesh: mesh, crackSites: crackSites, vaultSites: vaultSites, underFloor: underFloor, underCeil: underCeil, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
+    init: init, generate: generate, mesh: mesh, crackSites: crackSites, vaultSites: vaults, vaultCell: vaultCell, underFloor: underFloor, underCeil: underCeil, meshRegion: meshRegion, lightRegion: lightRegion, spawn: spawn, columnInfo: columnInfo, caveAt: caveAt,
     noise2: function (x, y) { return noise2(x, y); }, noise3: function (x, y, z) { return noise3(x, y, z); },
     ao: function (s1, s2, c) { return s1 && s2 ? 0 : 3 - (s1 + s2 + c); },
     BIOME: { PLAINS: PLAINS, FOREST: FOREST, DESERT: DESERT, MOUNTAINS: MOUNTAINS, BEACH: BEACH, OCEAN: OCEAN },
@@ -563,6 +662,7 @@
           if (out.light) tr.push(out.light.buffer);
           self.postMessage({ t: 'mesh', rid: m.rid, mesh: out }, tr); return;
         }
+        if (m.t === 'sites') { self.postMessage({ t: 'sites', rid: m.rid, sites: { cracks: cfg.dim && cfg.dim !== 'overworld' ? [] : crackSites(), vaults: cfg.dim === 'underlayer' ? vaults() : [] } }); return; }
         if (m.t === 'spawn') { self.postMessage({ t: 'spawn', rid: m.rid, spawn: spawn() }); return; }
         if (m.t === 'column') { self.postMessage({ t: 'column', rid: m.rid, info: columnInfo(m.x, m.z) }); return; }
       } catch (err) { self.postMessage({ t: 'error', rid: m.rid, message: String(err && err.stack || err) }); }

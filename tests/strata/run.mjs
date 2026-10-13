@@ -1215,4 +1215,130 @@ test('cobalt ore needs an iron pickaxe, smelts in 8 s into an ingot, and makes c
   if (t.speed !== 9 || t.dur !== 900 || t.sword !== 8) throw new Error(JSON.stringify(t));
 });
 
+// ------------------------------------------------------------------ Part 2: the Data Vaults, the Tracer and the compass
+const toVault = async (p, i = 0) => {
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.G.fakeLock = true; S.vitals().hunger = 20; })()`);
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'the Underlayer' });
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 1e9; })()`);
+  const v = await S(p, `S.G.sites.vaults[${i}]`);
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[${i}]; S.tp(v.entrance.x + 0.5, v.entrance.y, v.entrance.z + 0.5); S.face(Math.PI, 0); })()`);
+  await p.waitFor(`__STRATA.world().has(${v.x}, ${v.z}) && __STRATA.getBlock(${v.spawner.x}, ${v.spawner.y}, ${v.spawner.z}) === __STRATA.world().table.ids.spawner`, { what: 'the vault chunks', timeout: 60000 });
+  await p.eval(`__STRATA.settle(2)`);
+  return v;
+};
+
+test('a Data Vault: the sealed door, the spawner that makes Daemons until it is broken (5 s with a pickaxe), the door grinding open, the Warden, the chest with a Kernel Shard, raided state', async (p) => {
+  await flat(p);
+  const v = await toVault(p);
+  const ids = await S(p, `S.world().table.ids`);
+  if (v.door.length !== 6 || !v.door.every((c) => true)) throw new Error('door ' + v.door.length);
+  const sealed = await S(p, `[${JSON.stringify(v.door)}][0].every((c) => S.getBlock(c.x, c.y, c.z) === ${ids.vault_door})`);
+  if (!sealed) throw new Error('the vault door is not there');
+  // the spawner makes Daemons while you are near
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[0]; S.tp(v.x + 0.5, v.fy + 1, v.z - 4.5); S.vitals().invuln = 99999; S.vitals().hp = 20; S.setHealth(20); })()`);
+  await p.waitFor(`__STRATA.mobs().list.filter((m) => m.type === 'daemon').length >= 1`, { what: 'a Daemon from the spawner', timeout: 30000 });
+  await p.eval(`(() => { const S = __STRATA; S.mobs().list.filter((m) => m.type === 'daemon').forEach((m) => S.mobs().damage(m, 999, {})); S.killAll(); S.give('pickaxe_iron'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'pickaxe_iron')); })()`);
+  // the vault walls cannot be dug
+  const wall = await S(p, `(() => { const v = S.G.sites.vaults[0]; return require_breakInfo; })()`).catch(() => null);
+  void wall;
+  const info = await p.eval(`import('/games/strata/src/interact.js').then((m) => ({ wall: m.breakInfo(${ids.server_rack}, null).breakable, door: m.breakInfo(${ids.vault_door}, null).breakable, spawner: m.breakInfo(${ids.spawner}, { id: 'pickaxe_iron', n: 1, dur: 250 }).time }))`);
+  if (info.wall || info.door || Math.abs(info.spawner - 5 / 6) > 0.01 && info.spawner > 6) throw new Error(JSON.stringify(info));
+  // break the spawner for real: aim at it and mine
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[0]; S.tp(v.x + 0.5, v.fy + 1, v.z - 2.5); const e = S.player().eye(); const dx = v.x + 0.5 - e.x, dz = v.z + 0.5 - e.z, dy = v.fy + 1.5 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); S.mineHold(true); })()`);
+  await p.waitFor(`__STRATA.getBlock(${v.spawner.x}, ${v.spawner.y}, ${v.spawner.z}) === 0`, { what: 'the spawner to break', timeout: 15000 });
+  await p.eval(`__STRATA.mineHold(false)`);
+  await p.waitFor(`[${JSON.stringify(v.door)}][0].every((c) => __STRATA.getBlock(c.x, c.y, c.z) === 0)`, { what: 'the door to open', timeout: 10000 });
+  const st = await S(p, `S.G.flags.vaults[0]`);
+  if (!st.spawner) throw new Error('spawner state ' + JSON.stringify(st));
+  if (!/vault door grinds open/.test(await S(p, `document.getElementById('subtitle').textContent`))) throw new Error('no door message');
+  // nothing spawns from it any more
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[0]; S.G.vaultT = 0; })()`);
+  await sleep(4000);
+  if (await S(p, `S.mobs().list.some((m) => m.type === 'daemon')`)) throw new Error('a destroyed spawner kept spawning');
+  // walk up: the Warden wakes when you are near, with its shield rule
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[0]; S.tp(v.x + 0.5, v.fy + 17, v.z - 3.5); S.G.vaultT = 0; })()`);
+  await p.waitFor(`__STRATA.mobs().list.some((m) => m.type === 'warden')`, { what: 'the Warden', timeout: 20000 });
+  const w = await S(p, `(() => { const m = S.mobs().list.find((x) => x.type === 'warden'); return { hp: m.hp, y: m.y, near: Math.hypot(m.x - ${v.x}, m.z - ${v.z}) }; })()`);
+  if (w.hp !== 80 || w.near > 3) throw new Error(JSON.stringify(w));
+  // kill it (a hit from behind counts): the state is saved
+  await p.eval(`(() => { const S = __STRATA, m = S.mobs().list.find((x) => x.type === 'warden'); S.mobs().damage(m, 999, { from: { x: m.x, z: m.z + 5 }, type: 'player' }); })()`);
+  await p.waitFor(`__STRATA.G.flags.vaults[0].warden === true`, { what: 'the Warden to fall' });
+  // the chest: a Kernel Shard and supplies, made when first opened; closing it with the shard taken raids the vault
+  await p.eval(`(() => { const S = __STRATA, v = S.G.sites.vaults[0]; S.killAll(); S.tp(v.chest.x + 0.5, v.chest.y + 1, v.chest.z + (v.chest.z > v.z ? -1.6 : 1.6)); const e = S.player().eye(); const dx = v.chest.x + 0.5 - e.x, dz = v.chest.z + 0.5 - e.z, dy = v.chest.y + 0.4 - e.y; S.face(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); S.useOrPlace(); })()`);
+  await p.waitFor(`__STRATA.state().menu === 'chest'`, { what: 'the vault chest' });
+  const loot = await S(p, `[...S.chests().values()][0].filter(Boolean).map((s) => s.id)`);
+  if (!loot.includes('kernel_shard') || loot.length < 3) throw new Error('loot ' + loot);
+  await p.eval(`(() => { const S = __STRATA, c = [...S.chests().values()][0], i = c.findIndex((s) => s?.id === 'kernel_shard'); S.inv().add(c[i]); c[i] = null; })()`);
+  await p.eval(`__STRATA.closeMenu()`);
+  if (!(await S(p, `S.G.flags.vaults[0].raided`))) throw new Error('the vault was not marked raided');
+  if ((await S(p, `S.inv().count('kernel_shard')`)) !== 1) throw new Error('no shard');
+  // the state survives a save and a load; the door stays open
+  const str = await S(p, `S.save()`);
+  await p.eval(`__STRATA.load(${JSON.stringify(str)})`);
+  await p.waitFor(`__STRATA.state().phase === 'playing' && __STRATA.state().dim === 'underlayer'`, { timeout: 90000 });
+  const again = await S(p, `({ st: S.G.flags.vaults[0], shards: S.inv().count('kernel_shard') })`);
+  if (!again.st.raided || !again.st.spawner || !again.st.warden || again.shards !== 1) throw new Error('after the load ' + JSON.stringify(again));
+});
+
+test('the Tracer and the compass strip: N, E, S, W follow where you look; the death marker; holding a Tracer shows the nearest Rift site on the surface, the nearest unraided vault below, the Gate with a key', async (p) => {
+  await boot(p);
+  await p.eval(`__STRATA.newWorld({ seed: 7 })`);                                // a real terrain world (a flat one has no Cracked Bedrock)
+  await p.waitFor(`__STRATA.state().phase === 'playing'`, { timeout: 90000, what: 'playing' });
+  await p.eval(`__STRATA.settle(1)`);
+  await p.eval(`(() => { const S = __STRATA; S.killAll(); S.G.fakeLock = true; S.face(0, 0); })()`);
+  await sleep(300);
+  const strip = () => S(p, `[...document.querySelectorAll('#compass .cm')].map((e) => ({ t: e.textContent, x: parseFloat(e.style.left) }))`);
+  let c = await strip();
+  if (!c.some((x) => x.t === 'N' && Math.abs(x.x - 50) < 2)) throw new Error('N should be straight ahead: ' + JSON.stringify(c));
+  await p.eval(`__STRATA.face(-Math.PI / 2, 0)`); await sleep(250);                 // looking east
+  c = await strip();
+  if (!c.some((x) => x.t === 'E' && Math.abs(x.x - 50) < 2)) throw new Error('E should be straight ahead: ' + JSON.stringify(c));
+  await p.eval(`__STRATA.face(-Math.PI / 4, 0)`); await sleep(250);                 // north-east: N on the left, E on the right
+  c = await strip();
+  if (!c.some((x) => x.t === 'E' && x.x > 60) || !c.some((x) => x.t === 'N' && x.x < 40)) throw new Error('N should be left and E right when looking north-east: ' + JSON.stringify(c));
+  // the setting hides it
+  await p.eval(`(() => { const S = __STRATA; S.G.settings.compass = false; })()`); await sleep(250);
+  if (!(await S(p, `document.getElementById('compass').classList.contains('off')`))) throw new Error('the compass did not hide');
+  await p.eval(`(() => { const S = __STRATA; S.G.settings.compass = true; })()`);
+  // the death marker
+  await p.eval(`(() => { const S = __STRATA, pl = S.player().pos; S.G.deathMarker = { x: Math.floor(pl.x) - 8, y: 49, z: Math.floor(pl.z), dim: 'overworld' }; S.drops().spawn(pl.x - 8, 49, pl.z, { id: 'stone', n: 1 }, { vx: 0, vy: 0, vz: 0, delayS: 1e9, ttl: 600, death: true }); S.face(Math.PI / 2, 0); })()`); await sleep(250);   // looking west
+  c = await strip();
+  if (!c.some((x) => x.t === '☠' && Math.abs(x.x - 50) < 4)) throw new Error('the death marker should be ahead (west): ' + JSON.stringify(c));
+  await p.eval(`(() => { const S = __STRATA; S.G.deathMarker = { x: 1, y: 1, z: 1, dim: 'underlayer' }; })()`); await sleep(250);
+  if ((await strip()).some((x) => x.t === '☠')) throw new Error('a death marker of another dimension is shown');
+  // the Tracer: nothing without it; with it, the nearest cracked bedrock
+  await p.eval(`(() => { const S = __STRATA; S.G.deathMarker = null; S.give('tracer'); })()`);
+  await sleep(250);
+  if ((await strip()).some((x) => /◆/.test(x.t))) throw new Error('a Tracer marker without holding it');
+  const target = await S(p, `(() => { const S = __STRATA, P = S.player().pos, c = S.G.sites.cracks.slice().sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0]; S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'tracer')); S.face(-Math.atan2(c.x + 0.5 - P.x, -(c.z + 0.5 - P.z)), 0); return { x: c.x, z: c.z, d: Math.round(Math.hypot(c.x - P.x, c.z - P.z)) }; })()`);
+  await sleep(300);
+  c = await strip();
+  const mark = c.find((x) => /◆ Rift/.test(x.t));
+  if (!mark || Math.abs(mark.x - 50) > 3 || Math.abs(parseInt(mark.t.match(/(\d+)m/)[1]) - target.d) > 2) throw new Error('the Tracer should point at the nearest cracked bedrock: ' + JSON.stringify([c, target]));
+  // the site is really there in the real world (regression: the game once generated none)
+  await p.eval(`(() => { const S = __STRATA; S.tp(${target.x} + 0.5, 60, ${target.z} + 0.5); })()`);
+  await p.waitFor(`__STRATA.world().has(${target.x}, ${target.z})`, { what: 'the chunk of the nearest site', timeout: 60000 });
+  const crack = await S(p, `({ id: S.getBlock(${target.x}, ${(await S(p, `S.G.sites.cracks.find((c) => c.x === ${target.x} && c.z === ${target.z}).y`))}, ${target.z}), want: S.world().table.ids.cracked_bedrock })`);
+  if (crack.id !== crack.want) throw new Error('no cracked bedrock at the site: ' + JSON.stringify(crack));
+  // below: the nearest unraided vault, then the Gate once you hold a key
+  await p.eval(`__STRATA.goto('underlayer')`);
+  await p.waitFor(`__STRATA.state().dim === 'underlayer' && __STRATA.state().phase === 'playing'`, { timeout: 90000 });
+  await p.eval(`(() => { const S = __STRATA; S.spawner().t = 1e9; S.give('tracer'); S.selectSlot(S.inv().slots.findIndex((s) => s?.id === 'tracer')); S.face(0, 0); })()`);
+  await sleep(400);
+  const nearest = await S(p, `(() => { const P = S.player().pos, v = S.G.sites.vaults.slice().sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0]; S.face(-Math.atan2(v.x + 0.5 - P.x, -(v.z + 0.5 - P.z)), 0); return v.index; })()`);
+  await sleep(300);
+  c = await strip();
+  if (!c.some((x) => /◆ Vault/.test(x.t) && Math.abs(x.x - 50) < 3)) throw new Error('vault marker ' + JSON.stringify(c));
+  await p.eval(`(() => { const S = __STRATA; S.G.flags.vaults[${nearest}] = { spawner: true, raided: true, warden: true }; })()`);
+  await sleep(300);
+  const second = await S(p, `(() => { const P = S.player().pos, v = S.G.sites.vaults.filter((x) => !S.G.flags.vaults[x.index]?.raided).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0]; S.face(-Math.atan2(v.x + 0.5 - P.x, -(v.z + 0.5 - P.z)), 0); return v.index; })()`);
+  if (second === nearest) throw new Error('a raided vault is still the target');
+  await sleep(300);
+  await p.eval(`(() => { const S = __STRATA; S.give('kernel_key'); const P = S.player().pos; S.face(-Math.atan2(256.5 - P.x, -(256.5 - P.z)), 0); })()`);
+  await sleep(300);
+  c = await strip();
+  if (!c.some((x) => /◆ Gate/.test(x.t))) throw new Error('with a key the Tracer should point at the Gate: ' + JSON.stringify(c));
+});
+
 s.run();

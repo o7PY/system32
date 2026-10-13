@@ -120,3 +120,17 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 #ad .adbtn { display: inline-block; margin-top: 8px; background: #1c9f3a; color: #fff; padding: 10px 28px; font-size: 26px; }
 
 #warp { position: fixed; inset: -10%; pointer-events: none; background: radial-gradient(circle at 50% 50%, rgba(150, 90, 255, 0) 0%, rgba(110, 50, 220, .55) 45%, rgba(40, 10, 90, .95) 100%); mix-blend-mode: normal; }
+
+/* ---- compass strip (top), boss bar */
+#compass { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: min(420px, 70vw); height: 26px; overflow: hidden; background: rgba(0, 0, 0, .45); border: 2px solid var(--edge); }
+#compass[hidden], #compass.off { display: none; }
+#compass .cstrip { position: relative; height: 100%; }
+#compass .cm { position: absolute; top: 0; transform: translateX(-50%); font-size: 18px; line-height: 22px; color: #e8e8e8; white-space: nowrap; }
+#compass .cm.n { color: #ff6a5a; }
+#compass .cm.death { color: #ff4040; } #compass .cm.tracer { color: #6af0ff; } #compass .cm.gate { color: #fff; }
+#compass .tick { position: absolute; left: 50%; top: 0; width: 2px; height: 5px; background: #fff; transform: translateX(-50%); }
+#bossbar { position: absolute; left: 50%; top: 44px; transform: translateX(-50%); width: min(560px, 80vw); text-align: center; }
+#bossbar span { font-size: 22px; }
+#bossbar div { height: 12px; background: rgba(0, 0, 0, .7); border: 2px solid #000; margin-top: 2px; }
+#bossbar i { display: block; height: 100%; width: 100%; background: #b13a3a; }
+#bossbar.green i { background: #3ab16a; }

@@ -19,6 +19,7 @@ export class InlineBackend {
   meshRegion(region, opts, urgent = false) { return this.#job(() => this.gen.meshRegion(region, opts), urgent); }
   spawn() { return this.#job(() => this.gen.spawn()); }
   column(x, z) { return Promise.resolve(this.gen.columnInfo(x, z)); }
+  sites() { return Promise.resolve({ cracks: this.gen.crackSites(), vaults: this.gen.vaultSites() }); }
   /** Run queued jobs until the budget is used (at least one, so work always moves). Returns how many ran. */
   pump(budgetMs = CONFIG.view.inlineBudgetMs) {
     const t0 = nowMs();
@@ -54,6 +55,7 @@ export class WorkerBackend {
   meshRegion(region, opts) { return this.#call({ t: 'meshR', region, opts }, [region.buffer]).then((r) => r.mesh); }
   spawn() { return this.#call({ t: 'spawn' }).then((r) => r.spawn); }
   column(x, z) { return this.#call({ t: 'column', x, z }).then((r) => r.info); }
+  sites() { return this.#call({ t: 'sites' }).then((r) => r.sites); }
   pump() { return 0; }
   dispose() { this.worker.terminate(); this.jobs.clear(); this.pending = 0; }
 }

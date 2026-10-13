@@ -52,6 +52,7 @@ function step(mobs, arrows, m, dt, ctx) {
     case 'archer': return archer(mobs, arrows, m, dt, ctx, dist);
     case 'spider': return spider(mobs, m, dt, ctx, dist);
     case 'popup': return popup(mobs, m, dt, ctx, dist);
+    case 'warden': return warden(mobs, m, dt, ctx, dist);
     case 'daemon': return daemon(mobs, arrows, m, dt, ctx, dist);
     case 'glitch': return glitch(mobs, m, dt, ctx, dist);
   }
@@ -96,9 +97,9 @@ function hitPlayer(mobs, m, ctx, damage, knockback) {
   return applied;
 }
 
-function melee(mobs, m, dt, ctx, dist) {
+function melee(mobs, m, dt, ctx, dist, steered = false) {
   const d = m.def, c = d.melee, P = ctx.player;
-  chase(mobs, m, dt, ctx, P.x, P.z, d.speed);
+  if (!steered) chase(mobs, m, dt, ctx, P.x, P.z, d.speed);
   m.look.yaw = 0;
   if (dist < c.reach && Math.abs(P.y - m.y) < 1.6) {
     if (m.data.windup === undefined && m.data.cool <= 0) m.data.windup = c.windupS;           // a short wind-up (the arms come up) before the hit
@@ -172,6 +173,17 @@ function popup(mobs, m, dt, ctx, dist) {
   if (dd < d.contact.range && m.data.cool <= 0) { m.data.cool = d.contact.everyS; mobs.events.push({ type: 'overlay', mob: m, seconds: d.contact.overlayS }); }
 }
 
+/** The Vault Warden: slow, heavy melee with knockback, and every 10 s a 3 s shield phase where only a hit from behind counts. It never leaves its room (no pathing needed: the room is open). */
+function warden(mobs, m, dt, ctx, dist) {
+  const d = m.def, P = ctx.player;
+  m.data.shieldIn = (m.data.shieldIn ?? d.shield.everyS) - dt;
+  if (m.data.shield > 0) { m.data.shield -= dt; if (m.data.shield <= 0) { m.data.shield = 0; mobs.events.push({ type: 'shield', mob: m, on: false }); } }
+  else if (m.data.shieldIn <= 0) { m.data.shieldIn = d.shield.everyS; m.data.shield = d.shield.durS; mobs.events.push({ type: 'shield', mob: m, on: true }); }
+  const slow = m.data.shield > 0 ? 0.55 : 1;
+  if (dist > d.melee.reach - 0.3) mobs.steer(m, P.x, P.z, d.speed * slow, dt, m.data.shield > 0 ? 1.2 : 6);            // while shielded it turns slowly: the way to hit its back is to circle it
+  melee(mobs, m, dt, ctx, dist, true);
+}
+
 /** A fast fire imp: dashes at you, then lobs a fireball (4 dmg and 2 s of burning), strafing in between. */
 function daemon(mobs, arrows, m, dt, ctx, dist) {
   const d = m.def, P = ctx.player, ux = (P.x - m.x) / (dist || 1), uz = (P.z - m.z) / (dist || 1);
@@ -227,7 +239,7 @@ export class Spawner {
   /** Despawn the monsters that are more than 64 blocks away for 30 s. Call every step. */
   despawn(dt, player) {
     for (const m of [...this.mobs.list]) {
-      if (m.def.kind !== 'hostile' || m.dead) continue;
+      if (m.def.kind !== 'hostile' || m.dead || m.def.noDespawn) continue;
       if (dist2(m, player) > CONFIG.hostiles.despawnDist) {
         const t = (this.despawnT.get(m.id) ?? 0) + dt;
         if (t >= CONFIG.hostiles.despawnS) { this.mobs.remove(m); this.despawnT.delete(m.id); this.stats.despawned++; } else this.despawnT.set(m.id, t);

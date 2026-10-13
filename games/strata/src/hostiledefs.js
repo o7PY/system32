@@ -100,4 +100,23 @@ HOSTILE.glitch = {
   },
 };
 
+HOSTILE.warden = {
+  name: 'Vault Warden', kind: 'hostile', w: 1.1, h: 2.7, hp: 80, speed: 1.5, eyeH: 2.3, voice: 'warden', ai: 'warden', underlayer: true, boss: 'vault', sight: 40, group: [1, 1],
+  melee: { damage: 8, reach: 2.1, everyS: 1.6, windupS: 0.55, knockback: 10 }, shield: { everyS: 10, durS: 3.2 }, noDespawn: true,
+  drops: [],
+  model: {
+    anim: 'biped',
+    tex: {
+      body: { base: '#4a5060', alt: '#2d313c', pattern: 'plates' }, head: { base: '#5d6477', alt: '#3a3f4d', pattern: 'solid', face: 'bin' },
+      arm: { base: '#596074', alt: '#363b49', pattern: 'plates' }, leg: { base: '#363a46', alt: '#23262f', pattern: 'plates' }, shield: { base: '#8fa0b8', alt: '#5e6e86', pattern: 'grid' },
+    },
+    parts: [
+      q(0, 30, 0, 14, 20, 8, 'body'), q(0, 46, 0, 12, 12, 12, 'head', { head: true }),
+      limb('armL', -11, 40, 0, 7, 24, 7, 'arm', 'x', 0.5, 0, { chase: -1.2 }), limb('armR', 11, 40, 0, 7, 24, 7, 'arm', 'x', -0.5, 0, { chase: -1.2 }),
+      limb('legL', -4, 20, 0, 7, 20, 7, 'leg', 'x', 0.6, 0), limb('legR', 4, 20, 0, 7, 20, 7, 'leg', 'x', 0.6, 1),
+      q(0, 32, -6, 18, 22, 2, 'shield', { shieldPart: true }),
+    ],
+  },
+};
+
 export const HOSTILE_KINDS = Object.keys(HOSTILE);

@@ -60,7 +60,7 @@ const DEFS = [
   { name: 'scorched_stone', tiles: all('scorched_stone'), hardness: 1.8, tool: 'pickaxe', need: { tool: 'pickaxe', tier: 1 }, drop: ['scorched_stone', 1, 1], group: 'stone' },
   { name: 'lava', kind: 'lava', tiles: all('lava'), hardness: -1, emit: 15, group: 'sand', item: false },
   { name: 'glowcap', kind: 'plant', tiles: all('glowcap'), hardness: 0.1, emit: 10, drop: ['glowcap', 1, 1], group: 'grass', item: false },
-  { name: 'server_rack', tiles: [ 'server_rack_side', 'server_rack_side', 'server_rack_side', 'server_rack_side', 'server_rack_front', 'server_rack_side'], hardness: -1, group: 'stone', item: false },
+  { name: 'server_rack', tiles: [ 'server_rack_side', 'server_rack_side', 'server_rack_side', 'server_rack_side', 'server_rack_front', 'server_rack_side'], hardness: -1, group: 'stone', item: false, emit: 6 },
   { name: 'vault_door', tiles: all('vault_door'), hardness: -1, group: 'stone', item: false },
   { name: 'rift', kind: 'cutout', tiles: all('rift'), solid: false, hardness: -1, emit: 10, group: 'glass', item: false, rift: 'purple' },
   { name: 'rift_white', kind: 'cutout', tiles: all('rift_white'), solid: false, hardness: -1, emit: 12, group: 'glass', item: false, rift: 'white' },

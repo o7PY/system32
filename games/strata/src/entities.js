@@ -246,6 +246,11 @@ export class Mobs {
    */
   damage(m, amount, opts = {}) {
     if (m.dead || amount <= 0) return { killed: false, drops: [] };
+    if (m.def.shield && m.data.shield > 0) {                                                   // a Warden behind its shield can only be hit from behind
+      const fx = -Math.sin(m.yaw), fz = -Math.cos(m.yaw), from = opts.from;
+      const front = from ? (from.x - m.x) * fx + (from.z - m.z) * fz : 1;
+      if (front > 0) { this.events.push({ type: 'block', mob: m }); return { killed: false, drops: [], blocked: true }; }
+    }
     m.hp -= amount; m.hurtT = 0.35; m.barT = 3; m.data.angry = true;
     this.events.push({ type: 'hurt', mob: m });
     if (opts.from) {

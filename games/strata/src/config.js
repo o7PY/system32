@@ -84,6 +84,8 @@ export const CONFIG = {
   hostiles: { cap: 30, hardMul: 1.5, everyS: 1.5, tries: 8, minDist: 24, maxDist: 64, maxLight: 7, despawnDist: 64, despawnS: 30, lagS: 3, lagDaylight: 0.45, pathRange: 40, pathsPerStep: 2 },
   // the Underlayer (STRATA_PART2_SPEC 6): a second dimension below the bedrock, 512 x 512 x 96, no sky; Rifts link to the overworld; hostiles ignore light, cap 20
   underlayer: { size: 512, height: 96, floor: 40, ambient: 0.4, ambientColor: [1, 0.5, 0.38], fog: [0.1, 0.022, 0.016], cap: 20, riftS: 1.0 },
+  // the vaults: the loot of a Data Vault chest; a Kernel Shard in it is the point
+  vault: { loot: [['cobalt_ingot', 1, 3], ['cooked_beef', 2, 4], ['arrow', 4, 10], ['iron_ingot', 2, 5]], shardsNeeded: 3, spawnerEveryS: 6, spawnerMax: 4, spawnerRange: 22, wardenRange: 34 },
   musicEveryS: [150, 300],                  // a sparse ambient pad every few minutes
 };
 
@@ -108,6 +110,8 @@ export const RECIPES = [
   // Part 2: storage, bed, food, shears
   { id: 'bow', pattern: ['.SB', 'S.B', '.SB'], key: { S: 'stick', B: 'string' }, out: ['bow', 1] },
   { id: 'arrow', pattern: ['F', 'S', 'P'], key: { F: 'flint', S: 'stick', P: 'feather' }, out: ['arrow', 4] },
+  { id: 'kernel_key', pattern: ['SSS'], key: { S: 'kernel_shard' }, out: ['kernel_key', 1] },
+  { id: 'tracer', pattern: ['III', 'ICI', 'III'], key: { I: 'iron_ingot', C: 'cobalt_ingot' }, out: ['tracer', 1] },
   { id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' }, out: ['chest', 1] },
   { id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, out: ['bed', 1] },
   { id: 'bowl', pattern: ['P.P', '.P.'], key: { P: 'planks' }, out: ['bowl', 4] },

@@ -233,5 +233,29 @@ const run = (env, secs, ctx, dt = 1 / 30) => { for (let t = 0; t < secs - 1e-9; 
   check('then it hits for 5 in melee', hurts.some(([a]) => a === 5));
 }
 
+// ---------------------------------------------------------------- the Vault Warden
+{
+  check('Vault Warden: 80 HP, heavy melee 8 with big knockback, slow, a shield phase every 10 s, never despawns, no drops of its own (the chest holds the shard)', MOBS.warden.hp === 80 && MOBS.warden.melee.damage === 8 && MOBS.warden.melee.knockback >= 8 && MOBS.warden.speed < MOBS.shambler.speed && MOBS.warden.shield.everyS === 10 && MOBS.warden.noDespawn && MOBS.warden.drops.length === 0);
+  const env = world(floor(), 90), P = { x: 0, z: 0 }; hurts.length = 0;
+  const w = env.mobs.spawn('warden', 4.5, 12, 0.5), events = [];
+  let shieldedAt = null, droppedAt = null;
+  for (let t = 0; t < 14; t += 1 / 30) { env.mobs.update(1 / 30, mkCtx(P, { surfaceRules: false })); for (const e of env.mobs.takeEvents()) { events.push(e.type); if (e.type === 'shield' && e.on && shieldedAt === null) shieldedAt = t; if (e.type === 'shield' && !e.on && droppedAt === null) droppedAt = t; } }
+  check('its shield goes up after 10 s and drops after about 3 s', shieldedAt !== null && Math.abs(shieldedAt - 10) < 0.5 && droppedAt !== null && Math.abs(droppedAt - shieldedAt - 3.2) < 0.4, `${shieldedAt} ${droppedAt}`);
+  check('in melee it hits for 8 (with its wind-up), roughly every 1.6 s', hurts.filter(([a]) => a === 8).length >= 4 && hurts.every(([a]) => a === 8), JSON.stringify(hurts.length));
+  const sh = world(floor(), 91), v = sh.mobs.spawn('warden', 0.5, 12, 0.5);
+  v.data.shield = 3; v.yaw = 0;                                                  // facing -z (north)
+  const front = sh.mobs.damage(v, 10, { from: { x: 0.5, z: -3 }, type: 'player' }), back = sh.mobs.damage(v, 10, { from: { x: 0.5, z: 3 }, type: 'player' });
+  check('with the shield up a hit from the front does nothing (a "block" event); a hit from behind lands in full', front.blocked === true && v.hp === 70 && back.blocked !== true && sh.mobs.takeEvents().some((e) => e.type === 'block'));
+  v.data.shield = 0; const open = sh.mobs.damage(v, 10, { from: { x: 0.5, z: -3 }, type: 'player' });
+  check('with the shield down it takes hits from the front too', !open.blocked && v.hp === 60);
+  const arrowHit = (() => { const e2 = world(floor(), 92), x = e2.mobs.spawn('warden', 0.5, 12, 0.5); x.data.shield = 3; x.yaw = 0; return e2.mobs.damage(x, 6, { from: { x: 0.5, z: -5 } }).blocked === true; })();
+  check('arrows from the front are blocked while shielded too', arrowHit);
+  const turn = (() => { const e3 = world(floor(), 93), x = e3.mobs.spawn('warden', 6.5, 12, 0.5); x.data.shield = 5; x.data.shieldIn = 99; x.yaw = Math.PI; run(e3, 1, mkCtx({ x: 0, z: 0 }, { surfaceRules: false })); return Math.abs(Math.atan2(Math.sin(x.yaw - (Math.PI / 2)), Math.cos(x.yaw - Math.PI / 2))) > 0.3; })();
+  check('shielded, it turns slowly (so you can run round behind it)', turn);
+  const lonely = world(floor(), 94), far = lonely.mobs.spawn('warden', 90.5, 12, 0.5), sp = new Spawner(lonely.mobs, { rand: seededRand(1) });
+  for (let i = 0; i < 40; i++) sp.despawn(1, { x: 0, y: 12, z: 0 });
+  check('a Warden far from you is not despawned by the spawner (it guards its vault)', lonely.mobs.list.includes(far));
+}
+
 console.log(`\nStrata hostiles: ${fails ? `${fails} FAILED` : 'all passed'}`);
 process.exit(fails ? 1 : 0);

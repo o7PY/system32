@@ -174,6 +174,29 @@ export class UI {
   }
   /** The purple screen warp while standing in a Rift (0..1). */
   warp(f) { const e = $('warp'); e.hidden = f <= 0.01; e.style.opacity = Math.min(1, f).toFixed(2); e.style.transform = `scale(${1 + Math.min(1, f) * 0.25})`; }
+  /**
+   * The compass strip: N, E, S, W and any marker, placed by bearing relative to where you look. `items` = [{ bearing (radians, 0 = north, + = east), label, cls }]; heading likewise.
+   */
+  compass(on, heading, items) {
+    const e = $('compass');
+    e.classList.toggle('off', !on);
+    if (!on) return;
+    const strip = e.firstElementChild, span = Math.PI * 0.9, parts = ['<div class="tick"></div>'];
+    for (const it of items) {
+      let rel = (it.bearing - heading) % (Math.PI * 2);
+      if (rel > Math.PI) rel -= Math.PI * 2; if (rel < -Math.PI) rel += Math.PI * 2;
+      if (Math.abs(rel) > span / 2) continue;
+      parts.push(`<span class="cm ${it.cls ?? ''}" style="left:${(50 + (rel / span) * 100).toFixed(1)}%">${it.label}</span>`);
+    }
+    strip.innerHTML = parts.join('');
+  }
+  /** The boss bar at the top (name, 0..1, colour). null hides it. */
+  bossBar(b) {
+    const e = $('bossbar');
+    e.hidden = !b;
+    if (!b) return;
+    e.firstElementChild.textContent = b.name; e.lastElementChild.firstElementChild.style.width = `${Math.max(0, Math.min(1, b.frac)) * 100}%`; e.classList.toggle('green', !!b.green);
+  }
   burning(on) { $('burning').hidden = !on; }
   eating(p) { const e = $('eatbar'); e.hidden = p === null; if (p !== null) e.firstElementChild.style.width = `${Math.round(p * 100)}%`; }
   death({ cause, score, note }) { $('death-cause').textContent = cause; $('death-score').textContent = score; $('death-note').textContent = note ?? ''; this.show('death'); }

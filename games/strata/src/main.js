@@ -44,7 +44,7 @@ const G = {
   settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default, difficulty: OPT.peaceful ? 'peaceful' : 'normal' },
   seed: 0, flat: false, worldSize: OPT.worldSize, spawn: { x: 0, y: 0, z: 0 },
   dayT: CONFIG.day.start, flags: {}, eggs: new Set(),
-  dimEdits: {}, dimDrops: {}, dimAnimals: {}, riftT: 0, afterEnter: null,
+  sites: { cracks: [], vaults: [] }, vaultT: 0, dimEdits: {}, dimDrops: {}, dimAnimals: {}, riftT: 0, afterEnter: null,
   keys: new Set(), tapped: new Set(), mouseLeft: false, mouseRight: false, attackClick: false, atk: 1, mobsOn: false, verifyBed: null, eat: null, hitSeen: 0, tilt: 0, dim: 'overworld', minedStep: 0, deathMarker: null, lastPos: null, lastDeath: null, lastW: 0, sprintLatch: false, fakeLock: false,
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
@@ -148,6 +148,7 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   await world.setSeed(seed, { flat, dim: startDim, edits: G.dimEdits[startDim] });
   G.seed = seed; G.flat = flat; G.dim = startDim;
   renderer.setDimension(startDim); renderer.setWorldSize(world.size);
+  G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
   if (startDim === 'overworld') mobs.load(save?.animals ?? []); else G.dimAnimals.overworld = save?.animals ?? [];
   chests = new Map(Object.entries(save?.chests ?? {}));
   G.mobsOn = true;
@@ -165,6 +166,7 @@ async function startGame({ seed, flat = false, save = null, fake = false }) {
   G.dayT = save?.time ?? CONFIG.day.start;
   G.flags = { ...(save?.flags ?? {}) };
   if (!Array.isArray(G.flags.rifts)) G.flags.rifts = [];
+  if (!G.flags.vaults || typeof G.flags.vaults !== 'object') G.flags.vaults = {};
   G.deathMarker = G.flags.death ?? null;
   G.saveTimer = 0; G.fakeLock = fake;
   G.entering = { title: false, fake, t0: performance.now() };
@@ -307,7 +309,7 @@ function openMenu(kind, furnace = null, extra = {}) {
 function closeMenu(relock = true) {
   if (!G.menu) return;
   const was = G.menu.kind, over = G.menu.close();
-  if (was === 'chest') audio.play('chest.close', { vol: 0.8 });
+  if (was === 'chest') { audio.play('chest.close', { vol: 0.8 }); checkRaided(); }
   for (const s of over) drops.spawn(player.pos.x, player.pos.y + 1.2, player.pos.z, s, { delayS: 1.5 });
   G.menu = null; ui.closeMenu();
   if (G.phase === 'playing') ui.show(null);
@@ -398,6 +400,10 @@ function breakBlock(hit) {
     if (held && isTool(held.id)) wear(inv.selected, 1);
     return;
   }
+  if (id === B.spawner && G.dim === 'underlayer') {
+    const v = vaultNear(hit.x, hit.z, 14);
+    if (v) { vaultState(v.index).spawner = true; openVaultDoor(v, true); }
+  }
   if (BLOCKS[id].use === 'chest') { const key = furnaceKey(hit.x, hit.y, hit.z); for (const s of chests.get(key) ?? []) if (s) drops.spawn(at.x, at.y, at.z, s); chests.delete(key); }
   const bed = BLOCKS[id].bed, mate = bed ? bedMate(hit.x, hit.y, hit.z, bed) : null;
   world.setBlock(hit.x, hit.y, hit.z, B.air);
@@ -478,7 +484,8 @@ function bedSpawn() {
 function useBlock(def, hit) {
   if (def.use === 'chest') {
     const key = furnaceKey(hit.x, hit.y, hit.z);
-    if (!chests.has(key)) chests.set(key, Array(27).fill(null));
+    if (!chests.has(key)) chests.set(key, vaultLootAt(hit) ?? Array(27).fill(null));
+    G.openChest = { key, x: hit.x, y: hit.y, z: hit.z };
     openMenu('chest', null, { chest: chests.get(key) });
   } else if (def.use === 'bed') sleepIn(hit);
 }
@@ -641,6 +648,8 @@ function mobEvents() {
     else if (ev.type === 'dash') { audio.voice(m.def.voice, 'hurt', { at, listener: L, vol: 0.8 }); subtitle(`${m.def.name} dashes`, at); }
     else if (ev.type === 'teleport') { mobRenderer.puff(m.x, m.y + 0.6, m.z, 10, 0xff3cdc); audio.voice(m.def.voice, 'idle', { at, listener: L }); }
     else if (ev.type === 'glitch-swap') glitchSwap(m, ev.picks);
+    else if (ev.type === 'shield') { audio.play(ev.on ? 'boss.crystal' : 'boss.stomp', { at, listener: L, vol: 0.7 }); if (ev.on) subtitle('Vault Warden raises its shield', at); }
+    else if (ev.type === 'block') { audio.play('arrow.hit', { at, listener: L, vol: 0.9 }); ui.subtitle('Blocked by the shield: hit it from behind', 1500); }
     else if (ev.type === 'swing') audio.play('sword.swing', { at, listener: L, vol: 0.7 });
     else if (ev.type === 'pounce') { audio.voice(m.def.voice, 'hurt', { at, listener: L, vol: 0.9 }); subtitle(`${m.def.name} pounces`, at); }
     else if (ev.type === 'overlay') { ui.adOverlay(ev.seconds); audio.voice('popup', 'idle', { vol: 1 }); subtitle('Pop-up beeps', at); }
@@ -650,6 +659,7 @@ function mobEvents() {
       for (const d of ev.drops) drops.spawn(m.x, m.y + 0.4, m.z, stack(d.id, d.n));
       mobRenderer.puff(m.x, m.y + 0.3, m.z, 8);
       if (ev.by === 'player') vitals.stats.mobs++;
+      if (m.type === 'warden' && m.data.home) { vaultState(m.data.home.index).warden = true; ui.subtitle('The Vault Warden falls. The chest is yours.', 4000); shake(0.8); }
     }
   }
 }
@@ -664,7 +674,7 @@ function glitchSwap(m, picks) {
     world.setBlock(x, y, z, nb);
   }
 }
-const VOICE_VERB = { daemon: 'crackles', glitch: 'glitches', pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks', shambler: 'groans', rattler: 'rattles', crawler: 'hisses', popup: 'beeps' };
+const VOICE_VERB = { warden: 'groans', daemon: 'crackles', glitch: 'glitches', pig: 'oinks', cow: 'moos', sheep: 'baas', chicken: 'clucks', shambler: 'groans', rattler: 'rattles', crawler: 'hisses', popup: 'beeps' };
 /** "Pig oinks (left)": the direction of a sound relative to where you look. */
 function subtitle(text, at) {
   if (!G.settings.subtitles) return;
@@ -714,7 +724,8 @@ function simulate(dt) {
   }
   // camera
   const e = player.eye(), cam = renderer.camera;
-  cam.position.set(e.x, e.y, e.z); cam.rotation.set(player.pitch, player.yaw, G.tilt * Math.min(1, vitals.hurtT / 0.45), 'YXZ');       // a hit tilts the view toward where it came from
+  const sh = G.shake > 0 ? G.shake : 0; if (sh) G.shake = Math.max(0, G.shake - dt * 1.6);
+  cam.position.set(e.x + (Math.random() - 0.5) * sh * 0.25, e.y + (Math.random() - 0.5) * sh * 0.25, e.z + (Math.random() - 0.5) * sh * 0.25); cam.rotation.set(player.pitch, player.yaw, G.tilt * Math.min(1, vitals.hurtT / 0.45), 'YXZ');       // a hit tilts the view toward where it came from
   const fov = G.settings.fov + (player.sprinting ? 6 : 0);
   if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 10); cam.updateProjectionMatrix(); }
   $('underwater').hidden = !player.headInWater;
@@ -737,6 +748,8 @@ function simulate(dt) {
   else G.mineTick = 0;
 
   checkRift(dt);
+  if (G.dim === 'underlayer') vaultTick(dt);
+  compassHud();
   if (G.draw) { G.draw.t += dt; if (!(G.mouseRight && locked && !open && inv.held()?.id === 'bow')) releaseBow(); else ui.eating(Math.min(1, G.draw.t)); }
   // eating: hold the right button with food in hand (1.6 s), only while hungry
   const heldNow = inv.held(), food = heldNow && ITEMS[heldNow.id].food;
@@ -828,7 +841,7 @@ function die() {
     const all = [...inv.slots, ...vitals.armor].filter(Boolean);
     for (const s of all) drops.spawn(at.x, at.y, at.z, s, { delayS: 2, ttl: CONFIG.survival.deathDropS, death: true });
     inv.slots.fill(null); vitals.armor = [null, null, null, null];
-    if (all.length) G.deathMarker = { x: Math.floor(at.x), y: Math.floor(at.y), z: Math.floor(at.z) };
+    if (all.length) G.deathMarker = { x: Math.floor(at.x), y: Math.floor(at.y), z: Math.floor(at.z), dim: G.dim };
   }
   G.lastDeath = { cause: vitals.causeText, keep, at };
   audio.play('player.death');
@@ -862,6 +875,7 @@ async function travel(to, at, { afterEnter = null, text = null } = {}) {
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); drops.clear(); miner.reset();
   await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: G.dimEdits[to] ?? new Map() });
   G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size);
+  G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
   drops.load(G.dimDrops[to] ?? []);
   if (to === 'overworld') mobs.load(G.dimAnimals.overworld ?? []);
   G.mobsOn = true;
@@ -889,6 +903,92 @@ function buildArrival(ux, uz) {
   }
   world.setBlock(ux, fy + 1, uz, B.rift);
   return { x: ux + 0.5, y: fy + 1, z: uz + 2.5 - 1 + 0.01, fy };
+}
+
+// ---------------------------------------------------------------- the Data Vaults
+const vaultState = (i) => (G.flags.vaults[i] ??= { spawner: false, raided: false, warden: false });      // spawner: destroyed; raided: its shard was taken; warden: killed
+const vaultNear = (x, z, r = 12) => G.sites.vaults.find((v) => Math.abs(v.x - x) <= r && Math.abs(v.z - z) <= r) ?? null;
+/** The loot of a vault chest, made the first time it is opened: one Kernel Shard and a few supplies. */
+function vaultLootAt(hit) {
+  const v = G.dim === 'underlayer' ? G.sites.vaults.find((s) => s.chest.x === hit.x && s.chest.y === hit.y && s.chest.z === hit.z) : null;
+  if (!v) return null;
+  const slots = Array(27).fill(null), r = Math.random;
+  slots[13] = stack('kernel_shard', 1);
+  let k = 0;
+  for (const [id, lo, hi] of CONFIG.vault.loot) { const n = lo + Math.floor(r() * (hi - lo + 1)); if (n > 0) slots[[4, 10, 16, 22][k++ % 4]] = stack(id, n); }
+  return slots;
+}
+/** Close the sealed door of a vault (false) or open it (true): the hatch of vault_door blocks across the hall stairs. */
+function openVaultDoor(v, open) {
+  let changed = false;
+  for (const c of v.door) {
+    const cur = world.getBlock(c.x, c.y, c.z);
+    if (open && cur === B.vault_door) { world.setBlock(c.x, c.y, c.z, B.air); changed = true; }
+  }
+  if (changed) { audio.play('vault.open', { at: { x: v.x, y: v.fy + 6, z: v.z }, listener: listener(), vol: 1 }); ui.subtitle('A vault door grinds open.', 4000); shake(0.5); }
+}
+const shake = (k) => { G.shake = Math.max(G.shake ?? 0, k); };
+/** After the chest was closed: a vault whose shard is gone is raided (the Tracer stops pointing at it). */
+function checkRaided() {
+  const oc = G.openChest; G.openChest = null;
+  if (!oc || G.dim !== 'underlayer') return;
+  const v = G.sites.vaults.find((s) => s.chest.x === oc.x && s.chest.y === oc.y && s.chest.z === oc.z), items = chests.get(oc.key);
+  if (v && items && !items.some((s) => s?.id === 'kernel_shard')) { const st = vaultState(v.index); if (!st.raided) { st.raided = true; ui.subtitle(`Vault ${v.index + 1} raided.`, 3500); saveNow('vault'); } }
+}
+
+/** Per step in the Underlayer: the sealed doors follow the saved state, the spawners spawn, the Wardens wake up when you come near. */
+function vaultTick(dt) {
+  G.vaultT -= dt;
+  if (G.vaultT > 0) return;
+  G.vaultT = CONFIG.vault.spawnerEveryS / 3;
+  const P = player.pos, V = CONFIG.vault;
+  for (const v of G.sites.vaults) {
+    const st = vaultState(v.index), d = Math.hypot(v.x - P.x, v.z - P.z);
+    if (d > 70 || !world.has(v.x, v.z)) continue;
+    if (st.spawner) openVaultDoor(v, true);
+    // the spawner: while its block stands and you are near, Daemons come out of the hall
+    if (!st.spawner && d < V.spawnerRange && world.getBlock(v.spawner.x, v.spawner.y, v.spawner.z) === B.spawner && !vitals.peaceful) {
+      v.spawnT = (v.spawnT ?? 0) + CONFIG.vault.spawnerEveryS / 3;
+      const here = mobs.list.filter((m) => !m.dead && m.type === 'daemon' && Math.hypot(m.x - v.x, m.z - v.z) < 14).length;
+      if (v.spawnT >= V.spawnerEveryS && here < V.spawnerMax) {
+        v.spawnT = 0;
+        const m = mobs.spawn('daemon', v.x + 0.5 + (Math.random() < 0.5 ? -2 : 2), v.fy + 1, v.z + 0.5 + (Math.random() < 0.5 ? -2 : 2));
+        mobRenderer.puff(m.x, m.y + 0.8, m.z, 10, 0xff6a2a);
+      }
+    }
+    // the Warden guards the shard room until the vault is raided or it is killed
+    const have = mobs.list.some((m) => m.type === 'warden' && !m.dead && Math.hypot(m.x - v.x, m.z - v.z) < 14);
+    if (!st.raided && !st.warden && d < V.wardenRange && !have && !vitals.peaceful) { const m = mobs.spawn('warden', v.warden.x, v.warden.y, v.warden.z); m.data.home = { x: v.x, z: v.z, index: v.index }; }
+  }
+}
+
+/** The nearest Rift-able bedrock, vault or the Kernel Gate for the Tracer, and the text it shows. Returns { x, z, label, cls } or null. */
+function tracerTarget() {
+  const P = player.pos;
+  if (G.dim === 'overworld') {
+    const open = new Set(G.flags.rifts.map((r) => `${r.x},${r.z}`));
+    const list = G.sites.cracks.filter((c) => !open.has(`${c.x},${c.z}`) && !brokenCrack(c));
+    list.sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z));
+    return list[0] ? { x: list[0].x + 0.5, z: list[0].z + 0.5, label: 'Rift', cls: 'tracer' } : null;
+  }
+  if (G.dim === 'underlayer') {
+    if (inv.slots.some((s) => s?.id === 'kernel_key') || G.flags.gate) return { x: CONFIG.underlayer.size / 2 + 0.5, z: CONFIG.underlayer.size / 2 + 0.5, label: 'Gate', cls: 'gate' };
+    const list = G.sites.vaults.filter((v) => !vaultState(v.index).raided).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z));
+    return list[0] ? { x: list[0].x + 0.5, z: list[0].z + 0.5, label: 'Vault', cls: 'tracer' } : null;
+  }
+  return null;
+}
+const brokenCrack = (c) => world.has(c.x, c.z) && world.getBlock(c.x, c.y, c.z) !== B.cracked_bedrock;
+
+/** The compass strip: N, E, S, W, your death marker, and (holding a Tracer) its target. Off with the setting. */
+function compassHud() {
+  const on = G.settings.compass !== false && G.phase === 'playing';
+  if (!on) { ui.compass(false); return; }
+  const heading = -player.yaw, items = [{ bearing: 0, label: 'N', cls: 'n' }, { bearing: Math.PI / 2, label: 'E' }, { bearing: Math.PI, label: 'S' }, { bearing: -Math.PI / 2, label: 'W' }];
+  const m = G.deathMarker;
+  if (m && (m.dim ?? 'overworld') === G.dim) items.push({ bearing: Math.atan2(m.x + 0.5 - player.pos.x, -(m.z + 0.5 - player.pos.z)), label: '☠', cls: 'death' });
+  if (inv.held()?.id === 'tracer') { const t = tracerTarget(); if (t) items.push({ bearing: Math.atan2(t.x - player.pos.x, -(t.z - player.pos.z)), label: `◆ ${t.label} ${Math.round(Math.hypot(t.x - player.pos.x, t.z - player.pos.z))}m`, cls: t.cls }); }
+  ui.compass(true, heading, items);
 }
 
 /** Standing inside a Rift for CONFIG.underlayer.riftS seconds takes you through. */

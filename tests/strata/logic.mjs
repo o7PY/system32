@@ -267,6 +267,9 @@ const floorWorld = () => new Grid().fill(-50, 0, -50, 50, 10, 50, B.stone);     
   check('recipe: 1 coal over 1 stick makes 4 torches (in the 2 x 2 grid, either column)', torch?.out?.id === 'torch' && torch.out.n === 4 && right?.out?.id === 'torch');
   const g = (str) => str.split('').map((c) => ({ c: 'cobalt_ingot', s: 'stick' })[c] ?? null);
   check('recipe: a cobalt pickaxe is 3 cobalt ingots over 2 sticks on a crafting table; the sword and the tool tiers still match', matchRecipe(g('ccc.s..s.'), 3)?.out?.id === 'pickaxe_cobalt' && matchRecipe(g('.c..c..s.'), 3)?.out?.id === 'sword_cobalt');
+  check('recipe: a Kernel Key is 3 Kernel Shards in a row (any row, a table); two shards or a column make nothing', matchRecipe(['kernel_shard', 'kernel_shard', 'kernel_shard'], 3, 1)?.out.id === 'kernel_key' && matchRecipe(['kernel_shard', 'kernel_shard', null], 3, 1) === null && matchRecipe(['kernel_shard', 'kernel_shard', 'kernel_shard', null, null, null, null, null, null], 3)?.out.id === 'kernel_key');
+  check('recipe: the Tracer is a ring of 8 iron ingots around 1 cobalt ingot', matchRecipe(['iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'cobalt_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot'], 3)?.out.id === 'tracer' && matchRecipe(['iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot', 'iron_ingot'], 3) === null);
+  check('Kernel Shards stack to 3 (a Key is 3), the Key and the Tracer stack to 1', ITEMS.kernel_shard.stack === 3 && ITEMS.kernel_key.stack === 1 && ITEMS.tracer.stack === 1);
 }
 
 console.log(`\nStrata logic: ${fails ? `${fails} FAILED` : 'all passed'}`);
