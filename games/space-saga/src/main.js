@@ -208,6 +208,7 @@ const KEYS = {
   ArrowUp: 'jump', KeyW: 'jump', Space: 'jump', ArrowDown: 'slide', KeyS: 'slide',
 };
 addEventListener('keydown', (e) => {
+  if (!e.ctrlKey && !e.metaKey && !e.repeat && (e.code === 'KeyF' || (e.altKey && e.code === 'Enter') || e.code === 'F11')) { e.preventDefault(); sdk?.fullscreen(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const act = KEYS[e.code];
   if (act || e.code === 'Enter' || e.code === 'Escape' || e.code === 'KeyP') e.preventDefault();
@@ -231,6 +232,7 @@ addEventListener('keydown', (e) => {
       break;
   }
 });
+hud.on('b-full', () => sdk?.fullscreen());
 hud.on('b-resume', () => delReason('user'));
 hud.on('b-restart', () => { G.reasons.delete('user'); audio.resume(); startRun(); });
 hud.on('b-again', () => { if (G.phase === 'dead') startRun(); });

@@ -29,6 +29,8 @@ class GameWindow {
     this.offChange = bus.on('win:change', () => this.#updateLive());
     this.offSound = bus.on('state:change', (keys) => { if (this.ready && keys?.includes('soundOn')) this.post({ type: 'SOUND', payload: { soundOn: state.soundOn } }); });
     this.offFocus = bus.on('win:focus', (w) => { if (w === this.win) this.#focusFrame(); });
+    this.onFs = () => this.#fsChanged();
+    document.addEventListener('fullscreenchange', this.onFs);
     this.win.open();
   }
 
@@ -42,6 +44,19 @@ class GameWindow {
     f.allow = '';
     root.append(f);
     this.frame = f;
+    this.root = root;
+    // A fullscreen button in the title bar, next to minimize / maximize / close.
+    queueMicrotask(() => {
+      const controls = this.win.el?.querySelector('.win-controls');
+      if (!controls) return;
+      const b = document.createElement('button');
+      b.className = 'win-btn'; b.dataset.act = 'fullscreen'; b.setAttribute('aria-label', 'Fullscreen'); b.title = 'Fullscreen';
+      b.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1 4V1h3M6 1h3v3M9 6v3H6M4 9H1V6"/></svg>';
+      b.addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      controls.prepend(b);
+      this.fsBtn = b;
+    });
     // After a drag / click on the title bar the keyboard focus is on <body>: hand it back to the game.
     queueMicrotask(() => this.win.el?.addEventListener('pointerup', () => { if (!this.win.closed && !this.win.minimized) setTimeout(() => this.#focusFrame(), 0); }, true));
     return root;
@@ -50,6 +65,27 @@ class GameWindow {
   #focusFrame() {
     if (this.win.closed || this.win.minimized || !this.frame?.isConnected) return;
     this.frame.focus();
+  }
+
+  /** Real browser fullscreen of the game area only: no title bar, no taskbar, no desktop. Esc leaves it (the browser does that itself). */
+  async toggleFullscreen() {
+    if (!this.root?.isConnected) return;
+    try {
+      if (document.fullscreenElement === this.root) await document.exitFullscreen();
+      else if (!document.fullscreenElement && this.root.requestFullscreen) await this.root.requestFullscreen({ navigationUI: 'hide' });
+      else if (document.fullscreenElement) { await document.exitFullscreen(); }
+      else throw new Error('unsupported');
+    } catch {
+      toast({ title: this.game.title, kind: 'info', text: 'Fullscreen is not available here. Try the browser\'s own fullscreen (F11).' });
+    }
+    this.#focusFrame();
+  }
+
+  #fsChanged() {
+    const on = document.fullscreenElement === this.root;
+    this.fsBtn?.classList.toggle('on', on);
+    if (this.ready) this.post({ type: 'FULLSCREEN', payload: { on } });
+    setTimeout(() => this.#focusFrame(), 0);
   }
 
   post(msg) {
@@ -113,6 +149,10 @@ class GameWindow {
         break;
       }
 
+      case 'FULLSCREEN':           // a game asked (key / button inside it); must come from a click or key press, the browser enforces that
+        this.toggleFullscreen();
+        break;
+
       case 'GAME_WON':
       case 'GAME_LOST':
         warn(`${msg.type} ignored: bonus games end runs (RUN_OVER), they never win or lose`);
@@ -133,6 +173,8 @@ class GameWindow {
     this.offChange?.();
     this.offSound?.();
     this.offFocus?.();
+    document.removeEventListener('fullscreenchange', this.onFs);
+    if (document.fullscreenElement === this.root) document.exitFullscreen?.().catch(() => {});
     this.frame?.remove();
     this.frame = null;
   }

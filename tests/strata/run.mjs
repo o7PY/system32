@@ -440,10 +440,79 @@ test('menus: New World with a seed, pause + Save & Quit, Continue brings the sam
   await p.eval(`__STRATA.G.save = 'STRATA1:z:' + 'A'.repeat(40); __STRATA.pause(); 0`);
   await p.click('[data-act="quit"]');
   await p.waitFor(`__STRATA.state().phase === 'title'`, { timeout: 90000 });
-  await p.eval(`__STRATA.G.save = 'STRATA1:z:' + 'A'.repeat(40)`);
+  await p.eval(`__STRATA.G.store.worlds.forEach((w) => { w.data = 'STRATA1:z:' + 'A'.repeat(40); })`);
   await p.click('[data-act="continue"]');
   await p.waitFor(`!document.getElementById('s-error').hidden`, { timeout: 10000, what: 'error screen' });
   if (!(await p.eval(`/Save could not be loaded/.test(document.getElementById('s-error').textContent)`))) throw new Error('no clear message');
+});
+
+test('worlds: several worlds side by side; Continue plays the last one, Worlds lists them all with Play / Rename / Delete (two clicks); names, mode and edits stay apart; the list is what the shell stores', async (p) => {
+  await boot(p);
+  await fakeShell(p);
+  const make = async (name, seed, mode) => {
+    await p.click('[data-act="new"]');
+    await p.waitFor(`!document.getElementById('s-newworld').hidden`);
+    await p.eval(`document.getElementById('name-input').value = ${JSON.stringify(name)}; document.getElementById('seed-input').value = '${seed}'; document.getElementById('new-mode').value = '${mode}'`);
+    await p.click('[data-act="start-new"]');
+    await p.waitFor(`__STRATA.state().phase === 'paused'`, { timeout: 90000, what: 'world ready' });
+    await p.eval(`__STRATA.G.fakeLock = true; __STRATA.resume(); 0`);
+    await p.waitFor(`__STRATA.state().phase === 'playing'`);
+  };
+  const quit = async () => {
+    await p.eval(`__STRATA.pause(); 0`);
+    await p.waitFor(`__STRATA.state().phase === 'paused'`);
+    await p.click('[data-act="quit"]');
+    await p.waitFor(`__STRATA.state().phase === 'title'`, { timeout: 90000, what: 'title' });
+  };
+  await make('Alpha', 11, 'survival');
+  await p.eval(`__STRATA.setBlock(Math.floor(__STRATA.player().pos.x) + 3, 90, Math.floor(__STRATA.player().pos.z), 'planks'); 0`);
+  const at = await p.eval(`({ x: Math.floor(__STRATA.player().pos.x) + 3, z: Math.floor(__STRATA.player().pos.z) })`);
+  await quit();
+  await make('Beta', 22, 'creative');
+  await quit();
+  const t = await p.eval(`({ cont: document.getElementById('b-continue').textContent, worlds: document.getElementById('b-worlds').textContent })`);
+  if (t.cont !== 'Continue: Beta' || t.worlds !== 'Worlds (2)') throw new Error(JSON.stringify(t));
+  await p.click('[data-act="worlds"]');
+  await p.waitFor(`!document.getElementById('s-worlds').hidden`);
+  const rows = await p.eval(`[...document.querySelectorAll('#world-list .world')].map((r) => r.querySelector('.wname').textContent + ' | ' + r.querySelector('.small').textContent)`);
+  if (rows.length !== 2 || !/^Beta \| Creative/.test(rows[0]) || !/^Alpha \| Survival/.test(rows[1])) throw new Error(JSON.stringify(rows));
+  // play Alpha: its seed, its mode, its block
+  await p.eval(`document.querySelectorAll('#world-list .world')[1].querySelector('[data-act="play-world"]').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'paused' && __STRATA.state().seed === 11`, { timeout: 90000, what: 'Alpha' });
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.resume(); __STRATA.settle(2)`);
+  const a = await S(p, `({ planks: S.getBlock(${at.x}, 90, ${at.z}), creative: S.G.creative, world: S.G.worldId })`);
+  if (a.planks !== 9 || a.creative) throw new Error('Alpha ' + JSON.stringify(a));
+  await quit();
+  // Continue now means Alpha (the last one played)
+  if ((await p.eval(`document.getElementById('b-continue').textContent`)) !== 'Continue: Alpha') throw new Error('Continue does not follow the last world');
+  await p.click('[data-act="continue"]');
+  await p.waitFor(`__STRATA.state().phase === 'paused' && __STRATA.state().seed === 11`, { timeout: 90000 });
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.resume(); 0`);
+  await quit();
+  // Beta has its own seed and no planks there
+  await p.click('[data-act="worlds"]');
+  await p.eval(`document.querySelectorAll('#world-list .world')[1].querySelector('[data-act="play-world"]').click()`);
+  await p.waitFor(`__STRATA.state().phase === 'paused' && __STRATA.state().seed === 22`, { timeout: 90000, what: 'Beta' });
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.resume(); __STRATA.settle(2)`);
+  const b = await S(p, `({ planks: S.getBlock(${at.x}, 90, ${at.z}), creative: S.G.creative })`);
+  if (b.planks === 9 || !b.creative) throw new Error('Beta ' + JSON.stringify(b));
+  await quit();
+  // rename (Enter) and delete (needs a second click)
+  await p.click('[data-act="worlds"]');
+  await p.eval(`document.querySelectorAll('#world-list .world')[0].querySelector('[data-act="rename-start"]').click()`);
+  await p.eval(`(() => { const i = document.querySelector('#world-list input.wedit'); i.value = 'Home'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+  await p.waitFor(`[...document.querySelectorAll('#world-list .wname')].map((e) => e.textContent).includes('Home')`, { what: 'renamed' });
+  const del = `document.querySelectorAll('#world-list .world')[0].querySelector('[data-act="delete-world"]')`;
+  await p.eval(`${del}.click()`);
+  if ((await p.eval(`document.querySelectorAll('#world-list .world').length`)) !== 2 || !(await p.eval(`/Really/.test(${del}.textContent)`))) throw new Error('one click must only ask');
+  await p.eval(`${del}.click()`);
+  await p.waitFor(`document.querySelectorAll('#world-list .world').length === 1`, { what: 'deleted' });
+  const stored = await p.eval(`__saves.at(-1)`);
+  if (!stored.startsWith('STRATAW1:')) throw new Error('not a world list: ' + stored.slice(0, 20));
+  const list = JSON.parse(stored.slice(9));
+  if (list.worlds.length !== 1 || list.worlds[0].name !== 'Alpha') throw new Error(stored.slice(0, 200));
+  await p.click('[data-act="back-worlds"]');
+  await p.waitFor(`!document.getElementById('s-title').hidden`);
 });
 
 test('save results: a too-large answer shows "World too big to save: 2.6 MB / 2.5 MB. Try removing some builds."; Esc / lost pointer lock pauses and saves', async (p) => {

@@ -39,7 +39,7 @@ export const BONUS_GAMES = [
   },
   {
     id: 'strata', file: 'Strata.exe', title: 'Strata', icon: 'a-pickaxe',
-    src: 'games/strata/index.html', unlock: 'ending', saves: true, saveCap: 2.5 * 1024 * 1024, completes: true, completeToast: 'Strata.exe: kernel restored.', eggPrefix: 'strata-',
+    src: 'games/strata/index.html', unlock: 'ending', saves: true, saveCap: 4 * 1024 * 1024, completes: true, completeToast: 'Strata.exe: kernel restored.', eggPrefix: 'strata-',
     binLore: 'Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."',
     binFrom: 'C:\\Games\\', binDate: '11-11-2011 11:11 AM', size: '38.2 MB', width: 1280, height: 760,
     restoredLore: 'Restored from the Recycle Bin. Please come up for air.',

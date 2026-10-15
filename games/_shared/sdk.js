@@ -14,13 +14,15 @@
 
  *   System32.save(data);                         // BONUS games with `saves: true` only (Strata): data is a string, at most the game's `saveCap` (Strata: 2.5 MB)
  *   System32.onSaved(function (r) { ... });      // { ok, bytes, error? } error: 'too-large' | 'quota' | 'invalid'
+ *   System32.fullscreen();                       // BONUS games: toggle fullscreen (the game window fills the whole screen, no desktop around it); the shell does it, so call this from a click or key press
+ *   System32.onFullscreen(function (p) { ... }); // { on }: the window entered or left fullscreen (also when the user pressed Esc)
  *   System32.onSound(function (p) { ... });      // { soundOn }: the taskbar speaker was toggled while the game is open
  */
 (function () {
   'use strict';
   var script = document.currentScript;
   var gameId = (script && script.getAttribute('data-game')) || 'unknown';
-  var handlers = { INIT: [], PAUSE: [], RESUME: [], SOUND: [], SAVED: [] };
+  var handlers = { INIT: [], PAUSE: [], RESUME: [], SOUND: [], SAVED: [], FULLSCREEN: [] };
 
   function send(type, extra) {
     var msg = { source: 'system32-game', gameId: gameId, type: type };
@@ -52,5 +54,7 @@
     onSound: function (fn) { handlers.SOUND.push(fn); },
     save: function (data) { send('SAVE', { payload: { data: data } }); },
     onSaved: function (fn) { handlers.SAVED.push(fn); },
+    fullscreen: function () { send('FULLSCREEN'); },
+    onFullscreen: function (fn) { handlers.FULLSCREEN.push(fn); },
   };
 })();

@@ -320,3 +320,8 @@ A game mode chosen on the **New World** screen (*Survival* or *Creative*; `?crea
 - Any `setBlock` queues the cell and its six neighbours (`World.onChange`), so digging beside the sea lets it run in, and placing a block into the stream stops it and drains what was behind it. After a load, the water cells among a chunk's edits are looked at again.
 - Mesh: surface height 0.125 + 0.75 * strength / 8 (a source 7/8), full height with water above; a higher cell shows its side above a lower neighbour. Swimming, drowning, pathfinding and item drops treat all water ids alike.
 - Not included: infinite sources, lava flow, currents that push the player.
+
+## 17. Several worlds and fullscreen (added after Part 2)
+- **Worlds:** the shell's single save string per game is now a container `STRATAW1:` + JSON (`worlds.js`), holding up to 10 worlds, each an unchanged `STRATA1:` string plus `{ id, name, mode, difficulty, created, played }`. Old single-world saves migrate on the next write ("World 1"). The shell's `saveCap` for Strata is **4 MB** for the whole list; one world is still capped at 2.5 MB (§ save format above).
+- **Screens:** Title: `Continue: <name>`, `Worlds (n)`, `New World`, `Settings`, `Fullscreen`. Worlds: rows newest first with Play / Rename (inline, Enter keeps, Esc cancels) / Delete (two clicks). New World: World name (blank = "World N"), Seed, Game mode, Difficulty. No more "replace your world" warning.
+- **Fullscreen:** the game window's title bar has a fullscreen button, and the game asks the shell with `System32.fullscreen()`; keys: **Alt+Enter** (Strata), **F** / Alt+Enter (SpaceSaga); buttons on the title and pause menus. See README (Fullscreen).

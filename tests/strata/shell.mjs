@@ -9,7 +9,7 @@ const SAGA = 'tests/bonus-shell/stub/index.html';
 const s = suite('Strata in the shell (Part A)');
 const { test } = s;
 const KEY = 'system32.save.strata';
-const CAP = 2.5 * 1024 * 1024;                  // Strata's saveCap (Part 2: two dimensions)
+const CAP = 4 * 1024 * 1024;                    // Strata saveCap (several worlds in one save)
 
 async function boot(page, state, url = '/') {
   await bootShell(page, state, url);

@@ -93,7 +93,6 @@ test('eggs reach the shell: saga-404 (crossing 404 m), saga-popup (jumping throu
   if (found.join() !== 'saga-404,saga-afk,saga-popup') throw new Error(found.join());
 });
 
-s.run();
 
 test('sound: off by default (the title says so); the taskbar speaker reaches the running game through SOUND, and a click then unlocks the music', async (page) => {
   await open(page, { debug: true });
@@ -109,3 +108,18 @@ test('sound: off by default (the title says so); the taskbar speaker reaches the
   await page.eval(`import('/js/state.js').then((m) => m.set({ soundOn: false }))`);
   await waitFrame(page, `__SPACESAGA.audio().allowed === false && !__SPACESAGA.audio().active`, 5000);
 });
+
+test('fullscreen: the F key, the pause button and the title-bar button ask the shell, which fullscreens the game area', async (page) => {
+  await open(page);
+  await page.eval(`(() => { const root = document.querySelector('#game-space-saga .gw'); window.__fs = 0; root.requestFullscreen = async () => { window.__fs++; }; })()`);
+  if (!(await page.eval(`!!document.querySelector('#game-space-saga .win-controls [data-act="fullscreen"]')`))) throw new Error('no fullscreen button in the title bar');
+  await page.eval(`document.querySelector('#game-space-saga [data-act="fullscreen"]').click()`);
+  await inFrame(page, `dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', bubbles: true })); 0`);
+  await inFrame(page, `document.getElementById('b-full').click(); 0`);
+  await sleep(200);
+  const n = await page.eval(`window.__fs`);
+  if (n !== 3) throw new Error('fullscreen requests: ' + n + ' (expected 3)');
+  if (!(await inFrame(page, `/fullscreen/i.test(document.getElementById('s-pause').textContent) && /fullscreen/i.test(document.getElementById('s-title').textContent)`))) throw new Error('the keys are not listed');
+});
+
+s.run();

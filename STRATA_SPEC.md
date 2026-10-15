@@ -191,7 +191,7 @@ Block **icons** for the hotbar and inventory are **not** assets: render each blo
 - **What's saved:** seed, world size, spawn, player position/orientation, inventory (incl. durability), furnace contents, time of day, settings, and **the edits diff**: only blocks that differ from what the generator would produce.
 - **Format:** JSON header + edits encoded per chunk as a list of `(localIndex, blockId)` pairs, packed into a byte array and base64-encoded. Compress with **`CompressionStream('deflate-raw')`** if available (it is in current Chrome and Firefox), else uncompressed.
 - **When:** autosave every 60 s while playing, on pause, on shell PAUSE (window minimized/blurred), and on "Save & Quit to title". Show a small "Saved" indicator; on `SAVED ok:false`, show a clear warning (*"World too big to save: 1.6 MB / 1.5 MB. Try removing some builds."*).
-- **Menu:** *Continue* (if a save exists), *New World* (seed field: blank = random, text → hashed seed; confirms before overwriting), *Settings*.
+- **Menu:** *Continue* (the world played last), *Worlds* (list of up to 10 saved worlds with Play / Rename / Delete), *New World* (name, seed: blank = random, text → hashed seed; game mode; difficulty; it never overwrites another world), *Settings*, *Fullscreen*. See README (Several worlds, Fullscreen).
 - Load path: INIT `save` → decompress → validate (version, size, sane numbers; reject garbage with a "Save could not be loaded" message and offer New World).
 
 ## B9. Audio

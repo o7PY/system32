@@ -45,6 +45,7 @@ Bonus games are `.exe` files, so they open in a **plain game window**, not in Ed
 - Same sandbox as Edgy: `sandbox="allow-scripts allow-forms allow-pointer-lock"`, no `allow-same-origin`.
 - Default size 1280×760 (clamped to the desktop), maximize allowed, resize allowed (the shell's resize unlock is long done by then).
 - Same protocol handling as Edgy (`event.source` check, PAUSE on minimize/blur, RESUME on restore).
+- **Fullscreen** (added later): a fullscreen button in the title bar, and `System32.fullscreen()` (message `FULLSCREEN`) from the game; the shell fullscreens the game area only (no taskbar or desktop), tells the game with `FULLSCREEN { on }` and leaves when the window closes. SpaceSaga: **F**, **Alt+Enter**, and a Fullscreen button on the pause screen.
 - The iframe needs keyboard focus. When the window is focused, call `iframe.focus()`. The game itself shows "Click to focus" if it loses focus (B9).
 
 ## A4. Protocol additions

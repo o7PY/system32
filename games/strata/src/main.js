@@ -7,6 +7,7 @@ import { Renderer } from './renderer.js';
 import { Mobs } from './entities.js';
 import { installHostiles, Spawner } from './hostile.js';
 import { Fluid } from './fluid.js';
+import { parseStore, packStore, emptyStore, persistable, addWorld, getWorld, removeWorld, renameWorld, MAX_WORLDS } from './worlds.js';
 import { Arrows, bowDamage, bowSpeed } from './projectiles.js';
 import { Boss } from './boss.js';
 import { ARENA, GATE } from './arena.js';
@@ -42,6 +43,7 @@ export function seedFrom(text) {
 }
 
 const G = {
+  store: emptyStore(), storeError: null, worldId: null, armDelete: null,
   phase: 'loading',            // loading | title | entering | playing | paused
   menu: null, save: null, soundOn: false,
   settings: { ...CONFIG.settings, viewDistance: OPT.low ? CONFIG.view.low : CONFIG.view.default, difficulty: OPT.peaceful ? 'peaceful' : 'normal' },
@@ -68,9 +70,10 @@ async function boot() {
   let initResolve; const initGot = new Promise((r) => { initResolve = r; });
   sdk?.onInit((init) => {
     G.save = typeof init?.save === 'string' ? init.save : null;
+    loadStore(G.save);
     G.completed = init?.completed ?? null;
     G.soundOn = !!init?.soundOn; audio.setAllowed(G.soundOn);
-    if (G.phase === 'title') ui.title({ canContinue: !!G.save, completed: G.completed });
+    if (G.phase === 'title') showTitle();
     initResolve();
   });
   sdk?.onSound((p) => { G.soundOn = !!p?.soundOn; audio.setAllowed(G.soundOn); if (G.soundOn) audio.unlock(); });
@@ -129,16 +132,25 @@ async function startTitleWorld() {
   G.phase = 'entering';
 }
 
+function showWorlds() {
+  const list = persistable(G.store).worlds.slice().sort((a, b) => b.played - a.played);
+  ui.worlds(list, { armed: G.armDelete, last: G.store.last, bytes: G.save?.length ?? 0, cap: CONFIG.save.totalBytes });
+  ui.show('worlds');
+}
+
 function showTitle() {
   G.phase = 'title';
   ui.hud(false);
-  ui.title({ canContinue: !!G.save, completed: G.completed, note: backendInfo.kind === 'inline' ? 'Running without a worker thread (slower chunk loading).' : '' });
+  const list = persistable(G.store).worlds, last = getWorld(G.store, persistable(G.store).last);
+  ui.title({ canContinue: !!last, continueName: last?.name ?? '', worlds: list.length, completed: G.completed, note: G.storeError ? `Your saved worlds could not be read (${G.storeError}).` : backendInfo.kind === 'inline' ? 'Running without a worker thread (slower chunk loading).' : '' });
   ui.show('title');
 }
 
 // ---------------------------------------------------------------- starting and leaving a world
 /** Start (or resume) a world. save = a deserialized save, or null for a new world. */
-async function startGame({ seed, flat = false, save = null, fake = false, mode = 'survival' }) {
+async function startGame({ seed, flat = false, save = null, fake = false, mode = 'survival', worldId = null }) {
+  if (!worldId) { const w = addWorld(G.store, { name: '', mode, difficulty: save?.settings?.difficulty }) ?? getWorld(G.store, G.store.last); worldId = w?.id ?? null; }      // test hooks and the like: a world of its own (or the last one when the list is full)
+  G.worldId = worldId; if (getWorld(G.store, worldId)) G.store.last = worldId;
   ui.progress(0, 'Digging in…'); ui.show('loading'); ui.hud(false);
   G.phase = 'loading'; G.menu = null; G.keys.clear(); G.mouseLeft = false;
   const size = save ? save.worldSize : OPT.worldSize;
@@ -242,43 +254,82 @@ function saveState() {
   };
 }
 
+/** Read the shell's save string into the list of worlds (a damaged one is reported on the title screen and treated as empty). */
+function loadStore(raw) {
+  G.storeError = null;
+  try { G.store = parseStore(raw); } catch (e) { G.store = emptyStore(); G.storeError = e.message; }
+}
+
+/** Write the whole list of worlds (one string for the shell). Resolves with the shell's answer. */
+function persist() {
+  if (!sdk) return Promise.resolve({ ok: true, bytes: 0 });
+  G.saving = true;
+  const packed = packStore(persistable(G.store));
+  G.pendingSave = packed;
+  G.saveWait = new Promise((resolve) => { G.saveDone = resolve; });
+  sdk.save(packed);
+  return G.saveWait;
+}
+const flushQueued = () => ((G.phase === 'playing' || G.phase === 'paused') ? saveNow('queued') : persist());
+
 async function saveNow(reason, wait = false) {
   if (!sdk || !world || !(G.phase === 'playing' || G.phase === 'paused') || G.seed === undefined) return;
   if (G.saving) { G.saveQueued = true; return G.saveWait; }
   G.saving = true;
   const data = await serialize(saveState(), { compress: !OPT.noCompress });
-  G.pendingSave = data;
-  G.saveWait = new Promise((resolve) => { G.saveDone = resolve; });
-  sdk.save(data);
+  const ent = getWorld(G.store, G.worldId);
+  if (!ent) { G.saving = false; return; }
+  if (data.length > CONFIG.save.capBytes) { G.saving = false; G.lastSaveResult = { ok: false, bytes: data.length, error: 'too-large' }; ui.saved(false, `World too big to save: ${fmtMB(data.length)} / ${fmtMB(CONFIG.save.capBytes)}. Try removing some builds.`); return; }
+  ent.data = data; ent.played = Date.now(); ent.mode = G.creative ? 'creative' : 'survival'; ent.difficulty = G.settings.difficulty; G.store.last = ent.id;
+  const done = persist();
   void reason;
-  return wait ? G.saveWait : undefined;
+  return wait ? done : undefined;
 }
 function onSaved(r) {
   G.saving = false;
   G.lastSaveResult = r;
   if (r.ok) { G.save = G.pendingSave; G.lastSaveBytes = r.bytes; ui.saved(true, 'Saved'); }
-  else if (r.error === 'too-large') ui.saved(false, `World too big to save: ${fmtMB(r.bytes)} / ${fmtMB(CONFIG.save.capBytes)}. Try removing some builds.`);
+  else if (r.error === 'too-large') ui.saved(false, G.store.worlds.length > 1 ? `Storage is full: ${fmtMB(r.bytes)} of ${fmtMB(CONFIG.save.totalBytes)}. Delete a world you do not need (Worlds on the title screen).` : `World too big to save: ${fmtMB(r.bytes)} / ${fmtMB(CONFIG.save.capBytes)}. Try removing some builds.`);
   else ui.saved(false, 'Could not save: the browser storage is full.');
   G.saveDone?.(r);
-  if (G.saveQueued) { G.saveQueued = false; saveNow('queued'); }
+  if (G.saveQueued) { G.saveQueued = false; flushQueued(); }
 }
 
 // ---------------------------------------------------------------- UI wiring
 function bindUI() {
-  ui.on('continue', async () => {
+  const playWorld = async (id) => {
+    const ent = getWorld(G.store, id);
+    if (!ent?.data) return;
     try {
-      const save = await deserialize(G.save);
-      await startGame({ seed: save.seed, flat: save.flat, save });
+      const save = await deserialize(ent.data);
+      await startGame({ seed: save.seed, flat: save.flat, save, worldId: id });
     } catch (e) {
-      if (e instanceof SaveError) { ui.error('Save could not be loaded', `${e.message}. The saved world is damaged. You can start a new world.`); G.phase = 'title'; }
+      if (e instanceof SaveError) { ui.error('Save could not be loaded', `${e.message}. This world is damaged. You can delete it under Worlds, or start a new one.`); G.phase = 'title'; }
       else throw e;
     }
+  };
+  ui.on('continue', () => playWorld(persistable(G.store).last));
+  ui.on('worlds', () => { G.armDelete = null; showWorlds(); });
+  ui.on('play-world', (e) => playWorld(e.target.closest('[data-id]')?.dataset.id));
+  ui.on('delete-world', (e) => {
+    const id = e.target.closest('[data-id]')?.dataset.id;
+    if (G.armDelete !== id) { G.armDelete = id; showWorlds(); return; }                      // the first click arms it, the second deletes
+    G.armDelete = null; removeWorld(G.store, id); showWorlds(); persist();
   });
-  ui.on('new', () => { G.armed = false; ui.newWorld({ overwrite: !!G.save }); ui.show('newworld'); $('seed-input').focus(); });
+  ui.on('rename-world', (e, name) => { renameWorld(G.store, e.target.closest('[data-id]')?.dataset.id, name); showWorlds(); persist(); });
+  ui.on('new', () => {
+    if (G.store.worlds.length >= MAX_WORLDS) { ui.error('Too many worlds', `You have ${MAX_WORLDS} worlds. Delete one under Worlds to make room.`); return; }
+    ui.newWorld({ placeholder: `World ${G.store.worlds.length + 1}` }); ui.show('newworld'); $('seed-input').focus();
+  });
   ui.on('start-new', () => {
-    if (G.save && !G.armed) { G.armed = true; ui.armReplace(); return; }                    // a saved world is about to be replaced: ask once more
-    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat, mode: OPT.creative ? 'creative' : ui.modeText() });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
+    const mode = OPT.creative ? 'creative' : ui.modeText();
+    const w = addWorld(G.store, { name: ui.nameText(), mode, difficulty: ui.difficultyText() });
+    if (!w) return;
+    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat, mode, worldId: w.id });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
   });
+  ui.on('fullscreen', () => sdk?.fullscreen());
+  addEventListener('keydown', (e) => { if (e.code === 'F11' || (e.altKey && e.code === 'Enter')) { e.preventDefault(); sdk?.fullscreen(); } });
+  ui.on('back-worlds', () => showTitle());
   ui.on('back-title', () => { showTitle(); });
   ui.on('settings', () => { G.settingsFrom = ui.screen; ui.show('settings'); });
   ui.on('back-settings', () => { if (G.settingsFrom === 'pause') ui.show('pause'); else showTitle(); });

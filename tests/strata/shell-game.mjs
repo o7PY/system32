@@ -49,7 +49,7 @@ test('SAVE / SAVED / INIT through the real shell: the world is stored under syst
   await inFrame(page, `(() => { const S = __STRATA; S.setBlock(512, 60, 512, 'planks'); S.setBlock(513, 60, 512, 'glass'); S.give('stone', 12); S.setTime(0.33); S.saveNow('test'); })()`);
   await waitFrame(page, `__STRATA.state().saveResult?.ok === true && !__STRATA.state().saving`, 20000);
   const stored = await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`);
-  if (!stored || !stored.startsWith('STRATA1:')) throw new Error('nothing stored under ' + KEY);
+  if (!stored || !stored.startsWith('STRATAW1:')) throw new Error('nothing stored under ' + KEY);
   if (JSON.stringify(await live(page)).includes('STRATA1')) throw new Error('the world leaked into the shell state');
   const bytes = await inFrame(page, `__STRATA.state().saveBytes`);
   if (bytes !== stored.length) throw new Error(`reported ${bytes} bytes, stored ${stored.length}`);
@@ -64,18 +64,18 @@ test('SAVE / SAVED / INIT through the real shell: the world is stored under syst
   if (r.planks !== 9 || r.glass !== 11 || r.stone !== 12) throw new Error(JSON.stringify(r));
 });
 
-test('the shell caps a save at 2.5 MB: an over-sized world gets SAVED too-large, nothing is written, and the game says so', async (page) => {
+test('the shell caps a save at 4 MB: an over-sized world gets SAVED too-large, nothing is written, and the game says so', async (page) => {
   await open(page);
   await inFrame(page, `__STRATA.newWorld({ seed: 5, flat: true }).then(() => 0)`);
   await waitFrame(page, `__STRATA.state().phase === 'playing'`, 90000);
   await inFrame(page, `__STRATA.saveNow('first'); 0`);
   await waitFrame(page, `__STRATA.state().saveResult?.ok === true`, 20000);
   const before = await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`);
-  await inFrame(page, `(() => { window.__big = 'x'.repeat(2.6 * 1048576); System32.save(window.__big); })()`);
+  await inFrame(page, `(() => { window.__big = 'x'.repeat(4.1 * 1048576); System32.save(window.__big); })()`);
   await waitFrame(page, `__STRATA.state().saveResult?.error === 'too-large'`, 20000);
   if ((await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`)) !== before) throw new Error('a too-large save changed the stored world');
   const msg = await inFrame(page, `document.getElementById('saved').textContent`);
-  if (!/World too big to save: 2\.6 MB \/ 2\.5 MB\. Try removing some builds\./.test(msg)) throw new Error(msg);
+  if (!/World too big to save: 4\.1 MB \/ 2\.5 MB\. Try removing some builds\./.test(msg)) throw new Error(msg);
 });
 
 test('the shell\'s PAUSE (minimizing the window) pauses the game and autosaves; the world survives a reload', async (page) => {
@@ -88,7 +88,7 @@ test('the shell\'s PAUSE (minimizing the window) pauses the game and autosaves; 
   await waitFrame(page, `__STRATA.state().saveResult?.ok === true`, 20000);
   const stored = await page.eval(`localStorage.getItem(${JSON.stringify(KEY)})`);
   if (!stored) throw new Error('PAUSE did not save');
-  const check = await inFrame(page, `__STRATA.load(${JSON.stringify(stored)}).then((s) => ({ edits: s.edits.size, seed: s.seed }))`);
+  const check = await inFrame(page, `__STRATA.load(${JSON.stringify(JSON.parse(stored.slice(9)).worlds[0].data)}).then((s) => ({ edits: s.edits.size, seed: s.seed }))`);
   if (check.seed !== 8 || check.edits < 1) throw new Error(JSON.stringify(check));
 });
 
@@ -158,6 +158,25 @@ test('the win in the real shell: the game\'s complete() reaches the shell once (
   await waitFrame(page, `window.__STRATA?.state().phase === 'title'`, 90000);
   const t = await inFrame(page, `document.getElementById('title-trophy').textContent`);
   if (!/🏆/.test(t)) throw new Error('title trophy: ' + t);
+});
+
+test('fullscreen: a title-bar button, System32.fullscreen() from the game, Alt+Enter and the title / pause buttons all toggle the game area (not the whole desktop); real fullscreen follows a click and Esc leaves it', async (page) => {
+  await open(page);
+  await page.eval(`(() => { const root = document.querySelector('#game-strata .gw'); window.__fs = 0; root.requestFullscreen = async () => { window.__fs++; }; })()`);
+  if (!(await page.eval(`!!document.querySelector('#game-strata .win-controls [data-act="fullscreen"]')`))) throw new Error('no fullscreen button in the title bar');
+  await page.eval(`document.querySelector('#game-strata [data-act="fullscreen"]').click()`);
+  await inFrame(page, `System32.fullscreen(); 0`);
+  await inFrame(page, `document.getElementById('b-full-title').click(); 0`);
+  await inFrame(page, `dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', altKey: true, bubbles: true })); 0`);
+  await sleep(200);
+  const n = await page.eval(`window.__fs`);
+  if (n !== 4) throw new Error('fullscreen requests: ' + n + ' (expected 4)');
+  await page.eval(`delete document.querySelector('#game-strata .gw').requestFullscreen; 0`);       // the real thing now
+  await page.click('#game-strata [data-act="fullscreen"]');
+  await page.waitFor(`document.fullscreenElement === document.querySelector('#game-strata .gw')`, { timeout: 5000, what: 'real fullscreen on the game area' });
+  if (!(await page.eval(`document.querySelector('#game-strata iframe').getBoundingClientRect().width >= innerWidth - 1`))) throw new Error('the game does not fill the screen');
+  await page.eval(`document.exitFullscreen().then(() => 0)`);
+  await page.waitFor(`!document.fullscreenElement`, { timeout: 5000 });
 });
 
 s.run();

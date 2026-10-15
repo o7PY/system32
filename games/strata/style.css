@@ -159,3 +159,15 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 .tab.on { background: #3d6b46; border-color: #fff; }
 .catgrid { max-height: 252px; overflow-y: auto; margin: 6px 0; padding: 2px; }
 .crnote { font-size: 14px; color: var(--dim); margin-bottom: 4px; }
+
+/* Worlds list */
+.panel.wide { width: min(640px, 94vw); }
+.worlds { display: grid; gap: 8px; max-height: 52vh; overflow-y: auto; text-align: left; }
+.world { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; background: rgba(0, 0, 0, .28); border: 2px solid var(--edge); }
+.world.last { border-color: var(--hi); }
+.winfo { display: grid; gap: 2px; min-width: 0; }
+.wname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wbtns { display: flex; gap: 6px; flex: none; }
+.btn.small { padding: 6px 10px; font-size: 14px; min-width: 0; }
+.btn.danger { background: #7a2020; }
+.wedit { font: inherit; padding: 2px 6px; width: 16em; max-width: 100%; }

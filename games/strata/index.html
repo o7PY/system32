@@ -48,8 +48,10 @@
   <p class="dim tagline">Dig down. Find what is buried. Build something.</p>
   <div class="menu">
     <button class="btn" data-act="continue" id="b-continue">Continue</button>
+    <button class="btn" data-act="worlds" id="b-worlds">Worlds</button>
     <button class="btn" data-act="new">New World</button>
     <button class="btn" data-act="settings">Settings</button>
+    <button class="btn" data-act="fullscreen" id="b-full-title">Fullscreen</button>
   </div>
   <p id="title-trophy" class="trophy" hidden></p>
   <p id="title-note" class="dim small"></p>
@@ -58,13 +60,25 @@
 <section class="screen dim-bg" id="s-newworld" hidden>
   <div class="panel narrow">
     <h2>New World</h2>
+    <label class="field">World name <input id="name-input" type="text" maxlength="24" placeholder="World 1" autocomplete="off" spellcheck="false"></label>
     <label class="field">Seed <input id="seed-input" type="text" maxlength="40" placeholder="leave blank for a random world" autocomplete="off" spellcheck="false"></label>
     <label class="field">Game mode <select id="new-mode"><option value="survival" selected>Survival</option><option value="creative">Creative (all items, flying, no damage)</option></select></label>
     <label class="field">Difficulty <select id="new-diff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></label>
-    <p id="overwrite-note" class="warn" hidden>This replaces your saved world. It cannot be undone.</p>
     <div class="row">
       <button class="btn" data-act="start-new" id="b-start-new">Create World</button>
       <button class="btn" data-act="back-title">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section class="screen dim-bg" id="s-worlds" hidden>
+  <div class="panel wide">
+    <h2>Worlds</h2>
+    <div id="world-list" class="worlds"></div>
+    <p id="worlds-note" class="dim small"></p>
+    <div class="row">
+      <button class="btn" data-act="new">New World</button>
+      <button class="btn" data-act="back-worlds">Back</button>
     </div>
   </div>
 </section>
@@ -75,6 +89,7 @@
     <div class="menu">
       <button class="btn" data-act="resume">Resume</button>
       <button class="btn" data-act="settings">Settings</button>
+      <button class="btn" data-act="fullscreen">Fullscreen (Alt+Enter)</button>
       <button class="btn" data-act="quit">Save &amp; Quit to Title</button>
     </div>
     <p id="pause-note" class="dim small"></p>

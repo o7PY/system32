@@ -8,8 +8,10 @@ import { hudIcons } from './hudicons.js';
 import { CATEGORIES } from './inventory.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['loading', 'title', 'newworld', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
+const SCREENS = ['loading', 'title', 'worlds', 'newworld', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
 
+
+const ageText = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
 
 export class UI {
   constructor() {
@@ -21,7 +23,7 @@ export class UI {
     this.hover = null;                                    // the slot under the pointer in an inventory screen: kept across redraws
     this.drag = null;
     this.timers = {};
-    document.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b && !b.disabled) this.emit(b.dataset.act, e); });
+    document.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; if (b.dataset.act === 'rename-start') { this.#renameStart(b.closest('.world')); return; } this.emit(b.dataset.act, e); });
     for (const [id, key] of [['set-sens', 'sensitivity'], ['set-fov', 'fov'], ['set-view', 'viewDistance'], ['set-vol', 'volume']]) {
       $(id).addEventListener('input', () => { this.#readSettings(); this.#outputs(); });
     }
@@ -52,8 +54,9 @@ export class UI {
   }
   hud(on) { $('hud').hidden = !on; }
   progress(p, text) { $('load-bar').style.width = `${Math.round(p * 100)}%`; if (text) $('load-text').textContent = text; }
-  title({ canContinue, note = '', completed = null }) {
-    $('b-continue').disabled = !canContinue; $('title-note').textContent = note;
+  title({ canContinue, continueName = '', worlds = 0, note = '', completed = null }) {
+    $('b-continue').disabled = !canContinue; $('b-continue').textContent = canContinue ? `Continue: ${continueName}` : 'Continue'; $('b-worlds').textContent = worlds > 1 ? `Worlds (${worlds})` : 'Worlds'; $('b-worlds').disabled = !worlds;
+    $('title-note').textContent = note;
     const t = $('title-trophy');
     t.hidden = !completed;
     if (completed) { const best = completed.byDifficulty ? Math.min(...Object.values(completed.byDifficulty).map((r) => r.timeMs)) : completed.timeMs, m = Math.floor(best / 60000), s = Math.floor((best % 60000) / 1000); t.textContent = `🏆 Kernel restored. Best time ${m}:${String(s).padStart(2, '0')}`; }
@@ -67,9 +70,40 @@ export class UI {
   }
   endSkip(on) { $('end-skip').hidden = !on; }
   endReset() { $('end-log').textContent = ''; $('credits').hidden = true; $('end-skip').hidden = true; }
-  newWorld({ overwrite }) { $('overwrite-note').hidden = !overwrite; $('seed-input').value = ''; $('b-start-new').textContent = overwrite ? 'Replace World' : 'Create World'; }
-  /** Second step of replacing a saved world. */
-  armReplace() { $('b-start-new').textContent = 'Click again to replace it'; $('overwrite-note').hidden = false; }
+  newWorld({ placeholder = 'World 1' } = {}) { $('seed-input').value = ''; $('name-input').value = ''; $('name-input').placeholder = placeholder; }
+  nameText() { return $('name-input').value.trim(); }
+  /** The Worlds screen: one row per world (newest first) with Play, Rename and Delete; `armed` is the id whose Delete was clicked once. */
+  worlds(list, { armed = null, last = null, bytes = 0, cap = 1 } = {}) {
+    const host = $('world-list');
+    host.textContent = '';
+    for (const w of list) {
+      const row = document.createElement('div');
+      row.className = `world${w.id === last ? ' last' : ''}`; row.dataset.id = w.id;
+      const info = document.createElement('div'); info.className = 'winfo';
+      const nm = document.createElement('b'); nm.textContent = w.name; nm.className = 'wname';
+      const meta = document.createElement('span'); meta.className = 'dim small';
+      const ago = w.played ? ageText(Date.now() - w.played) : 'earlier';
+      meta.textContent = [w.mode === 'creative' ? 'Creative' : w.mode === 'survival' ? 'Survival' : '', w.difficulty ? w.difficulty[0].toUpperCase() + w.difficulty.slice(1) : '', `${(w.data.length / 1048576).toFixed(2)} MB`, `played ${ago}`].filter(Boolean).join(' · ');
+      info.append(nm, meta);
+      const btns = document.createElement('div'); btns.className = 'wbtns';
+      const mk = (act, text, cls = '') => { const b = document.createElement('button'); b.className = `btn small ${cls}`; b.dataset.act = act; b.textContent = text; return b; };
+      btns.append(mk('play-world', 'Play'), mk('rename-start', 'Rename'), mk('delete-world', armed === w.id ? 'Really delete?' : 'Delete', armed === w.id ? 'danger' : ''));
+      row.append(info, btns); host.append(row);
+    }
+    if (!list.length) { const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'No worlds yet.'; host.append(p); }
+    $('worlds-note').textContent = `${list.length} of 10 worlds · ${(bytes / 1048576).toFixed(2)} of ${(cap / 1048576).toFixed(1)} MB of browser storage used.`;
+  }
+  /** Rename: the name becomes a text box; Enter or leaving it keeps the new name, Escape cancels. */
+  #renameStart(row) {
+    const nm = row.querySelector('.wname');
+    if (!nm || row.querySelector('input')) return;
+    const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 24; inp.value = nm.textContent; inp.className = 'wedit'; inp.spellcheck = false;
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; if (ok) this.emit('rename-world', { target: row }, inp.value); else inp.replaceWith(nm); };
+    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
+    inp.addEventListener('blur', () => finish(true));
+    nm.replaceWith(inp); inp.focus(); inp.select();
+  }
   seedText() { return $('seed-input').value.trim(); }
   difficultyText() { return $('new-diff').value; }
   modeText() { return $('new-mode').value; }
