@@ -124,6 +124,8 @@ const lone = (blocks) => { const c = new Uint8Array(16 * 16 * 128); for (const [
   check('a leaf blob hides the faces between its own leaves', leaves3.faces === 10);
   const water = faces([[5, 20, 5, B.water], [5, 21, 5, B.water]]);
   check('water: a stack of two keeps 10 faces; an exposed surface sits 1/8 below the top', water.faces === 10 && Math.abs(Math.max(...water.water.pos.filter((_, i) => i % 3 === 1)) - 21.875) < 1e-6);
+  const flow = faces([[5, 20, 5, B.water], [6, 20, 5, B.water_3]]), top = (m) => Math.max(...m.water.pos.filter((_, i) => i % 3 === 1));
+  check('flowing water: its surface is lower the weaker it is (a source 7/8, strength 3 0.406), and the higher cell shows its side above the lower one', Math.abs(top(faces([[5, 20, 5, B.water_3]])) - 20.40625) < 0.001 && flow.faces === 11 && Math.abs(top(faces([[5, 20, 5, B.water_7], [5, 21, 5, B.water_7]])) - 21.78125) < 1e-6);
   check('water against stone is culled, stone against water is kept', faces([[5, 20, 5, B.water], [6, 20, 5, B.stone]]).faces === 11);
   check('an empty chunk meshes to nothing', g.mesh(pad(new Uint8Array(32768))).faces === 0);
   // faces across a chunk border use the neighbour's blocks

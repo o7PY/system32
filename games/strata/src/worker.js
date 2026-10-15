@@ -564,13 +564,22 @@
   ];
   var CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
+  /** Top of a water cell (0..1): full when water is above it, otherwise by strength (a source sits at 7/8). */
+  function waterTop(arr, px, py, pz) {
+    var up = py + 1 < H ? cfg.blocks[arr[((py + 1) * PW + pz + 1) * PW + px + 1]] : null;
+    if (up && up.kind === 'water') return 1;
+    var l = cfg.blocks[arr[(py * PW + pz + 1) * PW + px + 1]].lvl || 8;
+    return 0.125 + 0.75 * (l / 8);
+  }
+
   function newLayer() { return { pos: [], uv: [], br: [], sk: [], bl: [], an: [], idx: [], faces: 0 }; }
 
   /** Is this block hiding the face of `cur` that touches it? (for a partial box the caller also checks that the face lies on the cell boundary) */
   function hides(cur, nb) {
     var ck = cfg.blocks[cur].kind, nk = cfg.blocks[nb].kind;
     if (nk === 'air') return false;
-    if (cur === nb && (ck === 'cutout' || ck === 'water' || ck === 'lava')) return true;           // glass next to glass, leaves in a blob, water in water
+    if (cur === nb && (ck === 'cutout' || ck === 'lava')) return true;
+    if (ck === 'water' && nk === 'water') return true;                                   // (water against water: mesh() decides about the sides)           // glass next to glass, leaves in a blob, water in water
     if (ck === 'opaque') return nk === 'opaque';
     if (ck === 'water' || ck === 'lava') return nk === 'opaque';
     if (ck === 'box') return nk === 'opaque';
@@ -598,6 +607,7 @@
         var nid = ny < 0 || ny >= H ? 0 : padded[(ny * PW + nz + 1) * PW + nx + 1];
         if (ny < 0) continue;                                                        // never draw the underside of the world
         var hide = nid !== 0 && hides(bid, nid);
+        if (hide && bk === 'water' && blocks[nid].kind === 'water' && f !== 2 && f !== 3 && waterTop(padded, nx, ny, nz) < waterTop(padded, x, y, z)) hide = false;     // a higher water next to a lower one shows its side above it
         if (box && hide) {                                                           // a partial box: only a face lying ON the cell boundary can be hidden
           var ax = fc.n[0] ? 0 : fc.n[1] ? 1 : 2, onEdge = fc.n[ax] > 0 ? box[ax + 3] === 16 : box[ax] === 0;
           hide = onEdge;
@@ -627,7 +637,8 @@
           }
         } else skyV = [1, 1, 1, 1];
         var rect = tiles[f], base = layer.pos.length / 3, anim = def.fr ? def.fr[f] : 0;
-        var lowerTop = (bk === 'water' || bk === 'lava') && !(y + 1 < H && padded[((y + 1) * PW + z + 1) * PW + x + 1] === bid);     // an exposed surface sits 1/8 below the top
+        var wTop = bk === 'water' ? waterTop(padded, x, y, z) : 1, lowerTop = bk === 'lava' ? !(y + 1 < H && padded[((y + 1) * PW + z + 1) * PW + x + 1] === bid) : wTop < 1;     // an exposed surface sits 1/8 below the top (water: by its strength)
+        var topY = bk === 'lava' ? 0.875 : wTop;
         // a box face samples a part of its tile (uvr: sides, uvTop / uvBot) by position inside the box; a plain face samples the whole tile by position in the cell
         var sub = box ? (f === 2 ? def.uvTop : f === 3 ? def.uvBot : def.uvr) : null, tr = rect;
         if (sub) tr = [rect[0] + (rect[2] - rect[0]) * sub[0] / 16, rect[1] + (rect[3] - rect[1]) * sub[1] / 16, rect[0] + (rect[2] - rect[0]) * sub[2] / 16, rect[1] + (rect[3] - rect[1]) * sub[3] / 16];
@@ -635,7 +646,7 @@
         for (c = 0; c < 4; c++) {
           var cu = CORNERS[c][0], cv = CORNERS[c][1], q = [0, 0, 0], k;
           for (k = 0; k < 3; k++) q[k] = fc.n[k] ? (fc.n[k] > 0 ? hi[k] : lo[k]) : fc.u[k] ? (cu ? hi[k] : lo[k]) : (cv ? hi[k] : lo[k]);
-          layer.pos.push(x + q[0], y + (lowerTop && q[1] === 1 ? 0.875 : q[1]), z + q[2]);
+          layer.pos.push(x + q[0], y + (lowerTop && q[1] === 1 ? topY : q[1]), z + q[2]);
           // texture coordinates: side faces stand upright (v along +y, u to the viewer's right); top and bottom use x and z. `t*` = fraction along the face.
           var tu, tv, ex = box && sub ? [(q[0] - lo[0]) / (hi[0] - lo[0] || 1), (q[1] - lo[1]) / (hi[1] - lo[1] || 1), (q[2] - lo[2]) / (hi[2] - lo[2] || 1)] : q;
           if (f === 2 || f === 3) { tu = ex[0]; tv = ex[2]; }

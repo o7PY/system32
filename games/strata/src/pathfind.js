@@ -1,7 +1,7 @@
 // A* over walkable cells (STRATA_PART2_SPEC.md 5.2): a cell is walkable when something solid is below it and two cells above are free; a step may rise 1 or drop up to 3.
 // Within `radius` blocks of the start, at most `maxNodes` nodes expanded. When the goal cannot be reached it returns the path to the explored cell closest to it
 // (reached: false), so a mob still walks toward the player as far as it can instead of freezing. No DOM, no three.js.
-import { B, BLOCKS } from './blocks.js';
+import { B, BLOCKS, isWater } from './blocks.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const key = (x, y, z) => `${x},${y},${z}`;
@@ -15,7 +15,7 @@ const key = (x, y, z) => `${x},${y},${z}`;
 export function findPath(getBlock, start, goal, opts = {}) {
   const { maxNodes = 600, radius = 32, maxDrop = 3, climbWalls = false, canSwim = false } = opts;
   const solid = (x, y, z) => BLOCKS[getBlock(x, y, z)]?.solid ?? false;
-  const bad = (x, y, z) => { const id = getBlock(x, y, z); return id === B.lava || (!canSwim && id === B.water); };
+  const bad = (x, y, z) => { const id = getBlock(x, y, z); return id === B.lava || (!canSwim && isWater(id)); };
   const free = (x, y, z) => !solid(x, y, z) && !bad(x, y, z);
   const standable = (x, y, z) => free(x, y, z) && free(x, y + 1, z) && (solid(x, y - 1, z) || (climbWalls && wallNear(x, y, z)));
   const wallNear = (x, y, z) => DIRS.some(([dx, dz]) => solid(x + dx, y, z + dz));

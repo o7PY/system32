@@ -120,7 +120,7 @@ Block **icons** for the hotbar and inventory are **not** assets: render each blo
   - 3D noise for **caves** (worm/cheese-style, open to the surface in some places) below y = 60.
   - **Ores:** coal (y 20–90, common), iron (y 5–60, less common), placed as small clusters with 3D noise or seeded blobs.
   - **Trees** in forest/plains (log trunk 4–6 tall + leaf blob), **cactus** in desert. Trees must not be cut at chunk borders: generate features from a seed per chunk *and* its neighbors, writing only the blocks that fall in the current chunk.
-  - Water fills everything below sea level that's air after carving (oceans, lakes). No flowing water.
+  - Water fills everything below sea level that's air after carving (oceans, lakes). Flowing water was added later, see README (Flowing water) and `STRATA_PART2_SPEC.md` §16.
   - Bedrock at y = 0, with a little noise at y = 1–3.
 - **Spawn:** search outward from the world center for a dry, grassy column; spawn on top. Saved after the first load.
 

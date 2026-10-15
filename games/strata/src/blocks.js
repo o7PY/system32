@@ -73,6 +73,8 @@ const DEFS = [
   ...['n', 's', 'e', 'w'].map((d) => ({ name: `chest_${d}`, kind: 'box', box: [1, 0, 1, 15, 14, 15], tiles: facing(d, 'chest_top', 'planks', 'chest_side', 'chest_front'), solid: true, hardness: 2.5, tool: 'axe', drop: ['chest', 1, 1], group: 'wood', use: 'chest', item: 'chest', variant: d !== 's' })),
   ...['n', 's', 'e', 'w'].flatMap((d) => [['foot', 'bed_top'], ['head', 'bed_pillow']].map(([part, top]) => ({ name: `bed_${part}_${d}`, kind: 'box', box: [0, 0, 0, 16, 9, 16], tiles: facing(d, top, 'planks', 'bed_side', 'bed_side'), solid: true, hardness: 0.4, drop: ['bed', 1, 1], group: 'wood', use: 'bed', item: 'bed', variant: true, bed: { part, dir: d } }))),
   { name: 'memory_marked', tiles: all('memory_marked'), hardness: 1.5, tool: 'pickaxe', group: 'glass', emit: 9, item: false },
+  // Flowing water: water_N has strength N (1..7); the source `water` is 8. Spread, fall and drain by fluid.js. Not items, never placed by the player.
+  ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ name: `water_${n}`, kind: 'water', tiles: all('water'), hardness: -1, group: 'sand', item: false, lvl: n })),
 ];
 
 export const BLOCKS = DEFS.map((d, id) => ({
@@ -84,7 +86,9 @@ export const B = Object.fromEntries(BLOCKS.map((b) => [b.name, b.id]));
 export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map((b) => [b.name, b]));
 export const isSolid = (id) => BLOCKS[id]?.solid ?? false;
 export const isOpaque = (id) => BLOCKS[id]?.opaque ?? false;
-export const isWater = (id) => id === B.water;
+export const isWater = (id) => BLOCKS[id]?.kind === 'water';
+/** Strength of a water block: 8 for a source, 1..7 for flowing water, 0 for anything else. */
+export const waterLevel = (id) => id === B.water ? 8 : BLOCKS[id]?.lvl ?? 0;
 /** Blocks the player can collect and place as ITS OWN item: no variants (torch_px ...), nothing unbreakable, nothing that only exists in the world. */
 export const PLACEABLE = BLOCKS.filter((b) => !['air', 'water', 'bedrock', 'ad_block'].includes(b.name) && b.item === undefined && !b.variant).map((b) => b.name);
 /** The item a block turns into when picked or dropped (torch_px -> torch), or null. */
@@ -114,7 +118,7 @@ export function workerTable(atlas) {
   return {
     ids: B,
     blocks: BLOCKS.map((b) => ({
-      kind: b.kind, tiles: b.tiles ? b.tiles.map(rect) : null, fr: b.tiles ? b.tiles.map(frames) : null, emit: b.emit, dim: b.dim,
+      kind: b.kind, lvl: b.kind === 'water' ? (b.lvl ?? 8) : 0, tiles: b.tiles ? b.tiles.map(rect) : null, fr: b.tiles ? b.tiles.map(frames) : null, emit: b.emit, dim: b.dim,
       box: b.box ?? null, uvr: b.uvr ?? null, uvTop: b.uvTop ?? null, uvBot: b.uvBot ?? null,
     })),
   };

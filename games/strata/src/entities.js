@@ -4,7 +4,7 @@
 // A Mob is { id, type, def, x, y, z (feet), vx, vy, vz, yaw, hp, maxHp, state, t, ... }. Behaviour is a small state machine per kind (idle -> wander -> flee for the
 // passive animals; hostile kinds are added by their own AI functions in ai.js). Everything random goes through the `rand` the manager was given.
 import { CONFIG } from './config.js';
-import { B, BLOCKS } from './blocks.js';
+import { B, BLOCKS, isWater } from './blocks.js';
 import { MOBS, PASSIVE } from './mobdefs.js';
 import { moveAxis, collidesAt } from './physics.js';
 
@@ -158,7 +158,7 @@ export class Mobs {
   /** Gravity, water, swept collision on x, z, y; a one-block step (jump) when it walks into a ledge. */
   #body(m, dt) {
     const g = this.getBlock, w = m.w, h = m.h;
-    m.inWater = g(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)) === B.water;
+    m.inWater = g(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)) !== B.air && isWater(g(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)));
     const inLava = g(Math.floor(m.x), Math.floor(m.y + 0.2), Math.floor(m.z)) === B.lava;
     if (inLava && !m.dead) { m.lavaT = (m.lavaT ?? 0) + dt; if (m.lavaT >= 0.5) { m.lavaT = 0; this.damage(m, 4, { type: 'lava' }); } }
     if (m.def.flying && !m.dead) m.vy = Math.max(-6, Math.min(6, m.vy));                      // a flyer is steered by its AI, gravity does not apply
@@ -202,7 +202,7 @@ export class Mobs {
       const id = this.getBlock(x, y0 + dy, z);
       if (id === B.lava) return false;
       if (BLOCKS[id]?.solid) return true;
-      if (id === B.water) return dy === 0;
+      if (isWater(id)) return dy === 0;
     }
     return false;
   }

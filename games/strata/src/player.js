@@ -1,7 +1,7 @@
 // First-person controller: AABB 0.6 x 1.8 x 0.6, eye 1.62, swept per axis (no tunnelling at terminal speed), swimming, sprint and sneak (no walking off edges).
 // Pure: it only needs `world.getBlock(x, y, z)`, so Node tests drive it on a hand-built world. No automatic step-up: jumping is part of the feel.
 import { CONFIG } from './config.js';
-import { B, BLOCKS } from './blocks.js';
+import { B, BLOCKS, isWater } from './blocks.js';
 import { collidesAt, moveAxis } from './physics.js';
 
 const EPS = 1e-4;
@@ -40,7 +40,7 @@ export class Player {
 
   /** Does the box at (x, y, z) overlap a solid block (a partial block collides with its own box: a bed is 9/16 high)? */
   collides(x, y, z) { return collidesAt((a, b, c) => this.world.getBlock(a, b, c), { x, y, z }, this.cfg.width, this.cfg.height); }
-  #water(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.water; }
+  #water(x, y, z) { return isWater(this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))); }
   #lava(x, y, z) { return this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === B.lava; }
 
   /** Move along one axis in sub-steps of at most cfg.maxStep; on contact snap to the block face. Returns true if it hit something. */

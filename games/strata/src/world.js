@@ -101,6 +101,7 @@ export class World {
     this.seed = 0; this.flat = false; this.noSky = false; this.voidBelow = false; this.dim = 'overworld';                // noSky: a dimension without a sky (the Underlayer, the Kernel)
     this.onMesh = null;                 // (chunk, mesh) the renderer uploads it
     this.onUnload = null;               // (chunk)
+    this.onChange = null;               // (x, y, z) a block changed (fluids look at it)
     this.onGenerated = null;            // (chunk) its blocks are there (edits applied)
     this.uploads = [];
     this.order = []; this.orderFor = '';
@@ -169,6 +170,7 @@ export class World {
       lightChange = near;
     }
     c.data[i] = id;
+    this.onChange?.(x, y, z);
     const k = chunkKey(cx, cz);
     let e = this.edits.get(k);
     if (id === c.base[i]) { e?.delete(i); if (e && !e.size) this.edits.delete(k); }

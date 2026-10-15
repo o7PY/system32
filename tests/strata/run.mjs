@@ -701,6 +701,26 @@ test('survival HUD: 10 hearts, 10 food icons above the hotbar, half hearts, armo
   await p.waitFor(`document.querySelectorAll('#air img').length === 10 && document.querySelectorAll('#air img[src]').length === 10 && __STRATA.vitals().air < 9.5`, { what: 'air bubbles under water', timeout: 15000 });
 });
 
+test('water flows: a source spreads to flowing water, falls over an edge, swimming works in it, a wall holds it back, and it is saved with the world', async (p) => {
+  await flat(p);
+  const r = await p.eval(`(async () => {
+    const S = __STRATA, pl = S.player(), x = Math.floor(pl.pos.x) + 6, z = Math.floor(pl.pos.z) + 6, y = 49, nap = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let dz = -9; dz <= 9; dz++) for (let dx = -9; dx <= 9; dx++) for (let h = 49; h <= 53; h++) S.setBlock(x + dx, h, z + dz, 'air');
+    for (let dz = -9; dz <= 9; dz++) for (let h = 49; h <= 53; h++) S.setBlock(x + 3, h, z + dz, 'stone');               // a wall
+    S.setBlock(x, y, z, 'water');
+    await nap(2500);
+    const near = S.getBlock(x + 1, y, z), far = S.getBlock(x - 4, y, z), behind = S.getBlock(x + 4, y, z);
+    S.setBlock(x - 2, y - 1, z, 'air'); S.setBlock(x - 2, y - 2, z, 'air');       // a hole in the floor below the stream
+    await nap(2500);
+    const hole = S.getBlock(x - 2, y - 1, z);
+    S.tp(x + 1.5, y, z + 0.5); await nap(300);
+    const swim = S.player().inWater;
+    const n = S.state().edits, ser = await S.save();
+    return { near, far, behind, hole, swim, n, saved: ser.length, ids: { w7: S.getBlock(x + 1, y, z) } };
+  })()`);
+  if (!(r.near > 0 && r.far > 0 && r.behind === 0 && r.hole > 0 && r.swim && r.n > 5)) throw new Error('water did not flow: ' + JSON.stringify(r));
+});
+
 test('damage: a hit flashes the screen edge, tilts the camera, plays the hurt sound, and 0.5 s of invulnerability stops a second hit', async (p) => {
   await flat(p);
   await p.eval(`__STRATA.audio().setAllowed(true); __STRATA.audio().unlock()`);

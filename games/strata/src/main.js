@@ -1,11 +1,12 @@
 // Strata: boot, the state machine (loading -> title -> entering -> playing <-> paused), input, the frame loop, saving through the shell, test hooks.
 import { CONFIG } from './config.js';
-import { B, BLOCKS, isFurnace, isSolid, itemOfBlock } from './blocks.js';
+import { B, BLOCKS, isWater, isFurnace, isSolid, itemOfBlock } from './blocks.js';
 import { ITEMS, stack, blockItem, isTool, hasDurability, durabilityOf } from './items.js';
 import { World, createBackend } from './world.js';
 import { Renderer } from './renderer.js';
 import { Mobs } from './entities.js';
 import { installHostiles, Spawner } from './hostile.js';
+import { Fluid } from './fluid.js';
 import { Arrows, bowDamage, bowSpeed } from './projectiles.js';
 import { Boss } from './boss.js';
 import { ARENA, GATE } from './arena.js';
@@ -51,7 +52,7 @@ const G = {
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
-let ui, audio, renderer, world, player, inv, drops, miner, vitals, mobs, mobRenderer, arrows, spawner, boss = null, arrowMesh, backendInfo = { kind: '?', reason: '' };
+let ui, audio, renderer, world, player, inv, drops, miner, vitals, fluid, mobs, mobRenderer, arrows, spawner, boss = null, arrowMesh, backendInfo = { kind: '?', reason: '' };
 let chests = new Map();                       // 'x,y,z' (overworld) or 'dim|x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
 
@@ -96,11 +97,12 @@ async function boot() {
   const made = await createBackend({ noWorker: OPT.noWorker });
   backendInfo = made.info;
   world = new World({ backend: made.backend, atlas, size: G.worldSize });
+  fluid = new Fluid(world);
   mobs = new Mobs({ world }); mobRenderer = new MobRenderer(renderer);
   arrows = new Arrows({ world, mobs }); installHostiles(mobs, arrows); spawner = new Spawner(mobs);
   world.onMesh = (c, m) => renderer.addChunk(c, m);
   world.onUnload = (c) => { renderer.removeChunk(c); if (G.mobsOn && G.dim === 'overworld') mobs.chunkUnloaded(c.cx, c.cz, G.seed); };
-  world.onGenerated = (c) => { if (G.mobsOn && G.dim === 'overworld') mobs.chunkLoaded(c, G.seed); };
+  world.onGenerated = (c) => { fluid.chunkLoaded(c); if (G.mobsOn && G.dim === 'overworld') mobs.chunkLoaded(c, G.seed); };
   world.view = G.settings.viewDistance;
   player = new Player(world); inv = new Inventory(); drops = new Drops(world); miner = new Miner(); vitals = new Vitals();
   bindUI();
@@ -150,6 +152,7 @@ async function startGame({ seed, flat = false, save = null, fake = false, mode =
   G.dimEdits = { overworld: save?.edits ?? new Map(), underlayer: save?.dims?.underlayer ?? new Map() };
   G.dimDrops = { ...(save?.otherDrops ?? {}) }; G.dimAnimals = {}; G.riftT = 0; G.afterEnter = null;
   await world.setSeed(seed, { flat, dim: startDim, edits: G.dimEdits[startDim] });
+  fluid.reset();
   G.seed = seed; G.flat = flat; G.dim = startDim;
   renderer.setDimension(startDim); renderer.setWorldSize(world.size);
   G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
@@ -532,7 +535,7 @@ function useOrPlace() {
   const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
   if (y < 0 || y >= CONFIG.height) return;
   const there = world.getBlock(x, y, z);
-  if (there !== B.air && there !== B.water) return;
+  if (there !== B.air && !isWater(there)) return;
   const b = player.box();
   if (x + 1 > b.x0 && x < b.x1 && y + 1 > b.y0 && y < b.y1 && z + 1 > b.z0 && z < b.z1 && BLOCKS[info.block].solid) return;      // never inside the player
   const placed = blockFor(info, hit);
@@ -685,7 +688,7 @@ function glitchSwap(m, picks) {
   for (const [dx, dy, dz, k] of picks) {
     const x = Math.floor(m.x) + dx, y = Math.floor(m.y) + dy, z = Math.floor(m.z) + dz, cur = BLOCKS[world.getBlock(x, y, z)], nb = GLITCH_BLOCKS[k];
     if (!cur || cur.hardness < 0 || cur.rift || cur.emit >= 12 || BLOCKS[nb].solid && x + 1 > pb.x0 && x < pb.x1 && y + 1 > pb.y0 && y < pb.y1 && z + 1 > pb.z0 && z < pb.z1) continue;
-    if (cur.name === 'lava' || cur.name === 'water') continue;
+    if (cur.name === 'lava' || isWater(cur.id)) continue;
     world.setBlock(x, y, z, nb);
   }
 }
@@ -780,6 +783,7 @@ function simulate(dt) {
     else { if (G.eat.tick > 0.3) { G.eat.tick = 0; audio.play('eat', { vol: 0.6 }); } ui.eating(G.eat.hold.progress); }
   } else if (G.eat) { G.eat = null; ui.eating(null); }
 
+  fluid.update(dt);
   // drops, furnaces, time, autosave, music
   if (G.mobsOn) {
     const ctx = hostileCtx();
@@ -900,7 +904,8 @@ async function travel(to, at, { afterEnter = null, text = null } = {}) {
   if (from === 'overworld') G.dimAnimals.overworld = mobs.toJSON();
   G.mobsOn = false; mobs.clear(); mobRenderer.clear(); arrows.clear(); drops.clear(); miner.reset();
   boss = null; ui.bossBar(null); ui.logs(false); audio.setBossMusic(0);
-  await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: to === 'kernel' ? new Map() : (G.dimEdits[to] ?? new Map()) });       // the Kernel is regenerated from scratch every time: its edits are never kept
+  await world.setSeed(G.seed, { flat: to === 'overworld' && G.flat, dim: to, edits: to === 'kernel' ? new Map() : (G.dimEdits[to] ?? new Map()) });
+  fluid.reset();       // the Kernel is regenerated from scratch every time: its edits are never kept
   G.dim = to; renderer.setDimension(to); renderer.setWorldSize(world.size); ui.logs(to === 'kernel');
   G.sites = await world.backend.sites().catch(() => ({ cracks: [], vaults: [] }));
   drops.load(to === 'kernel' ? [] : (G.dimDrops[to] ?? []));

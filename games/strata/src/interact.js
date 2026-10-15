@@ -1,6 +1,6 @@
 // Interaction rules, no DOM and no three.js: the voxel ray (DDA), tool and drop rules, mining progress, and the dropped-item entities.
 import { CONFIG } from './config.js';
-import { BLOCKS, B } from './blocks.js';
+import { BLOCKS, B, isWater } from './blocks.js';
 import { ITEMS, isTool, hasDurability, stack, maxStack } from './items.js';
 
 /** Ray against the box of a partial block in cell (x, y, z): { t, nx, ny, nz } or null. A ray starting inside the box hits at t = 0 with no normal. */
@@ -36,7 +36,7 @@ export function raycast(getBlock, o, d, reach = CONFIG.reach) {
   let nx = 0, ny = 0, nz = 0, t = 0;
   for (let i = 0; i < 256; i++) {
     const id = getBlock(x, y, z);
-    if (id !== B.air && id !== B.water && id !== B.lava) {
+    if (id !== B.air && !isWater(id) && id !== B.lava) {
       const box = BLOCKS[id].box;
       if (!box) return { x, y, z, nx, ny, nz, dist: t, id };
       const h = boxHit(o, d, x, y, z, box);
@@ -131,7 +131,7 @@ export class Drops {
     for (const d of this.list) {
       if (this.world.has && !this.world.has(d.x, d.z)) continue;                    // in an unloaded chunk nothing happens: it does not age, so a death pile never despawns unseen
       d.age += dt; d.delay -= dt;
-      const water = this.world.getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) === B.water;
+      const water = this.world.getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) !== B.air && isWater(this.world.getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)));
       d.vy = water ? Math.max(-1.2, d.vy - 6 * dt) + (d.vy < 0.4 ? 5 * dt : 0) : Math.max(-40, d.vy - 22 * dt);
       const ny = d.y + d.vy * dt;
       if (this.#solid(d.x, ny - 0.125, d.z)) {                                   // landed
