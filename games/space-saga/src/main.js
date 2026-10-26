@@ -165,6 +165,8 @@ function showDead() {
   if (!G.runOverSent) {                                // exactly once per run, when the panel appears
     G.runOverSent++; G.runsSent++;
     sdk?.runOver({ score, distance: Math.floor(G.distance), pickups: G.pickups, timeMs: Math.round(G.runTime * 1000) });
+    if (G.distance >= 1000) sdk?.achieve('saga-1km');
+    if (G.distance >= 5000) sdk?.achieve('saga-5km');
   }
 }
 

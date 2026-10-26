@@ -8,7 +8,7 @@ import { hudIcons } from './hudicons.js';
 import { CATEGORIES } from './inventory.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['loading', 'title', 'worlds', 'newworld', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
+const SCREENS = ['loading', 'title', 'worlds', 'newworld', 'journal', 'pause', 'settings', 'inv', 'death', 'end', 'error'];
 
 
 const ageText = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -27,7 +27,7 @@ export class UI {
     for (const [id, key] of [['set-sens', 'sensitivity'], ['set-fov', 'fov'], ['set-view', 'viewDistance'], ['set-vol', 'volume']]) {
       $(id).addEventListener('input', () => { this.#readSettings(); this.#outputs(); });
     }
-    for (const id of ['set-invert', 'set-music', 'set-diff', 'set-keepinv', 'set-compass', 'set-subtitles']) $(id).addEventListener('change', () => this.#readSettings());
+    for (const id of ['set-invert', 'set-music', 'set-diff', 'set-keepinv', 'set-compass', 'set-subtitles', 'set-tracker']) $(id).addEventListener('change', () => this.#readSettings());
     const inv = $('s-inv');
     inv.addEventListener('mousedown', (e) => this.#invDown(e));
     inv.addEventListener('mouseover', (e) => this.#invOver(e));
@@ -72,6 +72,8 @@ export class UI {
   endReset() { $('end-log').textContent = ''; $('credits').hidden = true; $('end-skip').hidden = true; }
   newWorld({ placeholder = 'World 1' } = {}) { $('seed-input').value = ''; $('name-input').value = ''; $('name-input').placeholder = placeholder; }
   nameText() { return $('name-input').value.trim(); }
+  tutorialText() { return $('new-tut').checked; }
+  setNewTutorial(on) { $('new-tut').checked = !!on; }
   /** The Worlds screen: one row per world (newest first) with Play, Rename and Delete; `armed` is the id whose Delete was clicked once. */
   worlds(list, { armed = null, last = null, bytes = 0, cap = 1 } = {}) {
     const host = $('world-list');
@@ -117,7 +119,7 @@ export class UI {
   setSettings(s) {
     $('set-sens').value = s.sensitivity; $('set-fov').value = s.fov; $('set-view').value = s.viewDistance; $('set-vol').value = s.volume;
     $('set-invert').checked = !!s.invertY; $('set-music').checked = !!s.music;
-    $('set-diff').value = s.difficulty ?? 'normal'; $('set-keepinv').checked = !!s.keepInventory; $('set-compass').checked = s.compass !== false; $('set-subtitles').checked = !!s.subtitles;
+    $('set-diff').value = s.difficulty ?? 'normal'; $('set-keepinv').checked = !!s.keepInventory; $('set-compass').checked = s.compass !== false; $('set-tracker').checked = s.tracker !== false; $('set-subtitles').checked = !!s.subtitles;
     this.#outputs();
   }
   #outputs() {
@@ -126,7 +128,7 @@ export class UI {
     set('set-view', `${$('set-view').value}`); set('set-vol', `${Math.round($('set-vol').value * 100)}%`);
   }
   #readSettings() {
-    this.emit('settings-change', { sensitivity: Number($('set-sens').value), fov: Number($('set-fov').value), viewDistance: Number($('set-view').value), volume: Number($('set-vol').value), invertY: $('set-invert').checked, music: $('set-music').checked, difficulty: $('set-diff').value, keepInventory: $('set-keepinv').checked, compass: $('set-compass').checked, subtitles: $('set-subtitles').checked });
+    this.emit('settings-change', { sensitivity: Number($('set-sens').value), fov: Number($('set-fov').value), viewDistance: Number($('set-view').value), volume: Number($('set-vol').value), invertY: $('set-invert').checked, music: $('set-music').checked, difficulty: $('set-diff').value, keepInventory: $('set-keepinv').checked, compass: $('set-compass').checked, tracker: $('set-tracker').checked, subtitles: $('set-subtitles').checked });
   }
 
   // ---------------------------------------------------------------- icons

@@ -590,6 +590,7 @@
     if (phase !== 'won' || S.reported) return;
     S.reported = true;
     System32.won({ timeMs: Math.max(1, Math.round(S.finishMs)), score: stars() });
+    if (S.lostFrags === 0) System32.achieve('wm-flawless');          // not one fragment lost
     $('install').textContent = 'Installed ✓'; $('install').disabled = true;
   }
 

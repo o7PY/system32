@@ -1,5 +1,8 @@
 // Strata: boot, the state machine (loading -> title -> entering -> playing <-> paused), input, the frame loop, saving through the shell, test hooks.
-import { CONFIG } from './config.js';
+import { CONFIG, TIPS, OBJECTIVES } from './config.js';
+import { Journal } from './objectives.js';
+import { JournalUI } from './journalui.js';
+import { isNight } from './daylight.js';
 import { B, BLOCKS, isWater, isFurnace, isSolid, itemOfBlock } from './blocks.js';
 import { ITEMS, stack, blockItem, isTool, hasDurability, durabilityOf } from './items.js';
 import { World, createBackend } from './world.js';
@@ -54,6 +57,7 @@ const G = {
   saving: false, saveQueued: false, saveWait: null, lastSaveBytes: 0, saveTimer: 0,
   orbit: { x: 0, y: 70, z: 0, a: 0 }, entering: null, fps: 60, f3: false, f3Timer: 0, mineTick: 0, lastGround: true, now: 0,
 };
+let journal = new Journal(), jui = null;
 let ui, audio, renderer, world, player, inv, drops, miner, vitals, fluid, mobs, mobRenderer, arrows, spawner, boss = null, arrowMesh, backendInfo = { kind: '?', reason: '' };
 let chests = new Map();                       // 'x,y,z' (overworld) or 'dim|x,y,z' -> 27 slots (saved with the world)
 const furnaces = new Map();
@@ -65,7 +69,7 @@ const blockAt = (x, y, z) => world.getBlock(Math.floor(x), Math.floor(y), Math.f
 
 // ---------------------------------------------------------------- boot
 async function boot() {
-  ui = new UI(); audio = new StrataAudio();
+  ui = new UI(); audio = new StrataAudio(); jui = new JournalUI();
   ui.show('loading');
   let initResolve; const initGot = new Promise((r) => { initResolve = r; });
   sdk?.onInit((init) => {
@@ -148,7 +152,7 @@ function showTitle() {
 
 // ---------------------------------------------------------------- starting and leaving a world
 /** Start (or resume) a world. save = a deserialized save, or null for a new world. */
-async function startGame({ seed, flat = false, save = null, fake = false, mode = 'survival', worldId = null }) {
+async function startGame({ seed, flat = false, save = null, fake = false, mode = 'survival', worldId = null, tutorial = false }) {
   if (!worldId) { const w = addWorld(G.store, { name: '', mode, difficulty: save?.settings?.difficulty }) ?? getWorld(G.store, G.store.last); worldId = w?.id ?? null; }      // test hooks and the like: a world of its own (or the last one when the list is full)
   G.worldId = worldId; if (getWorld(G.store, worldId)) G.store.last = worldId;
   ui.progress(0, 'Digging in…'); ui.show('loading'); ui.hud(false);
@@ -185,6 +189,8 @@ async function startGame({ seed, flat = false, save = null, fake = false, mode =
   G.dayT = save?.time ?? CONFIG.day.start;
   G.flags = { ...(save?.flags ?? {}) };
   if (!save) G.flags.mode = mode === 'creative' ? 'creative' : 'survival';
+  if (!save) G.flags.tut = tutorial && mode !== 'creative' ? 1 : 0;
+  G.tut = !!G.flags.tut; G.jRetro = !('obj' in G.flags); journal.load(G.flags); G.jT = 0; G.nightOn = false; jui.hideAll();
   G.creative = G.flags.mode === 'creative'; vitals.creative = G.creative; player.flying = false; ui.creativeHud(G.creative);
   if (!Array.isArray(G.flags.rifts)) G.flags.rifts = [];
   if (!G.flags.vaults || typeof G.flags.vaults !== 'object') G.flags.vaults = {};
@@ -202,6 +208,7 @@ function enterWorld(fake) {
     G.phase = 'paused'; ui.pauseNote('Your world is ready. Press Resume to start digging.'); ui.show('pause');
   }
   if (!fake) saveNow('start');
+  jui.tracker(journal, G.tut && G.settings.tracker !== false && !G.creative); tip('controls');
 }
 
 async function quitToTitle() {
@@ -241,7 +248,7 @@ function applySettings() {
 
 // ---------------------------------------------------------------- saving
 /** The flags that go into the save: the death marker rides along. */
-function saveFlags() { const f = { ...G.flags }; if (G.deathMarker) f.death = G.deathMarker; else delete f.death; return f; }
+function saveFlags() { const f = { ...G.flags, ...journal.toJSON(), tut: G.tut ? 1 : 0 }; if (G.deathMarker) f.death = G.deathMarker; else delete f.death; return f; }
 
 /** Everything the save needs: the active dimension's live data, and the stashed data of the other one. */
 function saveState() {
@@ -319,13 +326,13 @@ function bindUI() {
   ui.on('rename-world', (e, name) => { renameWorld(G.store, e.target.closest('[data-id]')?.dataset.id, name); showWorlds(); persist(); });
   ui.on('new', () => {
     if (G.store.worlds.length >= MAX_WORLDS) { ui.error('Too many worlds', `You have ${MAX_WORLDS} worlds. Delete one under Worlds to make room.`); return; }
-    ui.newWorld({ placeholder: `World ${G.store.worlds.length + 1}` }); ui.show('newworld'); $('seed-input').focus();
+    ui.newWorld({ placeholder: `World ${G.store.worlds.length + 1}` }); ui.setNewTutorial(G.store.worlds.length === 0); ui.show('newworld'); $('seed-input').focus();
   });
   ui.on('start-new', () => {
     const mode = OPT.creative ? 'creative' : ui.modeText();
     const w = addWorld(G.store, { name: ui.nameText(), mode, difficulty: ui.difficultyText() });
     if (!w) return;
-    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat, mode, worldId: w.id });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
+    startGame({ seed: seedFrom(ui.seedText() || OPT.seed), flat: OPT.flat, mode, worldId: w.id, tutorial: ui.tutorialText() });                 // ?seed=N and ?flat=1 are the test hooks for a blank seed field
   });
   ui.on('fullscreen', () => sdk?.fullscreen());
   addEventListener('keydown', (e) => { if (e.code === 'F11' || (e.altKey && e.code === 'Enter')) { e.preventDefault(); sdk?.fullscreen(); } });
@@ -335,6 +342,9 @@ function bindUI() {
   ui.on('back-settings', () => { if (G.settingsFrom === 'pause') ui.show('pause'); else showTitle(); });
   ui.on('settings-change', (s) => { Object.assign(G.settings, s); applySettings(); });
   ui.on('resume', () => resumeGame());
+  ui.on('journal', () => openJournal('pause'));
+  ui.on('close-journal', () => closeJournal());
+  document.getElementById('j-tutorial').addEventListener('change', (e) => { G.tut = e.target.checked; G.flags.tut = G.tut ? 1 : 0; if (!G.tut) jui.hideAll(); else jui.tracker(journal, G.settings.tracker !== false); });
   ui.on('respawn', () => respawn());
   ui.on('skip-credits', () => skipCredits());
   addEventListener('keydown', (e) => { if (G.phase === 'ending' && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); skipCredits(); } });
@@ -401,18 +411,20 @@ function bindInput() {
   addEventListener('keyup', (e) => { G.keys.delete(e.code); if (e.code === 'KeyW') G.sprintLatch = false; });
 }
 
-const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'KeyE', 'KeyQ', 'F3', 'ShiftLeft', 'ShiftRight', 'Tab', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`)]);
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'KeyE', 'KeyQ', 'KeyJ', 'F3', 'ShiftLeft', 'ShiftRight', 'Tab', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`)]);
 function onKeyDown(e) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;                       // never a binding with Ctrl: Ctrl+W / Ctrl+T / Ctrl+N belong to the browser
   if (e.target instanceof HTMLInputElement) return;
   audio.unlock();
   if (G.phase !== 'playing') {
-    if (G.phase === 'paused' && e.code === 'Escape') { e.preventDefault(); if (ui.screen === 'pause') resumeGame(); }
+    if (G.phase === 'paused' && e.code === 'Escape') { e.preventDefault(); if (ui.screen === 'pause') resumeGame(); else if (ui.screen === 'journal') closeJournal(); }
+    else if (G.phase === 'paused' && e.code === 'KeyJ' && ui.screen === 'journal') { e.preventDefault(); closeJournal(); }
     return;
   }
   if (GAME_KEYS.has(e.code) || e.code === 'Escape') e.preventDefault();
   if (e.code === 'Escape') { if (G.menu) closeMenu(); else pauseGame(); return; }
   if (e.code === 'KeyE') { if (G.menu) closeMenu(); else openMenu(G.creative ? 'creative' : 'inventory'); return; }
+  if (e.code === 'KeyJ') { openJournal('game'); return; }
   if (e.code === 'F3') { G.f3 = !G.f3; if (!G.f3) ui.debug(''); return; }
   if (G.menu) return;
   G.keys.add(e.code); G.tapped.add(e.code);                 // a tap shorter than one frame still counts for one simulation step
@@ -448,7 +460,7 @@ function target() { const e = player.eye(); return raycast(blockAt2, e, player.d
 const blockAt2 = (x, y, z) => world.getBlock(x, y, z);
 
 function breakBlock(hit) {
-  G.minedStep++; vitals.stats.mined++;
+  G.minedStep++; vitals.stats.mined++; journal.event(`mined:${BLOCKS[hit.id].name}`);
   const id = hit.id, held = inv.held(), at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
   const stks = G.creative ? [] : dropsFor(id, held);
   if (isFurnace(id)) {
@@ -563,7 +575,7 @@ function sleepIn(hit) {
   if (!night) { ui.subtitle('Respawn point set. You can only sleep at night.', 3500); return; }
   if (near) { ui.subtitle("You can't sleep now: there are monsters nearby.", 3500); return; }
   audio.play('bed.use', { vol: 0.8 });
-  ui.sleepFade();
+  ui.sleepFade(); journal.event('slept');
   setTimeout(() => { G.dayT = 0; ui.subtitle('Good morning. Respawn point set.', 3000); }, 900);
 }
 
@@ -594,6 +606,7 @@ function useOrPlace() {
   else if (placed === null || !world.setBlock(x, y, z, placed)) return;
   if (!G.creative) inv.takeOne(inv.selected);
   audio.play('place', { at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, listener: listener() });
+  journal.event(`place:${info.id === 'bed' ? 'bed' : BLOCKS[placed]?.name}`);
   if (y === CONFIG.height - 1) { eggOnce('strata-cloud'); ui.subtitle('Saved to cloud storage.'); }
 }
 
@@ -835,6 +848,7 @@ function simulate(dt) {
   } else if (G.eat) { G.eat = null; ui.eating(null); }
 
   fluid.update(dt);
+  journalStep(dt);
   // drops, furnaces, time, autosave, music
   if (G.mobsOn) {
     const ctx = hostileCtx();
@@ -1132,10 +1146,10 @@ function bossEvent(ev) {
     case 'delete': audio.play('vault.open', { at, listener: L, vol: 0.5 }); break;
     case 'stomp-wind': ui.subtitle('The ground shakes…', 1200); break;
     case 'stomp': audio.play('boss.stomp', { at, listener: L, vol: 1 }); ui.subtitle('The core is exposed. Strike it!', 2500); break;
-    case 'phase': audio.setBossMusic(ev.phase); ui.subtitle(['', '', 'Phase 2: Sweep', 'Phase 3: Compact'][ev.phase] ?? '', 3000); break;
+    case 'phase': journal.max('bossphase', ev.phase); audio.setBossMusic(ev.phase); ui.subtitle(['', '', 'Phase 2: Sweep', 'Phase 3: Compact'][ev.phase] ?? '', 3000); break;
     case 'pointers': ui.subtitle('Pointers!', 2000); break;
     case 'shrink': ui.subtitle('The arena is compacting.', 2500); break;
-    case 'dying': audio.voice('warden', 'die', { at, listener: L, vol: 1 }); ui.subtitle('[gc] collection failing…', 3000); break;
+    case 'dying': journal.max('boss:defeated', 1); audio.voice('warden', 'die', { at, listener: L, vol: 1 }); ui.subtitle('[gc] collection failing…', 3000); break;
     case 'trash': mobRenderer.puff(ev.x, ev.y, ev.z, 3, 0x777777); break;
     case 'core': ui.subtitle('A glowing core floats up. Touch it.', 5000); break;
     case 'win': onBossDefeated(); break;
@@ -1144,7 +1158,74 @@ function bossEvent(ev) {
   }
 }
 /** The Garbage Collector is gone: the ending (phase 10 of the build: credits, System32.complete, the trophy). */
-function onBossDefeated() { if (G.phase === 'playing') startEnding(); }
+function onBossDefeated() { journal.max('core:touched', 1); if (G.phase === 'playing') startEnding(); }
+
+// ---------------------------------------------------------------- objectives journal + tutorial mode (FINAL_SPEC section 8)
+const ACH = { 1: 'strata-timber', 20: 'strata-iron', 39: 'strata-underlayer', 48: 'strata-key', 57: 'strata-gc' };
+const achSent = new Set();
+/** A tip (tutorial mode only), once per world. */
+function tip(name) { if (G.tut && !G.creative && journal.tip(name)) jui.tip(TIPS[name].text); }
+
+/** Is the player in a closed space with light? (a roof within 3 blocks, a wall within 3 on all four sides, and some torchlight at the feet) */
+function sheltered() {
+  const x = Math.floor(player.pos.x), y = Math.floor(player.pos.y), z = Math.floor(player.pos.z), solid = (a, b, c) => isSolid(world.getBlock(a, b, c));
+  const roof = [1, 2, 3].some((d) => solid(x, y + 1 + d, z));
+  const wall = (dx, dz) => [1, 2, 3].some((d) => solid(x + dx * d, y + 1, z + dz * d));
+  const l = world.lightAt(x, y, z);
+  return roof && wall(1, 0) && wall(-1, 0) && wall(0, 1) && wall(0, -1) && !!l && l.blk >= 6;
+}
+
+function journalCtx() {
+  const counts = inv.countsAll?.() ?? {};
+  if (!inv.countsAll) for (const s of inv.slots) if (s) counts[s.id] = (counts[s.id] ?? 0) + s.n;
+  for (const a of vitals.armor) if (a) counts[a.id] = (counts[a.id] ?? 0) + 1;
+  const vs = Object.values(G.flags.vaults ?? {});
+  return { counts, flags: G.flags, rifts: G.flags.rifts.length, raided: vs.filter((v) => v.raided).length, spawners: vs.filter((v) => v.spawner).length, wardens: vs.filter((v) => v.warden).length };
+}
+
+function journalStep(dt) {
+  if (G.creative || G.phase !== 'playing' || !G.mobsOn) return;
+  if (G.dim === 'underlayer') journal.event('under:time', dt);
+  G.jT += dt;
+  if (G.jT < 0.25) return;
+  G.jT = 0;
+  const P = player.pos, ow = G.dim === 'overworld';
+  if (G.dim !== 'overworld') journal.max(`enter:${G.dim}`, 1);
+  if (ow && P.y < 16) journal.max('deep', 1);
+  if (ow && (G.sites?.cracks ?? []).some((c) => Math.hypot(c.x + 0.5 - P.x, c.y - P.y, c.z + 0.5 - P.z) < 12)) { journal.max('near:crack', 1); tip('rift'); }
+  if (G.dim === 'underlayer') {
+    if ((G.sites?.vaults ?? []).some((v) => Math.hypot(v.x - P.x, v.z - P.z) < 45)) { journal.max('near:vault', 1); tip('vault'); }
+    if (Math.hypot(CONFIG.underlayer.size / 2 - P.x, CONFIG.underlayer.size / 2 - P.z) < 30) journal.max('near:gate', 1);
+  }
+  if (ow && sheltered()) journal.max('shelter', 1);
+  if (G.dim === 'overworld') {
+    if (isNight(G.dayT)) { if (!G.nightOn) tip('night'); G.nightOn = true; } else if (G.nightOn) { G.nightOn = false; journal.event('night:survived'); }
+  }
+  if (boss && G.dim === 'kernel') journal.max('crystals', 4 - boss.crystalsStanding());
+  if (vitals.hitCount > 0) tip('damage');
+  if (vitals.hunger <= 17) tip('hunger');
+  if (ow && P.y < 44 && world.lightAt(Math.floor(P.x), Math.floor(P.y + 1), Math.floor(P.z))?.sky === 0) tip('cave');
+  if (G.dim === 'kernel') tip('kernel');
+  const fresh = journal.update(journalCtx());
+  const retro = G.jRetro; G.jRetro = false;
+  for (const n of fresh) if (ACH[n] && !achSent.has(ACH[n])) { achSent.add(ACH[n]); sdk?.achieve(ACH[n]); }
+  const acts = journal.newlyCompletedActs();
+  if (!retro) for (const a of acts) { jui.banner(`Act ${a.act} complete: ${a.title}.`); audio.play('jingle.iron'); }
+  if (fresh.length && !retro && G.tut) ui.subtitle(`Objective done: ${OBJECTIVES.find((o) => o.n === fresh[0])?.text ?? ''}`, 2500);
+  jui.tracker(journal, G.tut && G.settings.tracker !== false);
+}
+
+function openJournal(from = 'game') {
+  if (G.phase === 'playing') pauseGame();
+  if (G.phase !== 'paused') return;
+  G.journalFrom = from;
+  jui.render(journal, { tutorial: G.tut });
+  ui.show('journal');
+}
+function closeJournal() {
+  if (ui.screen !== 'journal') return;
+  if (G.journalFrom === 'pause') ui.show('pause'); else resumeGame();
+}
 
 // ---------------------------------------------------------------- the ending (STRATA_PART2_SPEC 7.4)
 const CREDITS = [
@@ -1318,7 +1399,7 @@ function installHooks() {
     look: (dx, dy) => player.look(dx, dy, G.settings.sensitivity, G.settings.invertY),
     face: (yaw, pitch) => { player.yaw = yaw; player.pitch = pitch; },
     target, openMenu, closeMenu, pause: () => pauseGame(), resume: () => { G.phase = 'playing'; ui.show(null); }, breakBlock, useOrPlace, pickBlock, selectSlot, saveNow, onKeyDown,
-    world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
+    journal: () => journal, journalStep, openJournal, closeJournal, world: () => world, player: () => player, inv: () => inv, drops: () => drops, audio: () => audio, renderer: () => renderer, ui: () => ui, miner: () => miner, furnaces: () => furnaces,
     mineHold: (on) => { G.mouseLeft = !!on; },
     endNow: () => { if (G.phase === 'playing') startEnding(); }, end: () => G.end, completedSent: () => G.completedSent ?? 0, skipCredits,
     boss: () => boss, bossPhase: (n) => { if (boss) boss.m.hp = [0, 300, 200, 90][n] ?? 300; }, enterKernel,

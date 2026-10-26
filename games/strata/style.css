@@ -171,3 +171,25 @@ select { font: inherit; padding: 3px 6px; background: #1c2029; color: inherit; b
 .btn.small { padding: 6px 10px; font-size: 14px; min-width: 0; }
 .btn.danger { background: #7a2020; }
 .wedit { font: inherit; padding: 2px 6px; width: 16em; max-width: 100%; }
+
+/* Journal, tracker, tips (tutorial mode) */
+.jpanel { max-height: 90vh; display: flex; flex-direction: column; }
+.jlist { overflow-y: auto; text-align: left; display: grid; gap: 10px; min-height: 120px; }
+.jact h3 { margin: 4px 0; font-size: 18px; }
+.jact h3 small { color: var(--dim); }
+.jact.cur h3 { color: var(--accent); }
+.jact ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.jact li { padding: 4px 6px; border-left: 3px solid transparent; }
+.jact li b { font-weight: 400; display: block; }
+.jact li small { display: block; color: var(--dim); font-size: 14px; }
+.jact li.done b { color: #7bd88f; }
+.jact li.done small { display: none; }
+.jact li.next { border-left-color: var(--accent); background: rgba(255, 255, 255, .06); }
+#tracker { position: absolute; right: 12px; top: 90px; width: min(300px, 34vw); padding: 8px 10px; background: rgba(0, 0, 0, .45); border: 2px solid rgba(255, 255, 255, .25); text-align: left; pointer-events: none; text-shadow: 0 2px 0 #000; }
+#tracker .tcur b { font-size: 18px; display: block; }
+#tracker .tcur small { display: block; font-size: 14px; color: #ddd; margin: 2px 0 6px; }
+#tracker .tnext b { font-size: 14px; font-weight: 400; color: #ccc; display: block; }
+#tip-panel, #act-banner { position: absolute; left: 50%; transform: translateX(-50%); max-width: min(640px, 90vw); padding: 8px 14px; background: rgba(0, 0, 0, .6); border: 2px solid rgba(255, 255, 255, .35); text-align: center; pointer-events: none; text-shadow: 0 2px 0 #000; font-size: 18px; }
+#tip-panel { top: 56px; }
+#act-banner { top: 34%; font-size: 30px; border-color: var(--accent); }
+#tip-panel[hidden], #act-banner[hidden], #tracker[hidden] { display: none; }

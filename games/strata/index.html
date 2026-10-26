@@ -32,6 +32,9 @@
   <div id="eatbar" hidden><i></i></div>
   <div id="hotbar"></div>
   <div id="saved"></div>
+  <div id="tracker" hidden></div>
+  <div id="tip-panel" hidden></div>
+  <div id="act-banner" hidden></div>
 </div>
 <pre id="f3" hidden></pre>
 <div id="cursor" hidden></div>
@@ -63,6 +66,7 @@
     <label class="field">World name <input id="name-input" type="text" maxlength="24" placeholder="World 1" autocomplete="off" spellcheck="false"></label>
     <label class="field">Seed <input id="seed-input" type="text" maxlength="40" placeholder="leave blank for a random world" autocomplete="off" spellcheck="false"></label>
     <label class="field">Game mode <select id="new-mode"><option value="survival" selected>Survival</option><option value="creative">Creative (all items, flying, no damage)</option></select></label>
+    <label class="field check"><input type="checkbox" id="new-tut"> Tutorial mode (objective tracker and tips)</label>
     <label class="field">Difficulty <select id="new-diff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></label>
     <div class="row">
       <button class="btn" data-act="start-new" id="b-start-new">Create World</button>
@@ -83,11 +87,22 @@
   </div>
 </section>
 
+<section class="screen dim-bg" id="s-journal" hidden>
+  <div class="panel wide jpanel">
+    <h2>Journal</h2>
+    <p id="j-head" class="dim"></p>
+    <div id="j-list" class="jlist"></div>
+    <label class="field check"><input type="checkbox" id="j-tutorial"> Tutorial mode (tracker on the right and tips)</label>
+    <button class="btn" data-act="close-journal">Close</button>
+  </div>
+</section>
+
 <section class="screen dim-bg" id="s-pause" hidden>
   <div class="panel narrow">
     <h2>Paused</h2>
     <div class="menu">
       <button class="btn" data-act="resume">Resume</button>
+      <button class="btn" data-act="journal">Journal (J)</button>
       <button class="btn" data-act="settings">Settings</button>
       <button class="btn" data-act="fullscreen">Fullscreen (Alt+Enter)</button>
       <button class="btn" data-act="quit">Save &amp; Quit to Title</button>
@@ -106,6 +121,7 @@
     <label class="field">Difficulty <select id="set-diff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
     <label class="field check"><input type="checkbox" id="set-keepinv"> Keep inventory when you die</label>
     <label class="field check"><input type="checkbox" id="set-compass"> Compass strip</label>
+    <label class="field check"><input type="checkbox" id="set-tracker"> Objective tracker (tutorial mode)</label>
     <label class="field check"><input type="checkbox" id="set-subtitles"> Subtitles for sounds</label>
     <label class="field check"><input type="checkbox" id="set-invert"> Invert Y</label>
     <label class="field check"><input type="checkbox" id="set-music"> Music</label>

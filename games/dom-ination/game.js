@@ -523,6 +523,7 @@
     else if (what === 'install' && !reported && phase === 'won') {
       reported = true;
       System32.won({ timeMs: CONFIG.durationMs, score: closed });
+      if (peak <= 12) System32.achieve('dom-clean');                 // clutter never above 12
       a.textContent = 'Installed ✓';
       a.disabled = true;
     }

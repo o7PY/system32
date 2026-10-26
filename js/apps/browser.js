@@ -2,7 +2,7 @@
 import { bus } from '../events.js';
 import { Window } from '../WindowManager.js';
 import { state, set, save, repair, recordTime, recordScore, unlock, foundEgg } from '../state.js';
-import { ROUTES, GAMES, GAME_BY_ID, EGG_IDS, ACHIEVE_PREFIX, SKIPPABLE, SKIP_AFTER, PLAYTIME_CAP_MS } from '../registry.js';
+import { ROUTES, GAMES, GAME_BY_ID, EGG_IDS, ACHIEVE_PREFIX, SKIPPABLE, SKIP_AFTER, PLAYTIME_CAP_MS, SUDOKU_AFTER_MS } from '../registry.js';
 import { achieve } from '../achievements.js';
 import { icon, esc, wait, fmtTime } from '../ui.js';
 import { toast } from '../notifications.js';
@@ -206,6 +206,7 @@ class Browser {
         const timeMs = Number(msg.payload?.timeMs);
         const newBest = recordTime(gameId, timeMs);
         recordScore(gameId, Number(msg.payload?.score));
+        if (gameId === 'inspect' && msg.payload?.via === 'sudoku' && (state.playtime.inspect ?? 0) >= SUDOKU_AFTER_MS - PLAYTIME_CAP_MS) { state.noShortcuts = false; save(); achieve('sudoku'); }      // the escape hatch needs 10 minutes of play
         if (state.skipped[gameId]) { delete state.skipped[gameId]; save(); bus.emit('state:change', ['skipped']); }          // a real win clears the skip marker
         const first = repair(gameId);
         if (!first) {

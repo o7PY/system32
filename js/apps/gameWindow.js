@@ -146,6 +146,7 @@ class GameWindow {
         const r = recordBonusComplete(game.id, { timeMs, deaths, difficulty: p.difficulty });
         if (!r) return;
         foundEgg(`${game.eggPrefix}complete`);
+        if (game.id === 'strata') achieve('strata-gc');
         toast({ title: game.title, kind: 'ok', emoji: '🏆', text: game.completeToast ?? `${game.title}: complete.` });
         break;
       }
