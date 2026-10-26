@@ -1,8 +1,8 @@
 # System32
 
-A fake Windows 11-style desktop that runs in the browser. The OS is corrupted; each of four DOM-abusing
+A fake Windows 11-style desktop that runs in the browser. The OS is corrupted; each of three DOM-abusing
 mini-games you beat repairs one component. This repo is **Part 1: the shell** (see `DESKTOP_SPEC.md`).
-Parts 2 (**DOM-ination**), 3 (**Inspect Element**), 4 (**CSS Specificity Wars**) and 5 (**404: Window Manager**) are built, so all four games are real.
+Parts 2 (**DOM-ination**), 3 (**Inspect Element**) and 5 (**404: Window Manager**) are built, so all three core games are real. (CSS Specificity Wars was removed in the final spec; its spec is in `docs/archive/`.)
 
 No frameworks, no build step: vanilla HTML/CSS/JS (ES modules), all paths relative, deployable to GitHub Pages as-is.
 
@@ -48,7 +48,7 @@ Drop the game into its `games/<name>/index.html`. Edgy loads it in
 so the game cannot touch the shell and talks to it only through `postMessage`. Because the origin is opaque:
 
 - module scripts (`<script type="module">`, `import`) and `fetch()` work, because `serve.py` and GitHub Pages (which sends
-  `Access-Control-Allow-Origin: *`) both allow cross-origin reads. The four existing games keep their classic
+  `Access-Control-Allow-Origin: *`) both allow cross-origin reads. The three core games keep their classic
   `<script src>` and are left as they are,
 - do not use `localStorage` (or cookies): the shell owns persistence,
 - never add `allow-same-origin` to the sandbox,
@@ -74,13 +74,13 @@ game's own folder, are committed. Credits are in `CREDITS.md`.
 </script>
 ```
 
-Game ids: `dom-ination`, `inspect`, `specificity`, `wm404`. A game can only win for its own id, and the shell
+Game ids: `dom-ination`, `inspect`, `wm404`. A game can only win for its own id, and the shell
 identifies the sender by `event.source` (a game cannot repair a different component).
 
 ## Bonus games (SPACESAGA_SPEC.md, Part A)
 
 Bonus games are `.exe` files that appear in the **Recycle Bin** after the ending. They are listed in `bonusGames` as `BONUS_GAMES` in `js/registry.js`
-(separate from the four core games) and **never** count toward integrity, corruption, repairs or the ending.
+(separate from the three core games) and **never** count toward integrity, corruption, repairs or the ending.
 
 - **State:** `state.version` is 2 and gains `bonus: { unlocked, restored, seen, best }`. Version-1 saves are migrated (missing field = empty), garbage in the field is
   dropped. Settings > Reset progress wipes it too.
@@ -240,29 +240,6 @@ input to `admin`. No timer, no lose condition; stars come from how many tier-2+ 
 - Manual check still needed in real Chrome and Firefox: right-click → Inspect lands in the game's DOM, and Console
   context switching. Headless tests drive the page through CDP instead.
 
-## CSS Specificity Wars (Part 4, `games/specificity-wars/`)
-
-`styles_FINAL_v2.html` → `theme.dll` (stops the wallpaper/taskbar glitches, unlocks Personalize). Enemies fall down the
-screen, each defended by a rule in `enemy.css`. You type a selector; the game injects
-`:where(#arena) :is(<selector>) { display: none; }` into `<style id="player-css">`. An enemy is defeated when the
-browser's own `getComputedStyle(el).display` is `none`, so the real cascade decides: out-specify the defense, tie (you win
-on source order), or use the single `!important` charge against the inline-styled final boss.
-
-- The specificity calculator (display only, 25 table-driven tests via `__SPECIFICITY.runSpecTests()`) feeds the 🛡 badges,
-  the live preview and the "Blocked: your (0,1,0) < defense (0,2,1)" messages. It can never decide the game.
-- Player input is treated as hostile: length/character/bracket/pseudo-element checks, `querySelector` validation, then a
-  single `insertRule` that is verified to have added exactly one `display:none` rule.
-- A sandboxed page cannot read `enemy.css`'s rules (cross-origin sheet), so `game.js` keeps a small `DEFENSES` copy for the
-  badges and tooltips. The real file still does the defending, and the test suite diffs the copy against it.
-- Cards move with paused Web Animations driven by the game clock, so the element a player inspects in DevTools is never
-  rewritten every frame, and pausing is exact. Effects are clones in a layer outside `#arena`.
-- Hooks: `?seed`, `?speed`, `?debug=1` -> `window.__SPECIFICITY` (`state`, `submit`, `toggleImportant`, `skipToWave`,
-  `specificity`, `runSpecTests`, mutable `config`).
-- Tuning from simulated players (a bot that tries the obvious selector first and upgrades when blocked): wins 24/24 at 3-8 s
-  per selector; a player who never deletes old rules usually loses around wave 4 (that is the lesson). To make the wave-2
-  "old rules still apply" lesson fair, the first ally arrives later in the wave and a reminder is shown at each wave start.
-  Still worth a human playtest.
-
 ## 404: Window Manager (Part 5, `games/window-manager-404/`)
 
 `recovery_tool.html` -> `wm_core.exe` (windows stop jittering on open, resize handles unlock). A tiny, old-looking desktop
@@ -302,3 +279,15 @@ drifting Recovery that minimizes itself once.
 - Goggle's easter eggs report themselves with `SHELL_EFFECT` messages carrying an optional `egg` id.
 - Extra effects beyond the spec's list: `SHELL_EFFECT` also accepts `effect: 'egg'` (just count a secret) and
   `NAVIGATE` accepts `route: 'random'` (pick an unbeaten game, used by "I'm Feeling Corrupted").
+
+
+## Final spec (FINAL_SPEC.md)
+- **Three components** (`popup_guard.sys`, `admin_access.dll`, `wm_core.exe`): integrity 0/33/67/100%, always counted from the registry. Glitch effects scale with corruption and vanish at 100%; Personalize comes with `admin_access.dll`. Old saves drop `specificity`; three repairs without the ending offer the restart dialog after sign-in.
+- **Three stores:** `system32.state` (game state: repairs, losses, skips, playtime, tutorial, icons, README, core bests), `system32.meta` (achievements, secrets, bonus games and bests, sound, accent, theme) and `system32.save.<game>` (worlds). One in-memory `state`; `save()` splits it (`META_FIELDS` in `js/state.js`). A pre-split save is migrated once. **Reset progress** wipes only the state store and reboots; **Hard reset** (type `DELETE`) wipes every `system32.*` key. Both are in the footer of the Achievements panel (Settings links to it).
+- **Achievements & Secrets** (`js/achievements.js`, `js/achievementsPanel.js`): trophy button at the far left of the taskbar with a badge; 22 achievements as data in `registry.js` (`ACHIEVEMENTS`); games send `System32.achieve(id)` (prefix `dom-` `inspect-` `wm-` `saga-` `strata-` only), the shell unlocks the rest. Unfound secrets are never described.
+- **Recovery Guide** (`js/apps/tutorial.js`): desktop icon *Start Tutorial*, Start-menu entry, first-visit dialog. Nine steps tick from real state, "Show me" pulses the target, no puzzle help.
+- **Skip puzzle** (DOM-ination, 404): the shell counts `GAME_LOST`; INIT carries `losses` / `canSkip`; `System32.skip()` (`GAME_SKIPPED`) is honoured after 2 losses, repairs like a win, marks `skipped` (↷ on the icon, cleared by a real win).
+- **Sudoku vault** (Inspect Element, `games/inspect-element/sudoku.js`): `System32.playtime(ms)` heartbeats every 15 s add up in `state.playtime.inspect`; after 10 minutes a "Crack the vault instead" button opens a generated sudoku (unique solution, 30-34 givens). Solving it opens the bank, 0 stars, `sudoku` achievement, not a script kiddie.
+- **Strata journal and tutorial mode** (`objectives.js`, `journalui.js`, data in `config.js`): 58 objectives in 6 acts, key **J**, tracker on the right, one-time tips, act banners; ticks are saved with the world (`flags.obj`, hex bitset). Creative never ticks.
+- **Protocol additions:** `ACHIEVEMENT { id }`, `GAME_SKIPPED`, `PLAYTIME { ms }`, INIT `losses` / `canSkip` / `playtimeMs` (see `games/_shared/sdk.js`).
+- **Tests:** `node tests/final/run.mjs`, `node tests/strata/objectives.mjs`.

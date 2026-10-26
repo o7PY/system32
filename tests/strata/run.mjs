@@ -515,6 +515,29 @@ test('worlds: several worlds side by side; Continue plays the last one, Worlds l
   await p.waitFor(`!document.getElementById('s-title').hidden`);
 });
 
+test('journal: J opens the objectives list, tutorial mode shows the tracker, items tick objectives, the flags are saved', async (p) => {
+  await boot(p);
+  await fakeShell(p);
+  await p.click('[data-act="new"]');
+  await p.waitFor(`!document.getElementById('s-newworld').hidden`);
+  if (!(await p.eval(`document.getElementById('new-tut').checked`))) throw new Error('tutorial mode should default on for the first world');
+  await p.click('[data-act="start-new"]');
+  await p.waitFor(`__STRATA.state().phase === 'paused'`, { timeout: 90000 });
+  await p.eval(`__STRATA.G.fakeLock = true; __STRATA.resume(); 0`);
+  await p.waitFor(`__STRATA.state().phase === 'playing'`);
+  await p.eval(`__STRATA.give('log', 5); 0`);
+  await p.waitFor(`__STRATA.journal().has(1)`, { what: 'objective 1', timeout: 5000 });
+  await p.waitFor(`!document.getElementById('tracker').hidden && /planks/i.test(document.getElementById('tracker').textContent)`, { what: 'tracker' });
+  await p.eval(`__STRATA.onKeyDown({ code: 'KeyJ', preventDefault() {}, target: document.body }); 0`);
+  await p.waitFor(`!document.getElementById('s-journal').hidden && /Objectives 1\\/58/.test(document.getElementById('j-head').textContent)`, { what: 'journal screen' });
+  if ((await p.eval(`document.querySelectorAll('#j-list li').length`)) !== 58) throw new Error('58 rows');
+  await p.eval(`document.querySelector('[data-act="close-journal"]').click(); 0`);
+  await p.eval(`__STRATA.pause(); 0`);
+  await p.waitFor(`__saves.length >= 1`);
+  const f = await p.eval(`JSON.parse(__saves.at(-1).slice(9)).worlds[0].data.length`);
+  if (!(f > 100)) throw new Error('not saved');
+});
+
 test('save results: a too-large answer shows "World too big to save: 2.6 MB / 2.5 MB. Try removing some builds."; Esc / lost pointer lock pauses and saves', async (p) => {
   await flat(p);
   await fakeShell(p);

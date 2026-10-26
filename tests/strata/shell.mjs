@@ -35,7 +35,7 @@ test('registry: Strata is a bonus game with saves, its own egg prefix, and a rea
   const r = await page.eval(`import('/js/registry.js').then((m) => { const g = m.BONUS_BY_ID.strata; return { g, eggs: m.EGGS.filter((e) => e.id.startsWith('strata-')).map((e) => e.id), icon: !!document.getElementById(g.icon), total: m.EGGS.length }; })`);
   if (r.g.file !== 'Strata.exe' || r.g.title !== 'Strata' || r.g.unlock !== 'ending' || r.g.saves !== true || r.g.eggPrefix !== 'strata-') throw new Error(JSON.stringify(r.g));
   if (r.g.binLore !== 'Deleted 11-11-2011. Reason: "user spent 400 hours digging a hole."') throw new Error(r.g.binLore);
-  if (JSON.stringify(r.eggs) !== JSON.stringify(['strata-adblock', 'strata-bedrock', 'strata-cloud', 'strata-complete', 'strata-popup-adblock', 'strata-sleep-underlayer', 'strata-recycle']) || r.total !== 40) throw new Error(JSON.stringify(r));
+  if (JSON.stringify(r.eggs) !== JSON.stringify(['strata-adblock', 'strata-bedrock', 'strata-cloud', 'strata-complete', 'strata-popup-adblock', 'strata-sleep-underlayer', 'strata-recycle']) || r.total !== 36) throw new Error(JSON.stringify(r));
   const hasSprite = await page.eval(`fetch('/assets/icons.svg').then((x) => x.text()).then((t) => t.includes('id="${r.g.icon}"'))`);
   if (!hasSprite) throw new Error(`no sprite ${r.g.icon}`);
 });
@@ -66,7 +66,7 @@ test('existing finished saves: Strata unlocks on the next load with ONE toast "1
   if (texts.length !== 1 || texts[0] !== '🗑 Recycle Bin: 1 item could not be deleted.') throw new Error(JSON.stringify(texts));
   const b = (await live(page)).bonus;
   if (JSON.stringify(b.unlocked) !== JSON.stringify(['space-saga', 'strata']) || JSON.stringify(b.restored) !== JSON.stringify(['space-saga']) || b.best['space-saga'] !== 1234) throw new Error(JSON.stringify(b));
-  await boot(page, await page.eval(`JSON.parse(localStorage.getItem('system32.state'))`));
+  await boot(page, await stateOf2(page));
   await sleep(5200);
   if ((await toastTexts(page)).some((t) => t.includes('Recycle Bin'))) throw new Error('the toast came a second time');
 });
@@ -157,12 +157,14 @@ test('Settings: a "Bonus game saves" row with the size and a confirmed Delete sa
   await page.waitFor(`localStorage.getItem(${JSON.stringify(KEY)}) === null`, { what: 'save deleted' });
   await page.waitFor(`/No saved world/.test(document.querySelector('#settings').textContent)`, { what: 'row refreshed' });
   if (!(await live(page)).bonus.unlocked.includes('strata')) throw new Error('Delete save touched the state');
-  // Reset progress: all system32.save.* keys, nothing else
+  // Reset progress keeps the world saves; Hard reset removes every system32.* key, nothing else
   await page.eval(`localStorage.setItem(${JSON.stringify(KEY)}, 'again'); 0`);
   await page.eval(`import('/js/state.js').then((m) => m.reset())`);
-  const left = await page.eval(`Object.keys(localStorage).filter((k) => k.startsWith('system32.save.'))`);
-  if (left.length) throw new Error('reset left ' + JSON.stringify(left));
-  if ((await ls(page, 'unrelated')) !== 'z') throw new Error('reset removed an unrelated key');
+  if (!(await page.eval(`Object.keys(localStorage).includes(${JSON.stringify(KEY)})`))) throw new Error('Reset progress deleted the world save');
+  await page.eval(`import('/js/state.js').then((m) => m.hardReset())`);
+  const left = await page.eval(`Object.keys(localStorage).filter((k) => k.startsWith('system32.'))`);
+  if (left.length) throw new Error('hard reset left ' + JSON.stringify(left));
+  if ((await ls(page, 'unrelated')) !== 'z') throw new Error('hard reset removed an unrelated key');
 });
 
 // ---------------------------------------------------------------- Part 2, section 1.1: GAME_COMPLETE
