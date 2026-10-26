@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>System32 · Interview Prep</title>
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1a;--mut:#66665f;--card:#fff;--bd:#e3e2dc;--ac:#0067c0;--code:#f1f0ea;--ok:#0f7b0f;--warn:#b25b00}
+@media(prefers-color-scheme:dark){:root{--bg:#151617;--fg:#e8e8e3;--mut:#9b9b94;--card:#1e1f21;--bd:#34363a;--ac:#5cb3ff;--code:#26282b;--ok:#6fd47a;--warn:#ffb15c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,"Segoe UI",sans-serif}
+.wrap{display:flex;max-width:1180px;margin:0 auto}
+nav{position:sticky;top:0;align-self:flex-start;width:250px;height:100vh;overflow:auto;padding:20px 14px;border-right:1px solid var(--bd);font-size:14px}
+nav b{display:block;margin-bottom:8px}
+nav a{display:block;padding:3px 6px;color:var(--mut);text-decoration:none;border-radius:4px}
+nav a:hover{background:var(--code);color:var(--fg)}
+main{flex:1;min-width:0;padding:24px 32px 80px}
+h1{margin:0 0 4px;font-size:30px}
+h2{margin:44px 0 10px;padding-top:10px;border-top:1px solid var(--bd);font-size:23px}
+h3{margin:24px 0 6px;font-size:17px;color:var(--ac)}
+p,li{max-width:80ch}
+.sub{color:var(--mut)}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font:13px ui-monospace,Consolas,monospace}
+pre{background:var(--code);padding:12px;border-radius:8px;overflow:auto;font:13px/1.45 ui-monospace,Consolas,monospace}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14.5px}
+th,td{border:1px solid var(--bd);padding:6px 9px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.qa{background:var(--card);border:1px solid var(--bd);border-radius:10px;margin:10px 0;padding:2px 14px}
+.qa summary{cursor:pointer;font-weight:600;padding:10px 0}
+.qa p{margin:4px 0 12px}
+.pill{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--bd);color:var(--mut);margin-right:4px}
+.note{border-left:4px solid var(--warn);background:var(--card);padding:8px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+.good{border-left-color:var(--ok)}
+@media(max-width:820px){.wrap{display:block}nav{position:static;width:auto;height:auto;border:0;border-bottom:1px solid var(--bd)}main{padding:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+<b>Interview prep</b>
+<a href="#pitch">The 60-second pitch</a>
+<a href="#overview">What it is</a>
+<a href="#arch">Architecture</a>
+<a href="#shell">The desktop shell</a>
+<a href="#protocol">Game protocol &amp; sandbox</a>
+<a href="#state">State, stores &amp; resets</a>
+<a href="#core">The three core games</a>
+<a href="#final">Final-spec features</a>
+<a href="#strata">Strata (voxel engine)</a>
+<a href="#strata-game">Strata gameplay systems</a>
+<a href="#spacesaga">SpaceSaga</a>
+<a href="#testing">Testing strategy</a>
+<a href="#decisions">Decisions &amp; trade-offs</a>
+<a href="#bugs">Bugs &amp; what they taught</a>
+<a href="#deploy">Deployment</a>
+<a href="#ai">Working with Claude Code</a>
+<a href="#qa">Likely questions</a>
+<a href="#numbers">Numbers to remember</a>
+</nav>
+<main>
+<h1>System32 · Interview prep</h1>
+<p class="sub">A fake Windows 11 desktop in the browser that is "corrupted"; you repair it by beating mini-games, then find bonus games in the Recycle Bin, one of which is a full voxel survival game. Vanilla HTML/CSS/JS, no build step, no dependencies except three.js for the 3D games.</p>
+
+<h2 id="pitch">The 60-second pitch</h2>
+<p>System32 is a browser "operating system" built with no framework and no build step. A shell (windows, taskbar, Start menu, Explorer, Notepad, a browser called Edgy, Settings, Recycle Bin) hosts games in sandboxed iframes. Each game talks to the shell only through <code>postMessage</code>, so the shell owns all progress and a game cannot cheat its way into the save. Three core games repair the system; after the ending two bonus games unlock: SpaceSaga (a 3D endless runner) and Strata, a Minecraft-style voxel game with survival, mobs, a boss and an ending, written from scratch (chunked world, worker-based meshing, smooth light, A* pathfinding, flowing water, multiple worlds). I directed the design and decisions and used Claude Code to implement against specs, with a custom headless-Chrome test harness that checks logic and flows.</p>
+
+<h2 id="overview">What it is, in numbers</h2>
+<table>
+<tr><th>Piece</th><th>What</th></tr>
+<tr><td>Shell</td><td>~4,000 lines of ES modules in <code>js/</code>, CSS in <code>css/</code>, one SVG icon sprite</td></tr>
+<tr><td>Core games</td><td>DOM-ination (pop-up survival), Inspect Element (DevTools puzzle), 404: Window Manager (drag-and-drop under time pressure)</td></tr>
+<tr><td>Bonus games</td><td>SpaceSaga (three.js runner), Strata (voxel survival, ~30 modules)</td></tr>
+<tr><td>Dependencies</td><td>None for the shell and core games; three.js (minified once) for the 3D games; Kenney asset packs (CC0)</td></tr>
+<tr><td>Hosting</td><td>Static files, GitHub Pages; needs <code>.nojekyll</code></td></tr>
+<tr><td>Tests</td><td>Node suites for pure logic + a custom Chrome DevTools Protocol driver with no npm packages, ~250 checks</td></tr>
+</table>
+
+<h2 id="arch">Architecture</h2>
+<pre>
+index.html                    shell page (boot, lock, sign-in, desktop, taskbar)
+js/
+  main.js        boot sequence + wiring       state.js      the single in-memory state, split on save
+  WindowManager.js  Window class, z-order     registry.js   all static data (games, routes, eggs, achievements)
+  desktop.js     icons, drag, selection       taskbar.js    window buttons, tray, clock, calendar
+  startMenu.js   launcher UI                  launcher.js   the one place that knows how to open each thing
+  apps/          explorer, notepad, edgy (browser.js), settings, recycleBin, gameWindow, tutorial
+  achievements.js / achievementsPanel.js      corruption.js  visual corruption + ending
+games/
+  _shared/sdk.js   the Game SDK (classic script)
+  dom-ination/ inspect-element/ window-manager-404/   core games (classic scripts)
+  space-saga/ strata/                                   bonus games (ES modules + import map)
+tests/            Node suites + tests/lib/cdp.mjs (own CDP client)
+</pre>
+<p><b>Core idea:</b> shell and games are strictly separated. The shell is trusted; a game is an untrusted guest in a sandboxed iframe with an opaque origin. Everything a game may do is a message in a small, validated protocol.</p>
+
+<h2 id="shell">The desktop shell</h2>
+<ul>
+<li><b>No framework.</b> A tiny pub/sub <code>bus</code> (<code>events.js</code>) decouples modules: <code>launch(id)</code>, <code>state:change</code>, <code>repaired</code>, <code>win:focus</code>... The launcher is the only module that knows how to open an app, so desktop, Start menu, Explorer and the Recycle Bin all call <code>launch('id')</code>.</li>
+<li><b>Window manager:</b> a <code>Window</code> class with drag, 8-direction resize, maximize/restore animation, minimize to taskbar, z-order and focus, a modal-dialog subclass with parent dimming, "not responding" state. Resize handles and window jitter are part of the story: they are disabled until <code>wm_core.exe</code> is repaired.</li>
+<li><b>Corruption as data:</b> <code>--corruption</code> CSS variable = 1 - repaired/total, so wallpaper RGB-split, tear lines, taskbar glitches and icon-label scrambles scale smoothly and vanish at 100%. All motion respects <code>prefers-reduced-motion</code>.</li>
+<li><b>Never hard-code the component count.</b> Integrity is always <code>repaired / GAME_IDS.length</code>. This paid off when a game was removed late: integrity went from quarters to thirds without touching logic.</li>
+<li><b>Edgy browser:</b> an iframe per tab-less "browser", routes in <code>registry.js</code> (<code>sys32://free-prizes</code>...), history, favorites that appear once you have visited a game, and "Goggle" search with easter eggs. It never makes real network requests.</li>
+<li><b>Explorer / Recycle Bin / Settings:</b> data-driven from the registry. Settings is locked until <code>admin_access.dll</code> is repaired (a gameplay gate, not a permission).</li>
+<li><b>Synthesized sound:</b> every system sound is a few WebAudio oscillators, so the site ships no audio for the shell; sound is off by default.</li>
+</ul>
+
+<h2 id="protocol">Game protocol and the sandbox</h2>
+<h3>Trust model</h3>
+<ul>
+<li>Iframes use <code>sandbox="allow-scripts allow-forms allow-pointer-lock"</code> and deliberately <b>no</b> <code>allow-same-origin</code>. The game's origin is opaque (<code>null</code>): it cannot read the shell's localStorage, cookies or DOM.</li>
+<li>Because the origin is opaque, <code>postMessage</code> must use target <code>'*'</code>. Identity is therefore established by <b><code>event.source === iframe.contentWindow</code></b>, not by origin. The shell loops over its open frames and matches the source.</li>
+<li>Games cannot be trusted for numbers: scores/times are validated (finite, non-negative, clamped), <code>gameId</code> must match the frame, easter-egg and achievement ids must start with the game's own prefix, unknown message types are ignored.</li>
+<li>Games must be <b>classic scripts</b> (the core ones): module scripts need CORS, which an opaque origin cannot satisfy. The 3D games use ES modules plus an import map and load models/textures with <code>fetch</code>; this works because GitHub Pages sends <code>Access-Control-Allow-Origin: *</code>. A dedicated test (<code>tests/cors-sandbox</code>) proved this before I committed to the approach.</li>
+</ul>
+<h3>Messages</h3>
+<table>
+<tr><th>Game → shell</th><th>Purpose</th></tr>
+<tr><td><code>GAME_READY</code></td><td>Game loaded; shell answers with INIT</td></tr>
+<tr><td><code>GAME_WON</code> / <code>GAME_LOST</code> / <code>GAME_PROGRESS</code></td><td>Core games only; the shell repairs the component, counts losses</td></tr>
+<tr><td><code>RUN_OVER</code></td><td>Bonus runner: shell keeps best score</td></tr>
+<tr><td><code>GAME_COMPLETE</code></td><td>Strata ending: best time per difficulty</td></tr>
+<tr><td><code>SAVE</code></td><td>World save string (games with <code>saves: true</code>), size-capped</td></tr>
+<tr><td><code>ACHIEVEMENT</code>, <code>GAME_SKIPPED</code>, <code>PLAYTIME</code>, <code>FULLSCREEN</code>, <code>SHELL_EFFECT</code></td><td>Achievements, skip puzzle, play-time heartbeat, fullscreen request, toasts/shake/eggs</td></tr>
+</table>
+<table>
+<tr><th>Shell → game</th><th>Purpose</th></tr>
+<tr><td><code>INIT</code></td><td>best, beaten, soundOn, save, completed, losses, canSkip, playtimeMs</td></tr>
+<tr><td><code>PAUSE</code> / <code>RESUME</code></td><td>Minimize or lose focus pauses exactly; restore resumes</td></tr>
+<tr><td><code>SOUND</code>, <code>SAVED</code>, <code>FULLSCREEN</code></td><td>Speaker toggled, save result, fullscreen entered/left</td></tr>
+</table>
+<div class="note good"><b>Why this matters:</b> the SDK is ~60 lines and a game is trivially testable against a stub page; the shell never needs to know game internals.</div>
+
+<h2 id="state">State, stores and resets</h2>
+<ul>
+<li><b>One in-memory object, three stores.</b> <code>system32.state</code> (repairs, losses, skips, play time, tutorial progress, icon positions, README text, core bests), <code>system32.meta</code> (achievements, secrets, bonus games and bests, sound, accent, theme) and <code>system32.save.&lt;game&gt;</code> (world saves). Code everywhere reads <code>state.x</code>; <code>save()</code> splits it by a <code>META_FIELDS</code> list. This kept the change small: no call site had to learn about the split.</li>
+<li><b>Why split at all?</b> "Reset progress" must not destroy what the player earned (achievements, bonus unlocks, Strata world). With separate keys, reset is "wipe the state key"; Hard reset is "wipe every <code>system32.*</code> key" behind a typed <code>DELETE</code>.</li>
+<li><b>Migration:</b> versions 1 → 2 (bonus games) → 3 (meta). Merge sanitizes everything: unknown game ids (the removed game), removed egg ids, garbage types. If the meta key is missing but old state exists, meta is built from the old fields and achievements the old state proves are granted retroactively with <b>one</b> summary toast, after the boot sequence clears toasts.</li>
+<li><b>localStorage hygiene:</b> every read/write in try/catch; the app keeps running in memory if storage is blocked. World saves are separate keys with caps so a huge world can never corrupt the shell state.</li>
+</ul>
+
+<h2 id="core">The three core games</h2>
+<h3>DOM-ination: pop-up survival</h3>
+<p>You close fake ad pop-ups before clutter reaches a cap; they spawn in waves with a boss ad and "bait" pop-ups. Technical points: real DOM elements as entities, fixed-timestep-ish loop with <code>requestAnimationFrame</code>, seeded RNG so playtests are reproducible, a <code>?debug=1</code> hook (<code>window.__DOMINATION</code>) with <code>forceWin/forceLose/forceLosses</code> that tests use. Achievement: win with clutter never above 12.</p>
+<h3>Inspect Element: the real DevTools is the puzzle</h3>
+<p>A bank login with three locks (find the password in an HTML comment, remove the <code>disabled</code> attribute, change a hidden <code>role</code> input). The player must use the browser's real DevTools. Design points: everything is delegated on <code>document</code> and elements are looked up by id on every call so deleting or recreating nodes can't crash it; a <code>MutationObserver</code> notices DevTools edits (ignoring writes the game makes itself via <code>[data-ui]</code>); the password is stored as reversed char codes so searching Sources only finds the comment; calling <code>System32.won()</code> from the console is allowed but gives "script kiddie" and zero stars (it is a hacking game, so cheating is a feature, tracked as an easter egg).</p>
+<h3>404: Window Manager</h3>
+<p>Drag file fragments into a Recovery window before their windows collapse; junk goes in the bin; three phases. Pointer-event drag with a drag layer, keyboard alternative (Space to pick up, Tab to choose a window), nested folders, seeded randomness, <code>aria-live</code> announcements.</p>
+
+<h2 id="final">Final-spec features (what changed late)</h2>
+<table>
+<tr><th>Feature</th><th>How it works</th><th>Why</th></tr>
+<tr><td>Remove a game</td><td>Registry-driven: deleting the entry removes route, icon, bookmark, Explorer file and eggs; integrity recomputes; migration drops stale ids</td><td>Scope control; tested that nothing hard-codes "4"</td></tr>
+<tr><td>Achievements</td><td>22 defined as data; unlocks stored in meta; games call <code>System32.achieve(id)</code>, shell validates prefix; shell unlocks its own from bus events</td><td>Games stay untrusted</td></tr>
+<tr><td>Recovery Guide</td><td>Checklist whose steps tick from real state (not a "Next" button); steps 4-6 are a group; "Show me" pulses a target</td><td>Guides <i>where</i>, never <i>how</i>: no puzzle help by rule</td></tr>
+<tr><td>Skip puzzle</td><td><b>Shell</b> counts <code>GAME_LOST</code> per game; INIT carries <code>losses/canSkip</code>; <code>GAME_SKIPPED</code> is re-checked (&ge;2 losses, not repaired) before repairing; marker ↷ until a real win</td><td>The game must never decide it is skippable</td></tr>
+<tr><td>Sudoku escape hatch</td><td>Heartbeat <code>PLAYTIME</code> every 15 s of unpaused play, clamped by the shell to 20 s per message, accumulated across reloads; after 10 min a vault opens a generated sudoku</td><td>Accumulated, not session, time so closing the window can't reset the clock</td></tr>
+<tr><td>Sudoku generator</td><td>Randomized backtracking fills a grid; cells are removed in random order, keeping a removal only if the solver still counts exactly 1 solution (stops at 2); bit-mask solver with fewest-candidates-first; 30-34 givens; ~3 ms</td><td>Unique solution is the correctness property; tested over 100 seeds</td></tr>
+<tr><td>Fullscreen</td><td>Shell calls <code>requestFullscreen()</code> on the game area only; the game asks via message from its own key/button (browser requires a user gesture)</td><td>Play without the fake OS chrome</td></tr>
+</table>
+
+<h2 id="strata">Strata: the voxel engine</h2>
+<p>No Minecraft code or assets. Built from scratch with three.js only for rendering. Blocks use Kenney CC0 textures; mobs, hearts and many sounds are drawn/synthesized in code.</p>
+<h3>World representation</h3>
+<ul>
+<li><b>Chunks:</b> 16×16×128 columns, one <code>Uint8Array</code> per chunk (a block is one byte, max 256 ids). Index <code>(y&lt;&lt;8)|(z&lt;&lt;4)|x</code>. World 1024×1024. A "partial block" (torch, chest, bed, plants) is a block id with a box or crossed-quad definition, not metadata, because the chunk format has no metadata byte; orientation variants are separate ids.</li>
+<li><b>Generation:</b> seeded value noise (own hash), biomes, caves via 3D noise, ores by depth, trees, bushes; spawn finder; flat mode for tests. Terrain is a pure function of (seed, chunk) so only <b>edits</b> need saving.</li>
+<li><b>Dimensions:</b> Overworld, Underlayer (512², no sky, basalt caves, lava, vaults) and the Kernel (128² arena over a void, regenerated on every entry, edits never saved). Switching dimension reloads the world with a different generator and edit map.</li>
+</ul>
+<h3>Worker architecture</h3>
+<ul>
+<li>Generation and meshing run in a Web Worker created from a <b>Blob URL</b> (so it works inside a sandboxed opaque-origin iframe); <code>worker.js</code> is self-contained (no imports), loadable as a classic worker, on the main thread (fallback, time-sliced) or in Node (so tests exercise the real code).</li>
+<li>Typed arrays are transferred, not copied. The block table the worker needs is derived from the same <code>blocks.js</code> as the game (<code>workerTable</code>): one source of truth.</li>
+<li><b>Meshing:</b> only visible faces; per-vertex ambient occlusion (the 3-neighbour rule), quad diagonal flipped to avoid AO artefacts; three layers (opaque, cutout, water); animated tiles via a per-vertex frame count and a shader uniform.</li>
+</ul>
+<h3>Lighting</h3>
+<ul>
+<li>Two channels, sky light and block light (0..15), computed in the worker as a <b>pure function of the 3×3 chunks</b> around the chunk being meshed (48×128×48 region, flood fill with BFS). Because it's a pure function of blocks, a save/load gives identical lighting and nothing about light is saved.</li>
+<li>Per-vertex smooth light (average of the front cell and corner neighbours). Day/night is a <b>shader uniform</b>, so the sky changing never triggers a remesh. A block change that can alter light remeshes the chunk and its 8 neighbours; other changes only touch the border neighbours.</li>
+</ul>
+<h3>Physics, entities, AI</h3>
+<ul>
+<li>Swept AABB collision per axis (x, z, then y) with a one-block step; fall damage from peak height; water/lava as fluids; sneaking never walks off edges.</li>
+<li><b>A* pathfinding</b> (600-node budget) with a weighted heuristic, wall-climbers (spiders) with a horizontal-only heuristic, stuck detection that replans, and avoidance of lava/deep water.</li>
+<li>Mobs are code-built box models with a procedural texture atlas and synthesized voices. Animals are parked with their chunk and restored on load; hostiles spawn by light level (&le;7), distance (24-64), a cap of 30, and lag out at sunrise.</li>
+</ul>
+<h3>Flowing water (late addition)</h3>
+<p>Water is a cell with strength: a source (8) and flowing blocks <code>water_1..7</code>. A tick every 0.25 s processes at most 400 queued cells: water with air below falls (and doesn't spread sideways); otherwise it feeds neighbouring air with strength−1, so it runs 7 blocks; flowing water with no feeder shrinks or drains; sources never dry up. Any <code>setBlock</code> queues the cell and neighbours, so digging beside a lake lets it in and a wall holds it back. Flowing water is just an edit in the save; chunk load re-queues its water cells. Mesher draws surface height by strength. <b>Trade-off:</b> not Minecraft-exact (no infinite sources, no levelling pools), chosen for simplicity and zero new save format.</p>
+<h3>Saves</h3>
+<ul>
+<li>Only edits are saved: per chunk, the list of (local index, block id) that differ from the generator, packed in binary, then deflate-raw compressed via <code>CompressionStream</code>, base64 (the shell stores strings). Header JSON holds seed, position, inventory, flags, vitals, drops, animals, chests.</li>
+<li>Format <code>STRATA1:</code> v2 (migrates v1). <b>Multiple worlds</b> live in one shell string: <code>STRATAW1:</code> + JSON list of worlds, each carrying an unchanged <code>STRATA1:</code> save. Old single-world saves import as "World 1". Cap: 10 worlds, 4 MB total, 2.5 MB per world.</li>
+</ul>
+
+<h2 id="strata-game">Strata gameplay systems</h2>
+<ul>
+<li><b>Survival:</b> 20 HP, hunger with exhaustion, air, armor (4% per point, cap 80%), fall/lava/drowning damage, death piles (items drop where you died and last 10 minutes), difficulty levels, <b>Creative mode</b> with a searchable, sorted catalog of every item.</li>
+<li><b>Progression chain:</b> wood → stone → iron → cobalt ore (y 2-16) → cobalt pickaxe → Cracked Bedrock (found with the Tracer) → Rift → Underlayer → three Data Vaults (break spawner, lava parkour, shielded Vault Warden, shard) → Kernel Key → Kernel Gate → the Garbage Collector boss → ending, credits, <code>System32.complete()</code> once per world.</li>
+<li><b>Boss (state machine):</b> 300 HP, phases at 70%/35%. Marks (red blocks deleted after 3 s; step off), stomp then kneel exposing a core (double damage), charge with a wind-up, Pointers (flying cubes), four healing crystals, shrinking arena. A scripted bot beats it on Normal in ~80-120 s, which proves it is winnable and tunes difficulty numerically.</li>
+<li><b>Objectives journal (J) + tutorial mode:</b> 58 objectives in 6 acts, text as data in <code>config.js</code>, rules in <code>objectives.js</code>. Ticks come from events, counters and <i>peak</i> inventory counts (crafting a bow consumes the string, but "collect 3 string" stays done). Finishing a key objective implies earlier ones, so old saves and players who skip around still get a coherent list. State is a hex bitset in the world flags.</li>
+</ul>
+
+<h2 id="spacesaga">SpaceSaga</h2>
+<p>Three-lane endless runner on a small round planet: the vertex shader is patched so the track curves away with distance, GLB models from Kenney, obstacle patterns validated by a pure rules module (no impossible layouts), fixed 1/60 s step so pause is exact, synthesized music that densifies with distance. Reports <code>RUN_OVER</code>; distance milestones unlock achievements.</p>
+
+<h2 id="testing">Testing strategy</h2>
+<ul>
+<li><b>Pure logic in Node:</b> block table, worker generation and meshing, lighting, physics, survival rules, crafting, pathfinding, fluids, objectives, worlds list, sudoku. Possible because the worker and the logic modules have no DOM dependency.</li>
+<li><b>Real-browser tests without dependencies:</b> <code>tests/lib/cdp.mjs</code> is a tiny Chrome DevTools Protocol client (spawn headless Chrome and <code>serve.py</code> on free ports, scratch profile outside the repo). It sends <b>real mouse and keyboard events</b>, evaluates in the page and in iframes (<code>evalInFrame</code>), and screenshots on failure. No Playwright/Puppeteer, no node_modules.</li>
+<li><b>Debug hooks</b> (<code>?debug=1</code>): <code>window.__STRATA</code> etc. expose state and cheats so tests assert on behaviour rather than pixels.</li>
+<li><b>Bot tests:</b> a scripted bot plays the boss fight for several seeds and difficulties.</li>
+<li><b>Honest limits:</b> software WebGL means frame rate, game feel, sound quality and difficulty tuning are <i>not</i> verified headlessly; those need a human playthrough.</li>
+</ul>
+
+<h2 id="decisions">Decisions and trade-offs</h2>
+<table>
+<tr><th>Decision</th><th>Alternatives</th><th>Why</th></tr>
+<tr><td>Vanilla JS + ES modules, no build</td><td>React/Vite/TypeScript</td><td>Deploys as static files; zero toolchain; the point was control and understanding. Cost: no type checking (mitigated by tests and JSDoc).</td></tr>
+<tr><td>Games in sandboxed iframes with postMessage</td><td>Same-origin modules; Web Components</td><td>Real isolation and a realistic "untrusted plugin" model; the shell can't be broken by game bugs. Cost: opaque origin forces classic scripts and CORS-friendly assets.</td></tr>
+<tr><td>Shell owns progress; games only report</td><td>Games write storage directly</td><td>Single source of truth, validation in one place, precise resets.</td></tr>
+<tr><td>Registry as data</td><td>Hard-coded lists</td><td>Removing a game and adding achievements/eggs were data changes, not code hunts.</td></tr>
+<tr><td>One in-memory state, split on save</td><td>Three separate stores in code</td><td>Minimal call-site change; reset semantics live in one function.</td></tr>
+<tr><td>Strata saves only edits</td><td>Save whole chunks</td><td>A 1024² world would be huge; edits compress to a few hundred KB; generation is deterministic.</td></tr>
+<tr><td>Pure-function lighting in the worker</td><td>Incremental light propagation on the main thread</td><td>No drift, no light state in saves, easy to test; cost is re-lighting 9 chunks on a light-relevant edit.</td></tr>
+<tr><td>Day/night as a shader uniform</td><td>Bake time into vertex colours</td><td>No remesh at dusk.</td></tr>
+<tr><td>Worker from a Blob URL</td><td>Separate worker file</td><td>Works inside the sandbox; also gives an inline fallback and Node reuse.</td></tr>
+<tr><td>Code-built mob models and sounds</td><td>Download assets</td><td>Asset budget (~0.6 MB), licensing simplicity, consistent style.</td></tr>
+<tr><td>Own CDP test client</td><td>Playwright</td><td>No dependencies in the repo; fine control over sandboxed iframes.</td></tr>
+<tr><td>Shell counts losses / validates skips</td><td>Game decides</td><td>A modified game console must not be able to claim a skip it didn't earn.</td></tr>
+<tr><td>Tutorial never helps with puzzles</td><td>Hints in the guide</td><td>Game design rule: the guide says where, the puzzle stays the puzzle.</td></tr>
+<tr><td>Spec-driven, phased delivery</td><td>One big prompt</td><td>Each phase committed after tests pass; asset step had a mandatory stop for approval.</td></tr>
+</table>
+
+<h2 id="bugs">Bugs and what they taught</h2>
+<ul>
+<li><b>GitHub Pages broke everything:</b> Jekyll skips folders starting with <code>_</code>, so <code>games/_shared/sdk.js</code> was a 404 and every game silently lost its link to the shell. Fix: <code>.nojekyll</code>. Lesson: test the deployed build, not just localhost.</li>
+<li><b>Worker treated any truthy dimension as non-overworld</b>, so Cracked Bedrock never generated; fixed with an explicit comparison and a regression test.</li>
+<li><b>Rift return left the world size at 512</b> so the overworld read as bedrock; the world now remembers its main size.</li>
+<li><b>Shell accepted <code>timeMs: null</code> as a 0 ms win</b> because <code>Number(null) === 0</code>; validators are now strictly typed.</li>
+<li><b>Ground friction every step</b> slowed steering mobs to 60%; solved with a <code>driven</code> flag.</li>
+<li><b>Boss killing blow</b> marked the entity dead before the dying sequence; <code>Mobs.damage</code> returns "down" for bosses and phases are one-way.</li>
+<li><b>Panel re-render swallowed clicks:</b> a redraw between mouse-down and mouse-up replaced the button; fixed by re-rendering only when a content signature changes. Same class of bug as the Creative search box losing focus.</li>
+<li><b>Fullscreen/INIT ordering and toasts cleared at boot:</b> the retroactive-achievement toast was fired before the boot sequence wiped toasts; moved after desktop entry.</li>
+<li><b>Test fixture mistakes</b> (marks placed outside the platform, stale tab state, an <code>await</code> on a promise that resolves only when a dialog closes) taught me to distinguish product bugs from test bugs before changing the game.</li>
+</ul>
+
+<h2 id="deploy">Deployment</h2>
+<ul>
+<li>Static hosting on GitHub Pages from the repo root; all paths relative so it works under <code>/system32/</code>.</li>
+<li>Needs <code>.nojekyll</code> (underscore folder). Pages also serves <code>Access-Control-Allow-Origin: *</code>, which the sandboxed 3D games rely on.</li>
+<li><code>assets/source</code> (original packs, ~187 MB) is git-ignored; only the built, trimmed assets are shipped.</li>
+<li><code>serve.py</code> is a local static server with sane MIME types for development.</li>
+</ul>
+
+<h2 id="ai">Working with Claude Code</h2>
+<ul>
+<li>I wrote or directed specs (<code>DESKTOP_SPEC</code>, <code>STRATA_PART2_SPEC</code>, <code>FINAL_SPEC</code>...) with acceptance criteria and build order; Claude Code planned and implemented in phases, committing after green tests.</li>
+<li>Guardrails I set: no push without being asked, no secrets or source assets committed, a size cap on staged files, no localStorage in games, mandatory stops for asset approval.</li>
+<li><b>What I'd say honestly:</b> AI did most keystrokes; my contribution was the product, the constraints, the architecture decisions (sandbox protocol, shell-owned state), verification, and judging trade-offs. I can explain every module's purpose and why it exists, and I know which parts are untested by hand (game feel, tuning).</li>
+</ul>
+
+<h2 id="qa">Likely interview questions</h2>
+<details class="qa"><summary>How do you stop a game from cheating?</summary><p>It can't write storage or call the shell's functions; it can only send messages. The shell identifies the sender by <code>event.source</code>, checks the game id and prefix, and validates every number and id. A forged win for another game, a null time, an unknown achievement id, or a too-early skip is ignored. The one deliberate exception is Inspect Element's console win, which is flagged as a "script kiddie" with zero stars.</p></details>
+<details class="qa"><summary>Why is <code>allow-same-origin</code> missing and what does that cost?</summary><p>With it, a sandboxed page that is same-origin could remove its own sandbox or read the shell's storage. Without it the origin is opaque: no storage of its own, module scripts fail without CORS, and <code>postMessage</code> must target <code>'*'</code>. I mitigate by verifying <code>event.source</code> and using classic scripts or CORS-enabled asset hosting.</p></details>
+<details class="qa"><summary>How do you identify the sender if origins are opaque?</summary><p>The shell keeps a list of its own iframes and compares <code>e.source</code> with each <code>iframe.contentWindow</code>. A different window cannot spoof that identity.</p></details>
+<details class="qa"><summary>How does Strata avoid freezing the browser while generating terrain?</summary><p>Generation and meshing run in a worker with transferable typed arrays, nearest chunks first, with a budget per frame for uploading meshes. If workers are unavailable there is a time-sliced main-thread fallback with the same code.</p></details>
+<details class="qa"><summary>How does the lighting work and why isn't it saved?</summary><p>It's a flood fill computed in the worker from the blocks of the 3×3 neighbouring chunks, for sky and block light. Since it's a pure function of the blocks, it is recomputed on load and always consistent. Day/night is a shader uniform, so time of day never remeshes.</p></details>
+<details class="qa"><summary>How big is a save and how do you keep it small?</summary><p>Only blocks that differ from the generator are stored, packed as 3 bytes each per chunk, deflate-compressed, base64 encoded. A typical world is well under 1.5 MB; caps are 2.5 MB per world and 4 MB for the list, with clear in-game messages when exceeded.</p></details>
+<details class="qa"><summary>How did you implement multiple worlds without changing the shell protocol?</summary><p>The shell still stores one string per game. Strata now stores a container <code>STRATAW1:</code> + JSON listing worlds, each holding an unchanged v2 save. A legacy save is detected by prefix and imported as "World 1". The container logic is pure and unit-tested.</p></details>
+<details class="qa"><summary>How does pathfinding work and what are its limits?</summary><p>Weighted A* on the voxel grid with a node budget (600), step/drop rules, lava and deep-water avoidance, climbing for spiders, and stuck detection with replanning. Limits: no hierarchical pathing, so long routes just fail gracefully and the mob wanders.</p></details>
+<details class="qa"><summary>How do you test a 3D game headlessly?</summary><p>Logic is in modules that run in Node (including the real worker). In Chrome I use software WebGL and debug hooks to assert state, plus screenshots for visual checks. I'm clear that frame rate and feel need a human.</p></details>
+<details class="qa"><summary>Why not use a framework or TypeScript?</summary><p>To keep deployment trivial and show I can structure a large app with modules, a bus and data-driven registries. For a team project I'd add TypeScript and a bundler; the module boundaries here would carry over unchanged.</p></details>
+<details class="qa"><summary>What was the hardest bug?</summary><p>Either the Pages 404 on an underscore folder (silent total failure that tests missed because they ran on a different server) or the world-size/dimension bugs when moving between overworld and Underlayer, where state that should have been per-dimension was global.</p></details>
+<details class="qa"><summary>What would you do with more time?</summary><p>Level-synchronised water and infinite sources, hierarchical pathfinding, service-worker caching for offline play, accessibility pass for the 3D games, automated visual regression, and a real playtest loop for difficulty tuning.</p></details>
+<details class="qa"><summary>How did you keep scope under control?</summary><p>Specs with explicit acceptance criteria, phase gates, and committing after green tests. The final spec removed a whole game; because progress was data-driven it was a small, safe change.</p></details>
+<details class="qa"><summary>Is it accessible?</summary><p>Shell: focus management, ARIA roles/labels on dialogs and panels, keyboard operation (Enter, Esc, arrows), <code>prefers-reduced-motion</code> and light/dark support. Games: keyboard alternatives in 404, subtitle option and sound toggle in Strata. Gaps: the 3D games aren't screen-reader friendly.</p></details>
+<details class="qa"><summary>Security considerations?</summary><p>Sandboxed untrusted frames, text inserted via <code>textContent</code> (never game strings as HTML), validated inputs, no network requests, no cookies, localStorage keys namespaced, typed-confirmation for destructive reset. The review gate in Claude Code also scans commits.</p></details>
+
+<h2 id="numbers">Numbers to remember</h2>
+<table>
+<tr><th>Fact</th><th>Value</th></tr>
+<tr><td>Core components / games</td><td>3 (after removing CSS Specificity Wars)</td></tr>
+<tr><td>Achievements / secrets</td><td>22 / 36</td></tr>
+<tr><td>Chunk</td><td>16×16×128; world 1024×1024; Underlayer 512²; Kernel 128²</td></tr>
+<tr><td>Light region</td><td>48×128×48 (3×3 chunks)</td></tr>
+<tr><td>Blocks / objectives</td><td>~65 block ids incl. 7 water levels / 58 objectives in 6 acts</td></tr>
+<tr><td>Boss</td><td>300 HP; phases at 70% and 35%; 4 crystals; ~80-120 s for the test bot</td></tr>
+<tr><td>Saves</td><td>2.5 MB per world, 4 MB for 10 worlds</td></tr>
+<tr><td>Fluid tick</td><td>0.25 s, 400 cells max, 7-block spread</td></tr>
+<tr><td>Sudoku</td><td>30-34 givens, unique solution, ~3 ms; vault after 10 min accumulated play</td></tr>
+<tr><td>Tests</td><td>Strata browser suite 60; shell suites; ~250 checks overall</td></tr>
+</table>
+<p class="sub">Unlisted page: not linked from the site. Companion: <a href="transcript.html">transcript.html</a>.</p>
+</main>
+</div>
+</body>
+</html>
