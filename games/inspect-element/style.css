@@ -86,3 +86,22 @@ footer { padding: 10px; text-align: center; font-size: 11px; color: #8795ad; }
 @media (prefers-reduced-motion: reduce) {
   .spin, .help-btn.wiggle, .locks li.pop { animation: none; }
 }
+
+/* Vault (sudoku escape hatch) */
+.vault-cta { text-align: center; margin: 10px 0 0; }
+.vault-cta .link { background: none; border: 0; color: #1a5fb4; text-decoration: underline; cursor: pointer; font: inherit; }
+.vault { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(10, 14, 24, .86); }
+.vault[hidden] { display: none; }
+.vault-door { width: min(560px, 94vw); padding: 16px 18px; border-radius: 14px; background: linear-gradient(#2c3340, #1c212b); color: #e8edf5; text-align: center; box-shadow: 0 0 0 6px #4a5366, 0 20px 60px #000; transition: transform .9s cubic-bezier(.5, 0, .3, 1), opacity .9s; transform-origin: left center; }
+.vault.open .vault-door { transform: perspective(900px) rotateY(-80deg); opacity: 0; }
+.vault-door h2 { margin: 0 0 4px; font-size: 20px; }
+.vault-door .small { margin: 2px 0 8px; font-size: 12px; opacity: .8; }
+.sgrid { display: grid; grid-template-columns: repeat(9, 1fr); width: min(396px, 86vw); aspect-ratio: 1; margin: 0 auto; border: 3px solid #cfd6e4; background: #cfd6e4; gap: 1px; }
+.scell { border: 0; padding: 0; margin: 0; background: #f5f7fb; color: #1c4fa0; font: 600 20px Verdana, sans-serif; display: grid; place-items: center; cursor: pointer; border-radius: 0; }
+.scell.given { background: #e3e8f2; color: #111; font-weight: 800; cursor: default; }
+.scell.sel { outline: 3px solid #f0a020; outline-offset: -3px; z-index: 1; }
+.scell.bad { background: #ffd4d4; color: #b00020; }
+.scell.bx-r { margin-right: 2px; }
+.scell.bx-b { margin-bottom: 2px; }
+.vault-btns { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+.vault-btns button { padding: 6px 16px; font: inherit; cursor: pointer; }

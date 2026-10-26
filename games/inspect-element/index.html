@@ -47,6 +47,8 @@
       <div id="auth" class="auth" data-ui hidden><i class="spin"></i> Authenticating…</div>
     </div>
 
+    <p class="vault-cta" data-ui><button type="button" id="vault-open" class="link" hidden>Locked out? Crack the vault instead.</button></p>
+
     <ol id="lock-row" class="locks" aria-label="Lock status" data-ui>
       <li class="lead">🔐 Lock status:</li>
       <li data-lock="password"><i></i>Password</li>
@@ -77,6 +79,17 @@
 
 <footer>*not secure</footer>
 
+<!-- The vault: a randomised sudoku that opens the bank after 10 minutes of being stuck. Built by game.js, nothing here to find in the puzzle itself. -->
+<section id="vault" class="vault" data-ui hidden role="dialog" aria-label="Vault door">
+  <div class="vault-door">
+    <h2>🔐 Vault door</h2>
+    <p class="small">Fill every row, column and 3×3 box with 1–9. Click a cell and type; arrow keys move; Backspace clears.</p>
+    <div id="sgrid" class="sgrid" role="grid" aria-label="Sudoku"></div>
+    <p id="smsg" class="small" aria-live="polite"></p>
+    <div class="vault-btns"><button type="button" id="s-new">New puzzle</button><button type="button" id="s-close">Close</button></div>
+  </div>
+</section>
+
 <button type="button" id="help-btn" class="help-btn" aria-label="Help" aria-expanded="false" data-ui>?</button>
 <aside id="help-card" class="help-card" aria-label="Help" data-ui hidden>
   <h2>How do I hack?</h2>
@@ -92,6 +105,7 @@
 
 <!-- classic scripts only: module scripts fail on the sandbox's opaque origin -->
 <script src="../_shared/sdk.js" data-game="inspect"></script>
+<script src="sudoku.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

@@ -22,17 +22,18 @@
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id) => document.getElementById(id);
   const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
-  const stars = () => (S.kiddie ? 0 : Math.max(0, 3 - LOCKS.filter((l) => S.hints[l] >= 2).length));   // tier 1 is free
+  const stars = () => (S.kiddie || S.vault ? 0 : Math.max(0, 3 - LOCKS.filter((l) => S.hints[l] >= 2).length));   // tier 1 is free
 
   const S = {
     startedAt: null, elapsedMs: 0, paused: false,
     locks: { password: false, button: false, role: false },
     hints: { password: 0, button: 0, role: 0 },
-    won: false, installed: false, dashboard: false, kiddie: false, authing: false,
+    won: false, installed: false, dashboard: false, kiddie: false, vault: false, authing: false,
     count: 0, lastProgress: 0, nudged: false,
   };
   const sent = {};                              // eggs already reported this load
-  let soundOn = false, ac = null, raf = 0, last = 0;
+  let soundOn = false, ac = null, raf = 0, last = 0, playBase = 0, hb = 0;          // playBase: play time the shell already has (INIT); hb: unsent heartbeat time
+  const SUDOKU_AFTER_MS = 10 * 60 * 1000, HEARTBEAT_MS = 15000;
 
   /* ---------------- sound ---------------- */
   function tone(f, at, dur, type, vol) {
@@ -56,8 +57,11 @@
   function tick(now) {
     raf = requestAnimationFrame(tick);
     if (S.paused || S.installed) { last = now; return; }
-    S.elapsedMs += Math.min(now - last, 250);
+    const dt = Math.min(now - last, 250);
+    S.elapsedMs += dt; hb += dt;
     last = now;
+    if (hb >= HEARTBEAT_MS) { hb -= HEARTBEAT_MS; System32.playtime(HEARTBEAT_MS); }          // the shell adds it up across reloads (the vault button needs 10 minutes in all)
+    if (!S.dashboard) syncVaultButton();
     if (!S.nudged && !S.dashboard && S.elapsedMs - S.lastProgress >= NUDGE_MS) nudge();
     if (S.dashboard) renderStats();
   }
@@ -190,7 +194,8 @@
   function install() {
     if (S.won) return;
     S.won = S.installed = true;
-    realWon({ timeMs: Math.max(1, Math.round(S.elapsedMs)), score: stars() });
+    realWon(S.vault ? { timeMs: Math.max(1, Math.round(S.elapsedMs)), score: 0, via: 'sudoku' } : { timeMs: Math.max(1, Math.round(S.elapsedMs)), score: stars() });
+    if (!S.vault && stars() === 3) System32.achieve('inspect-3star');
     lockInstall();
     renderStats();
     sfx('win');
@@ -203,6 +208,74 @@
     realWon({ timeMs: Math.max(1, Math.round(S.elapsedMs)), score: stars() });
     showDashboard();
   };
+
+  /* ---------------- vault: the sudoku escape hatch (FINAL_SPEC §6) ---------------- */
+  const totalPlayMs = () => playBase + S.elapsedMs;
+  function syncVaultButton() {
+    const b = $('vault-open');
+    if (b) b.hidden = S.dashboard || totalPlayMs() < SUDOKU_AFTER_MS;
+  }
+  const V = { puzzle: null, solution: null, grid: null, sel: -1, done: false };
+  function newPuzzle() {
+    const g = Sudoku.generate();
+    V.puzzle = g.puzzle; V.solution = g.solution; V.grid = g.puzzle.slice(); V.sel = V.grid.indexOf(0); V.done = false;
+    drawGrid();
+  }
+  function drawGrid() {
+    const host = $('sgrid');
+    if (!host) return;
+    if (!host.children.length) {
+      for (let c = 0; c < 81; c++) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'scell' + (c % 9 === 2 || c % 9 === 5 ? ' bx-r' : '') + (Math.floor(c / 9) === 2 || Math.floor(c / 9) === 5 ? ' bx-b' : ''); b.dataset.c = String(c);
+        b.setAttribute('role', 'gridcell');
+        host.append(b);
+      }
+    }
+    const bad = new Set(Sudoku.conflicts(V.grid));
+    for (let c = 0; c < 81; c++) {
+      const b = host.children[c], given = V.puzzle[c] !== 0;
+      b.textContent = V.grid[c] ? String(V.grid[c]) : '';
+      b.classList.toggle('given', given); b.classList.toggle('bad', bad.has(c)); b.classList.toggle('sel', c === V.sel);
+      b.setAttribute('aria-label', `Row ${Math.floor(c / 9) + 1}, column ${(c % 9) + 1}, ${V.grid[c] || 'empty'}${given ? ', given' : ''}`);
+    }
+    const m = $('smsg');
+    if (m) m.textContent = bad.size ? 'Some numbers clash (shown in red).' : '';
+  }
+  const vaultOpen = () => { const v = $('vault'); return !!v && !v.hidden; };
+  function openVault() {
+    if (S.dashboard || totalPlayMs() < SUDOKU_AFTER_MS) return;
+    if (!V.puzzle) newPuzzle();
+    $('vault').hidden = false; $('vault').classList.remove('open');
+    drawGrid();
+  }
+  function closeVault() { const v = $('vault'); if (v) v.hidden = true; }
+  function setCell(c, n) {
+    if (c < 0 || V.done || V.puzzle[c]) return;
+    V.grid[c] = n;
+    drawGrid();
+    if (Sudoku.isSolved(V.grid, V.solution)) vaultSolved();
+  }
+  function vaultSolved() {
+    V.done = true; S.vault = true; sfx('win');
+    const v = $('vault');
+    if (v) v.classList.add('open');                             // the door swings open ...
+    setTimeout(() => { closeVault(); showDashboard(); }, REDUCED ? 50 : 950);   // ... and the dashboard appears like after a normal win
+  }
+  function vaultKey(e) {
+    if (!vaultOpen() || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const k = e.key;
+    if (/^[1-9]$/.test(k)) setCell(V.sel, Number(k));
+    else if (k === 'Backspace' || k === 'Delete' || k === '0') setCell(V.sel, 0);
+    else if (k === 'Escape') closeVault();
+    else if (k.startsWith('Arrow')) {
+      const r = Math.floor(V.sel / 9), c = V.sel % 9, d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[k];
+      V.sel = Math.max(0, Math.min(8, r + d[0])) * 9 + Math.max(0, Math.min(8, c + d[1]));
+      drawGrid();
+    } else return false;
+    e.preventDefault();
+    return true;
+  }
 
   /* ---------------- help card ---------------- */
   function renderHints() {
@@ -236,12 +309,17 @@
     if (t.id === 'help-btn') toggleHelp();
     else if (t.id === 'hint-btn') revealHint();
     else if (t.id === 'install') install();
+    else if (t.id === 'vault-open') openVault();
+    else if (t.id === 's-new') newPuzzle();
+    else if (t.id === 's-close') closeVault();
+    else if (t.classList.contains('scell')) { V.sel = Number(t.dataset.c); drawGrid(); }
     else if (t.id === 'forgot') { const f = $('forgot-text'); if (f) f.textContent = 'We forgot it too.'; }
   });
   for (const type of ['input', 'change', 'pointerover', 'focusin']) {
     document.addEventListener(type, () => { startClock(); evaluate(); checkEggs(); }, true);
   }
   for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, startClock, true);
+  document.addEventListener('keydown', (e) => { vaultKey(e); }, true);
 
   // DevTools edits arrive as DOM mutations. Ignore writes this script makes itself ([data-ui] nodes).
   // Attached only after parsing: the parser's trailing whitespace nodes would otherwise start the clock at page load.
@@ -261,6 +339,8 @@
   System32.onInit((init) => {
     init = init || {};
     soundOn = !!init.soundOn;
+    playBase = Math.max(playBase, Number(init.playtimeMs) || 0);
+    syncVaultButton();
     const b = $('best');
     if (b && typeof init.bestTimeMs === 'number') { b.hidden = false; b.textContent = `Best: ${fmt(init.bestTimeMs)}`; }
   });
@@ -276,6 +356,8 @@
         evaluate();
       },
       reset: () => location.reload(),
+      fakePlaytime(ms) { playBase += ms; syncVaultButton(); },
+      vault: () => ({ open: vaultOpen(), puzzle: V.puzzle && V.puzzle.slice(), solution: V.solution && V.solution.slice(), grid: V.grid && V.grid.slice(), sel: V.sel, done: V.done, playMs: totalPlayMs() }),
     };
   }
 
