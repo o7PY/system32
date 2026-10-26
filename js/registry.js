@@ -85,6 +85,7 @@ export const LAUNCH_ITEMS = {
   'this-pc': { label: 'This PC', icon: 'a-pc' },
   readme: { label: 'README.txt', icon: 'a-text' },
   'thank-you': { label: 'thank_you.txt', icon: 'a-text' },
+  tutorial: { label: 'Start Tutorial', icon: 'a-dlg-info' },
   ...Object.fromEntries(GAMES.map((g) => [g.id, { label: g.file, icon: 'a-html' }])),
   ...Object.fromEntries(BONUS_GAMES.map((g) => [g.id, { label: g.file, icon: g.icon }])),
 };
@@ -92,6 +93,7 @@ export const LAUNCH_ITEMS = {
 export const DESKTOP_ICONS = [
   { id: 'this-pc', label: 'This PC', icon: 'a-pc', type: 'System Folder', size: '—', lore: 'Contains: you.' },
   { id: 'recycle-bin', label: 'Recycle Bin', icon: 'a-bin-full', type: 'System Folder', size: '—', lore: 'Nothing here is ever really gone.' },
+  { id: 'tutorial', label: 'Start Tutorial', icon: 'a-dlg-info', type: 'Application', size: '212 KB', lore: 'Recovery Guide. It points. It does not solve.' },
   { id: 'readme', label: 'README.txt', icon: 'a-text', type: 'Text Document', size: '1 KB', lore: 'Written by the previous user. Probably in a hurry.' },
   ...GAMES.map((g) => ({
     id: g.id, label: g.file, icon: 'a-html', type: 'HTML Document', game: g.id,

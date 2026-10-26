@@ -157,3 +157,25 @@
 @keyframes rb-pulse { 50% { background: color-mix(in srgb, var(--accent) 30%, transparent); } }
 .gw { position: relative; flex: 1; min-height: 0; background: #05060d; }
 .gw iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #05060d; display: block; }
+
+/* ---------- Recovery Guide ---------- */
+.tut { padding: 16px 20px; overflow: auto; flex: 1; }
+.tut h2 { margin: 0; font-size: 18px; }
+.tut-sub { margin: 2px 0 10px; color: var(--text-muted); font-size: 13px; }
+.tut-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tut-step { display: flex; gap: 12px; padding: 8px; border-radius: 8px; }
+.tut-step.cur { background: var(--hover); outline: 1px solid var(--accent); }
+.tut-step:not(.cur):not(.done) { opacity: .55; }
+.tut-box { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); display: grid; place-items: center; font-size: 12px; }
+.tut-step.done .tut-box { background: var(--success); border-color: var(--success); color: #fff; }
+.tut-step.done b { text-decoration: line-through; opacity: .7; }
+.tut-step p { margin: 4px 0 8px; font-size: 13px; line-height: 1.45; }
+.tut-step code { font-family: var(--mono); background: var(--hover); padding: 0 4px; border-radius: 3px; }
+.tut-act { display: flex; gap: 12px; align-items: center; }
+.tut .link { color: var(--accent); font-size: 12px; text-decoration: underline; }
+.tut-done { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
+.tut-done p { margin: 4px 0 0; }
+.tut-foot { margin-top: 14px; }
+.tut-pulse { animation: tut-pulse .6s ease-in-out 5; border-radius: 8px; position: relative; z-index: 4; }
+@keyframes tut-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent); } 50% { box-shadow: 0 0 0 6px var(--accent-light); } }
+@media (prefers-reduced-motion: reduce) { .tut-pulse { animation: none; box-shadow: 0 0 0 4px var(--accent); } }

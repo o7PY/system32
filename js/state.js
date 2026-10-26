@@ -29,7 +29,7 @@ const defaults = () => ({
   skipped: {},                  // gameId -> true when the component was repaired by skipping (cleared by a real win)
   playtime: {},                 // gameId -> ms of unpaused play (inspect: the sudoku escape hatch after 10 minutes)
   noShortcuts: true,            // still true while no puzzle was skipped and the sudoku was not used (for `no-skip`)
-  tutorial: { seen: false, steps: {}, skipped: {}, opened: [], done: false },   // Recovery Guide progress (restarts with Reset progress)
+  tutorial: { seen: false, steps: {}, skipped: {}, flags: {}, done: false },   // Recovery Guide progress (restarts with Reset progress)
   recent: [],                   // launch ids, most recent first
   extraIcons: [],               // desktop icons created by the user ("New folder (corrupted)")
   iconSize: 'medium',
@@ -57,7 +57,7 @@ const cleanAch = (v) => Object.fromEntries(Object.entries(v && typeof v === 'obj
 const cleanTutorial = (t) => {
   const o = t && typeof t === 'object' ? t : {};
   const flags = (m) => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).filter(([k, v]) => /^\d{1,2}$/.test(k) && v === true));
-  return { seen: o.seen === true, steps: flags(o.steps), skipped: flags(o.skipped), opened: Array.isArray(o.opened) ? o.opened.filter((x) => GAME_IDS.includes(x)) : [], done: o.done === true };
+  return { seen: o.seen === true, steps: flags(o.steps), skipped: flags(o.skipped), flags: Object.fromEntries(['readme', 'thispc', 'bin', 'bonus'].filter((k) => o.flags?.[k] === true).map((k) => [k, true])), done: o.done === true };
 };
 
 const idList = (v) => (Array.isArray(v) ? v.filter((x) => BONUS_IDS.includes(x)) : []);

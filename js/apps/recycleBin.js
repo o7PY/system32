@@ -76,7 +76,7 @@ function build(win) {
       '<table class="rb-table"><thead><tr><th>Name</th><th>Original location</th><th>Date deleted</th></tr></thead><tbody>' +
       items.map((it, i) => {
         const fresh = it.bonus && !state.bonus.seen.includes(it.bonus);
-        return `<tr data-i="${i}" class="${it.name === selected ? 'selected' : ''}${fresh ? ' rb-new' : ''}" tabindex="0"><td><span class="nm"><span class="pin-art">${icon(it.icon, 20)}${it.bonus && state.bonus.completed[it.bonus] ? `<span class="d-check">${icon('check', 8)}</span>` : ''}</span>${esc(it.name)}</span></td>` +
+        return `<tr data-i="${i}"${it.bonus ? ` data-bonus="${it.bonus}"` : ""} class="${it.name === selected ? 'selected' : ''}${fresh ? ' rb-new' : ''}" tabindex="0"><td><span class="nm"><span class="pin-art">${icon(it.icon, 20)}${it.bonus && state.bonus.completed[it.bonus] ? `<span class="d-check">${icon('check', 8)}</span>` : ''}</span>${esc(it.name)}</span></td>` +
           `<td>${esc(it.from)}</td><td>${esc(it.date)}</td></tr>`;
       }).join('') +
       '</tbody></table>';

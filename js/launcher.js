@@ -10,6 +10,7 @@ import { openExplorer } from './apps/explorer.js';
 import { openRecycleBin } from './apps/recycleBin.js';
 import { openSettings } from './apps/settings.js';
 import { openGameWindow } from './apps/gameWindow.js';
+import { openTutorial } from './apps/tutorial.js';
 import { openCorruptedFolder } from './desktop.js';
 
 function thankYouText() {
@@ -46,6 +47,7 @@ function open(id, opts) {
     case 'edgy': openBrowser({ route: 'home' }); break;
     case 'search': openBrowser({ route: 'search', query: opts.query ?? '', fresh: true }); break;
     case 'settings': openSettings(); break;
+    case 'tutorial': openTutorial(); break;
     case 'new-folder': openCorruptedFolder(); break;
     default:
       if (BONUS_BY_ID[id]) { openGameWindow(id); break; }       // bonus .exe: a plain game window, not Edgy

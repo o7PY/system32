@@ -11,10 +11,12 @@ import { initCorruption, scheduleEnding } from './corruption.js';
 import { initEggs } from './easterEggs.js';
 import { initGameWindows } from './apps/gameWindow.js';
 import { initAchievements, achieve, grantRetroactive } from './achievements.js';
+import { initTutorial } from './apps/tutorial.js';
 import { initAchievementsPanel } from './achievementsPanel.js';
 import { announceBonus, debugUnlock } from './bonus.js';
 import { closeMenu, closeFlyout } from './menu.js';
 import { toast } from './notifications.js';
+import { showDialog } from './dialogs.js';
 import { launch } from './events.js';
 import { play } from './sound.js';
 import { wait, pad2, reducedMotion } from './ui.js';
@@ -86,7 +88,10 @@ function enterDesktop() {
     set({ firstVisit: false });
     setTimeout(() => {
       toast({ title: 'System32', kind: 'warn', text: `⚠ System integrity: ${integrity()}%. Critical components missing.` });
-      launch('readme');
+      showDialog({
+        title: 'System32', kind: 'warning', message: 'System32 is damaged. Start the tutorial?',
+        buttons: [{ label: 'Start tutorial', value: 'start', primary: true }, { label: "I'll figure it out", value: 'no' }],
+      }).result.then((v) => launch(v === 'start' ? 'tutorial' : 'readme'));
     }, 1500);
   }
   scheduleEnding(800);           // finished all three but never restarted? offer again
@@ -137,6 +142,7 @@ function init() {
   initEggs();
   initAchievementsPanel();
   initAchievements();
+  initTutorial();
 
   // Our own context menus replace the browser's, except inside text fields.
   document.addEventListener('contextmenu', (e) => {

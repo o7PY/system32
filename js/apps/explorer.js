@@ -126,6 +126,7 @@ function build(win, startPath) {
     const id = here();
     const node = NODES[id];
     win.setTitle(node.name);
+    bus.emit('explorer:path', id);
     backBtn.disabled = idx === 0;
     fwdBtn.disabled = idx >= hist.length - 1;
     upBtn.disabled = !node.parent;

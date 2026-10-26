@@ -9,7 +9,7 @@ import { sleep, shutdown, restart } from './system.js';
 const menu = () => document.getElementById('start-menu');
 const startBtn = () => document.getElementById('start-btn');
 
-const BASE_PINNED = ['edgy', 'explorer', 'notepad', 'recycle-bin', 'settings'];
+const BASE_PINNED = ['edgy', 'explorer', 'notepad', 'recycle-bin', 'settings', 'tutorial'];
 
 const pinnedIds = () => [
   ...BASE_PINNED,
