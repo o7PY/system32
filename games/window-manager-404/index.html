@@ -37,6 +37,7 @@
 <section id="start" class="screen term">
   <pre id="term"></pre>
   <button type="button" id="begin" data-do="start" hidden>Begin recovery</button>
+  <button type="button" id="skip-start" class="skip-link" data-do="skip" hidden>Skip puzzle</button>
 </section>
 
 <section id="win" class="screen" hidden>
@@ -56,8 +57,10 @@
   <p>Window manager not found.</p>
   <p id="lose-stats" class="tiny"></p>
   <button type="button" data-do="start">Retry</button>
+  <button type="button" id="skip-lose" data-do="skip" hidden>Skip puzzle</button>
 </section>
 
+<div id="skipc" class="veil" hidden><p>Skip this puzzle?</p><small>The component gets repaired, but you won't get a score.</small><div class="skip-row"><button type="button" data-do="skip-yes">Skip</button><button type="button" data-do="skip-no">Keep trying</button></div></div>
 <div id="pause" class="veil" hidden><button type="button" data-do="resume">Paused<small>click to resume</small></button></div>
 <div id="small" class="veil" hidden><p>Maximize the window to play</p><small>This game needs at least 760 × 480.</small></div>
 

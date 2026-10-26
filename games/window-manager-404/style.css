@@ -109,6 +109,10 @@ button { font: inherit; cursor: pointer; }
 #lose p { margin: 0; font-size: 20px; }
 #lose .tiny { color: #aaa; font-size: 12px; }
 #lose button { margin-top: 14px; color: #000; }
+.skip-link { position: fixed; right: 12px; bottom: 44px; z-index: 7100; background: none !important; border: 0 !important; outline: 0 !important; color: #aaa; font: 12px "Courier New", monospace; text-decoration: underline; padding: 0 !important; }
+.skip-link[hidden] { display: none; }
+#skip-lose { margin-top: 6px; }
+.skip-row { display: flex; gap: 12px; margin-top: 10px; }
 .veil { position: fixed; inset: 0; z-index: 8000; display: grid; place-content: center; justify-items: center; gap: 6px; background: rgba(0, 0, 0, .75); color: #fff; text-align: center; font-size: 16px; }
 .veil button { font-size: 20px; color: #000; }
 .veil small { display: block; font-size: 12px; }

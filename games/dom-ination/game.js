@@ -69,7 +69,7 @@
 
   /* ---------------- state ---------------- */
   let phase = 'start';                          // start | play | won | lost
-  let paused = false, soundOn = false, beaten = false;
+  let paused = false, soundOn = false, beaten = false, losses = 0;
   let raf = 0, last = 0, acc = 0;
   let t = 0, elapsed = 0;                       // t: cosmetic clock, elapsed: play clock (both game ms, pause-exact)
   let popups, closing, timers, nextId, zTop, adBag, lastSpawn, pointer;
@@ -446,7 +446,7 @@
     if (ac && ac.state === 'suspended') ac.resume();
     resume();
     resetRun();
-    phase = 'play';
+    phase = 'play'; syncSkip();
     document.body.classList.add('playing');
     $('hud').hidden = false;
     $('scam').inert = true;
@@ -455,12 +455,21 @@
     render();
   }
 
+  /** Skip puzzle (FINAL_SPEC §5): from the 2nd loss on, unless the component is already repaired. */
+  const canSkip = () => !beaten && losses >= 2;
+  function syncSkip() {
+    const on = canSkip();
+    $('skip-start').hidden = !on || phase !== 'start';
+    document.querySelectorAll('.skip-btn').forEach((b) => { b.hidden = !on; });
+  }
+
   function showResult(id) {
     const el = $(id).content.firstElementChild.cloneNode(true);
     el.querySelector('[data-stat=closed]').textContent = String(closed);
     el.querySelector('[data-stat=peak]').textContent = `${peak}/${CONFIG.clutterCap}`;
     el.querySelector('[data-stat=acc]').textContent = `${accuracy()}%`;
     field.append(el);
+    syncSkip();
     const first = el.querySelector('button, a');
     if (first) first.focus({ preventScroll: true });
   }
@@ -485,7 +494,7 @@
     phase = 'lost';
     sfx('bait');
     popups.forEach((p) => { p.el.style.pointerEvents = 'none'; });
-    if (!reported) { reported = true; System32.lost('browser overloaded'); }
+    if (!reported) { reported = true; System32.lost('browser overloaded'); losses++; syncSkip(); }       // the shell counts too and confirms on the next INIT
     if (!REDUCED) {                            // ~60 tiny stacked pop-ups, then freeze
       const flood = document.createElement('div');
       flood.id = 'flood';
@@ -507,6 +516,9 @@
     e.preventDefault();
     const what = a.dataset.do;
     if (what === 'claim' || what === 'again') begin();
+    else if (what === 'skip') { if (canSkip()) $('skipc').hidden = false; }
+    else if (what === 'skip-no') $('skipc').hidden = true;
+    else if (what === 'skip-yes') { $('skipc').hidden = true; if (canSkip()) { System32.skip(); phase = 'skipped'; $('skip-start').hidden = true; document.querySelectorAll('.skip-btn').forEach((b) => { b.hidden = true; }); $('sticker').textContent = 'popup_guard.sys ✓ restored (skipped).'; $('sticker').hidden = false; } }
     else if (what === 'resume') resume();
     else if (what === 'install' && !reported && phase === 'won') {
       reported = true;
@@ -526,6 +538,8 @@
     init = init || {};
     soundOn = !!init.soundOn;
     beaten = !!init.beaten;
+    losses = Math.max(losses, Number(init.losses) || 0);
+    syncSkip();
     $('sticker').hidden = !beaten;
     const best = $('best');
     best.hidden = typeof init.best !== 'number';
@@ -546,6 +560,7 @@
       closeAll: () => [...popups.values()].forEach((p) => retire(p)),
       forceWin: () => { if (phase === 'play') win(); },
       forceLose: () => { if (phase === 'play') lose(); },
+      forceLosses: (n) => { losses = n; syncSkip(); },
     };
   }
 

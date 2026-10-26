@@ -48,6 +48,7 @@
   const dim = () => ({ W: desk.clientWidth, H: desk.clientHeight });
 
   /* ---------------- state ---------------- */
+  let beaten = false, losses = 0;
   let phase = 'start', paused = false, soundOn = false, ac = null, raf = 0, last = 0, acc = 0, toastT = 0, typeT = 0, bannerT = 0;
   const sent = {};
   let S = fresh();
@@ -570,11 +571,18 @@
     if (phase !== 'play') return;
     phase = 'losing'; cancelDrag(); S.timers = [];
     document.body.classList.add('busy');
-    if (!S.reported) { S.reported = true; System32.lost('core fragments lost'); }
+    if (!S.reported) { S.reported = true; System32.lost('core fragments lost'); losses++; syncSkip(); }       // the shell counts too and confirms on the next INIT
     S.wins.filter((w) => !w.parentId && !w.dead).forEach((w, i) => later(i * CONFIG.loseGapMs, () => collapse(w, 'collapse')));
   }
+  /** Skip puzzle (FINAL_SPEC §5): from the 2nd loss on, unless the component is already repaired. */
+  const canSkip = () => !beaten && losses >= 2;
+  function syncSkip() {
+    const on = canSkip();
+    $('skip-start').hidden = !on || phase !== 'start';
+    $('skip-lose').hidden = !on;
+  }
   function showLose() {
-    phase = 'lost'; cancelAnimationFrame(raf);
+    phase = 'lost'; syncSkip(); cancelAnimationFrame(raf);
     $('lose-stats').textContent = `${S.recovered} of ${CONFIG.slots} fragments recovered · ${fmtT(S.elapsed)}`;
     $('lose').hidden = false; $('lose').querySelector('button').focus();
   }
@@ -606,6 +614,9 @@
     if (!t) { if (phase === 'start' && $('begin').hidden) skipTyping(); return; }
     const what = t.dataset.do;
     if (what === 'start') { e.preventDefault(); begin(); }
+    else if (what === 'skip') { if (canSkip()) $('skipc').hidden = false; }
+    else if (what === 'skip-no') $('skipc').hidden = true;
+    else if (what === 'skip-yes') { $('skipc').hidden = true; if (canSkip()) { System32.skip(); $('skip-start').hidden = true; $('skip-lose').hidden = true; if (phase === 'start') $('term').textContent += '\n\nwm_core.exe: restored (skipped).'; } }
     else if (what === 'resume') resume();
     else if (what === 'install') install();
     else if (t.id === 'help-btn') { const h = $('help'); h.hidden = !h.hidden; t.setAttribute('aria-expanded', String(!h.hidden)); }
@@ -616,7 +627,7 @@
     for (const w of S.wins) { w.x = clamp(w.x, 30 - w.w, W - 30); w.y = clamp(w.y, 0, H - 22); }
   });
 
-  System32.onInit((init) => { soundOn = !!(init && init.soundOn); });
+  System32.onInit((init) => { soundOn = !!(init && init.soundOn); beaten = !!(init && init.beaten); losses = Math.max(losses, Number(init && init.losses) || 0); syncSkip(); });
   System32.onPause(pause);
   System32.onResume(resume);
 
@@ -639,6 +650,7 @@
         for (let i = 0; i < [0, 2, 3][n - 1]; i++) putInSlot(addFile(`core_0${i + 1}.frag`, rec().id), i);
         syncWin(rec()); checkPhase(); if (S.ph !== n) startPhase(n);
       },
+      forceLosses(n) { losses = n; syncSkip(); },
       begin, config: CONFIG, forceLose() { S.hp = 1; hurt(); },
     };
   }

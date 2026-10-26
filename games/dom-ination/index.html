@@ -26,6 +26,7 @@
   <div class="gpu" aria-hidden="true"><i></i><i></i><i></i><span>RTX&nbsp;ΩMEGA&nbsp;9000</span></div>
   <button id="claim" class="claim" type="button" data-do="claim">CLAIM YOUR FREE GPU</button>
   <p id="best" class="best" hidden></p>
+  <button id="skip-start" class="skip-link" type="button" data-do="skip" hidden>Skip puzzle</button>
   <p class="fine">By clicking you agree to receive 4,000 pop-ups.</p>
   <div id="sticker" class="sticker" hidden>popup_guard.sys ✓ restored.<br>Play again for score.</div>
 </main>
@@ -34,6 +35,7 @@
 <div id="field"></div>
 <div id="banner" role="status" aria-live="polite"><b></b><small></small></div>
 
+<div id="skipc" class="veil" hidden><p>Skip this puzzle?</p><small>The component gets repaired, but you won't get a score.</small><div class="skip-row"><button type="button" data-do="skip-yes">Skip</button><button type="button" data-do="skip-no">Keep trying</button></div></div>
 <div id="pause" class="veil" hidden><button type="button" data-do="resume">Paused<small>click to resume</small></button></div>
 <div id="small" class="veil" hidden><p>Maximize the window to play</p><small>This game needs at least 760 × 480.</small></div>
 
@@ -76,6 +78,7 @@
       <p class="pop-text">Your browser is now <b>98% ads</b>.</p>
       <dl class="stats"><dt>Closed</dt><dd data-stat="closed"></dd><dt>Peak clutter</dt><dd data-stat="peak"></dd><dt>Accuracy</dt><dd data-stat="acc"></dd></dl>
       <button type="button" class="claim small" data-do="again">Try again</button>
+      <button type="button" class="claim small skip-btn" data-do="skip" hidden>Skip puzzle</button>
     </div>
   </div>
 </template>
