@@ -120,7 +120,7 @@ function clearSelection() { selected.clear(); syncSelection(); }
 
 function syncRepaired() {
   for (const it of items) {
-    if (it.game) it.el.classList.toggle('done', !!state.repaired[it.game]);
+    if (it.game) { it.el.classList.toggle('done', !!state.repaired[it.game]); it.el.classList.toggle('skipped', !!state.skipped[it.game] && !!state.repaired[it.game]); }
     else if (it.bonus) it.el.classList.toggle('done', !!state.bonus.completed[it.bonus]);
   }
 }
@@ -338,8 +338,8 @@ function newFolder() {
 }
 
 export function personalize() {
-  if (!state.repaired.specificity) {
-    toast({ title: 'Personalization', kind: 'err', text: 'Personalization is unavailable. Missing component: theme.dll' });
+  if (!state.repaired.inspect) {
+    toast({ title: 'Personalization', kind: 'err', text: 'Personalization is unavailable. Missing component: admin_access.dll' });
     return;
   }
   set({ accent: (state.accent + 1) % ACCENTS.length });

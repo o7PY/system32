@@ -1,6 +1,6 @@
 // Power + fake-crash flows: BSOD, sleep, shutdown (blocked until repaired), restart.
 import { bus } from './events.js';
-import { set, allRepaired, repairedCount, foundEgg } from './state.js';
+import { state, set, allRepaired, repairedCount, foundEgg } from './state.js';
 import { GAME_IDS } from './registry.js';
 import { showDialog } from './dialogs.js';
 import { play } from './sound.js';
@@ -70,15 +70,22 @@ export function sleep() {
   }, 400);
 }
 
+/** The ending is seen once all components are repaired and the player restarts (or shuts down). */
+function markEnding() {
+  if (!allRepaired() || state.endingSeen) return;
+  set({ endingSeen: true });
+  bus.emit('ending:seen');
+}
+
 export async function restart() {
-  if (allRepaired()) set({ endingSeen: true });
+  markEnding();
   const el = blackout('<div class="spinner" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div>Restarting</div>');
   await wait(1400);
   bus.emit('system:reboot', { skipLock: true });
   el.remove();
 }
 
-/** Shut down. Blocked by a fake "updates pending" dialog until all four components are repaired. */
+/** Shut down. Blocked by a fake "updates pending" dialog until all three components are repaired. */
 export async function shutdown() {
   if (!allRepaired()) {
     foundEgg('shutdown-early');
@@ -99,7 +106,7 @@ export async function shutdown() {
     }, 90);
     return;
   }
-  set({ endingSeen: true });
+  markEnding();
   const el = blackout('<div class="spinner" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div>Shutting down</div>');
   await wait(1800);
   el.innerHTML = 'It\'s now safe to turn off your computer.<div style="font-size:13px;opacity:.6">(Click anywhere to boot again.)</div>';

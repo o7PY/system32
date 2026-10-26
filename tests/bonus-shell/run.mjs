@@ -2,9 +2,9 @@
 //   node tests/bonus-shell/run.mjs [name filter]
 import { suite, sleep } from '../lib/cdp.mjs';
 
-const ALL = { 'dom-ination': true, inspect: true, specificity: true, wm404: true };
+const ALL = { 'dom-ination': true, inspect: true, wm404: true };
 const SANDBOX = 'allow-scripts allow-forms allow-pointer-lock';
-const NONE = { 'dom-ination': false, inspect: false, specificity: false, wm404: false };
+const NONE = { 'dom-ination': false, inspect: false, wm404: false };
 const st = (o = {}) => ({ version: 2, firstVisit: false, repaired: ALL, ...o });
 // These tests exercise the shell's bonus-game flow against a stub page (a button that sends RUN_OVER), not the real game: after boot() the
 // registry's SpaceSaga entry is pointed at the stub. The real game has its own shell test (tests/space-saga/shell.mjs).
@@ -35,7 +35,7 @@ async function toDesktop(page) {
   await page.click('#signin-btn');
   await page.waitFor(`document.body.dataset.phase === 'desktop'`, { what: 'desktop' });
 }
-const stateOf = (page) => page.eval(`JSON.parse(localStorage.getItem('system32.state') ?? 'null')`);
+const stateOf = (page) => page.eval(`(() => { const a = JSON.parse(localStorage.getItem('system32.state') ?? 'null'), b = JSON.parse(localStorage.getItem('system32.meta') ?? 'null'); return a || b ? { ...a, ...b } : null; })()`);
 const live = (page) => page.eval(`import('/js/state.js').then((m) => JSON.parse(JSON.stringify(m.state)))`);
 const toastTexts = (page) => page.eval(`[...document.querySelectorAll('#toasts .toast-text')].map((e) => e.textContent)`);
 async function binRow(page, name) {
@@ -54,7 +54,7 @@ test('old saves migrate (version 1, no bonus field): everything is kept, bonus s
   await boot(page, { version: 1, firstVisit: false, repaired: { ...ALL, wm404: false }, eggsFound: ['clock'], bestScores: { 'dom-ination': 7 }, bestTimes: { inspect: 9000 }, accent: 1 });
   await page.eval(`import('/js/state.js').then((m) => m.set({ accent: 1 }))`);          // any write persists the migrated state
   const saved = await stateOf(page);
-  if (saved.version !== 2) throw new Error(`version ${saved.version}`);
+  if (saved.version !== 3) throw new Error(`version ${saved.version}`);
   if (JSON.stringify(saved.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {}, completed: {} })) throw new Error(`bonus ${JSON.stringify(saved.bonus)}`);
   if (saved.repaired.wm404 !== false || saved.repaired.inspect !== true || saved.eggsFound[0] !== 'clock' || saved.bestScores['dom-ination'] !== 7 || saved.bestTimes.inspect !== 9000) throw new Error('old progress lost');
   // garbage in the bonus field is cleaned, not trusted
@@ -206,7 +206,7 @@ test('Empty Recycle Bin never deletes a bonus game; its row stays while the joke
   if (!(await stateOf(page)).bonus.unlocked.includes('space-saga')) throw new Error('unlock lost');
 });
 
-test('?unlockBonus=1 unlocks without the ending; bonus games never count toward integrity; reset wipes them', async (page) => {
+test('?unlockBonus=1 unlocks without the ending; bonus games never count toward integrity; Reset progress keeps them', async (page) => {
   await boot(page, null, '/?unlockBonus=1');
   const sv = await live(page);
   if (sv.bonus.unlocked[0] !== 'space-saga' || sv.endingSeen) throw new Error(`state ${JSON.stringify(sv.bonus)} ending ${sv.endingSeen}`);
@@ -216,15 +216,16 @@ test('?unlockBonus=1 unlocks without the ending; bonus games never count toward 
   if (!(await binRow(page, 'SpaceSaga.exe'))) throw new Error('no row');
   // reset progress (Settings is unlocked by admin_access.dll)
   await boot(page, st({ endingSeen: true, bonus: { unlocked: ['space-saga'], restored: ['space-saga'], seen: ['space-saga'], best: { 'space-saga': 123 } } }));
-  await page.eval(`import('/js/events.js').then((m) => m.launch('settings'))`);
-  await page.click('#settings [data-reset]');
-  await page.waitFor(`[...document.querySelectorAll('.dialog .btn')].some((b) => b.textContent.trim() === 'Yes')`);
-  const nav = page.waitFor(`false`, { timeout: 1500 }).catch(() => {});
-  await dlgClick(page, 'Yes');
-  await nav;
-  await sleep(1200);
+  await page.click('#ach-btn');
+  await page.waitFor(`!document.getElementById('ach-panel').hidden`);
+  await sleep(350);                                                  // the panel slides in
+  await page.click('#ach-panel [data-reset]');
+  await page.waitFor(`[...document.querySelectorAll('.dialog .btn')].some((b) => b.textContent.trim() === 'Reset')`);
+  await dlgClick(page, 'Reset');
+  await sleep(3500);
   const after = await stateOf(page);
-  if (JSON.stringify(after.bonus) !== JSON.stringify({ unlocked: [], restored: [], seen: [], best: {}, completed: {} }) || after.endingSeen) throw new Error(`after reset ${JSON.stringify(after)}`);
+  if (!after.bonus.unlocked.includes('space-saga') || !after.bonus.restored.includes('space-saga') || after.bonus.best['space-saga'] !== 123) throw new Error(`reset lost the bonus games ${JSON.stringify(after.bonus)}`);
+  if (after.endingSeen || after.repaired.inspect) throw new Error('reset progress kept the game state');
 });
 
 test('core games are unchanged: Edgy iframe, INIT with best, GAME_WON repairs; RUN_OVER from a core game is ignored', async (page) => {

@@ -47,6 +47,7 @@ const SOUNDS = {
   startup: () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, i * 0.16, 0.9, { vol: 0.08 })),
   error: () => { tone(220, 0, 0.16, { type: 'square', vol: 0.06 }); tone(196, 0.18, 0.22, { type: 'square', vol: 0.06 }); },
   notify: () => { tone(880, 0, 0.12, { vol: 0.09 }); tone(1318.5, 0.09, 0.2, { vol: 0.07 }); },
+  achievement: () => [659.25, 783.99, 987.77, 1318.5].forEach((f, i) => tone(f, i * 0.08, 0.35, { vol: 0.07 })),
   crumple: () => { noise(0, 0.5); noise(0.18, 0.3, 0.1); },
 };
 

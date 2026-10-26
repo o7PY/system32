@@ -20,8 +20,8 @@ function thankYouText() {
   return [
     'THANK YOU',
     '---------',
-    'System32 is repaired. All four components are running again.',
-    'The windows stay where you put them. The stylesheets have stopped fighting.',
+    'System32 is repaired. All three components are running again.',
+    'The windows stay where you put them. The pop-ups have stopped.',
     'Nobody has ever exited vim.',
     '',
     'Best times',

@@ -6,6 +6,7 @@ import { bus } from '../events.js';
 import { Window } from '../WindowManager.js';
 import { state, recordBonusBest, recordBonusComplete, foundEgg, isBonusUnlocked } from '../state.js';
 import { BONUS_BY_ID, EGG_IDS, DIFFICULTIES } from '../registry.js';
+import { achieve } from '../achievements.js';
 import { toast } from '../notifications.js';
 import { SANDBOX } from './browser.js';
 import { readGameSave, writeGameSave } from '../saves.js';
@@ -151,6 +152,10 @@ class GameWindow {
 
       case 'FULLSCREEN':           // a game asked (key / button inside it); must come from a click or key press, the browser enforces that
         this.toggleFullscreen();
+        break;
+
+      case 'ACHIEVEMENT':          // only with this game's own prefix (saga-, strata-)
+        if (typeof msg.id === 'string' && msg.id.startsWith(game.eggPrefix ?? '\0')) achieve(msg.id);
         break;
 
       case 'GAME_WON':

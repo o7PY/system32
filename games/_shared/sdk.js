@@ -3,7 +3,7 @@
  * Classic script on purpose: module scripts need CORS, and sandboxed frames have an opaque origin.
  *
  *   <script src="../_shared/sdk.js" data-game="dom-ination"></script>
- *   System32.onInit(function (init) { ... });   // { bestTimeMs, best, beaten, soundOn, highScore, save, completed }  (save: the last saved string or null, bonus games with `saves` only; completed: the stored completion or null)
+ *   System32.onInit(function (init) { ... });   // { bestTimeMs, best, beaten, soundOn, highScore, losses, canSkip, playtimeMs, save, completed }  (save: the last saved string or null, bonus games with `saves` only; completed: the stored completion or null)
  *   System32.ready();                           // after your game is loaded
  *   System32.won({ timeMs: 41200, score: 3 });
  *   System32.lost('reason');
@@ -14,6 +14,9 @@
 
  *   System32.save(data);                         // BONUS games with `saves: true` only (Strata): data is a string, at most the game's `saveCap` (Strata: 2.5 MB)
  *   System32.onSaved(function (r) { ... });      // { ok, bytes, error? } error: 'too-large' | 'quota' | 'invalid'
+ *   System32.achieve('saga-1km');               // unlock an achievement; the id must start with this game's own prefix (dom- inspect- wm- saga- strata-), else the shell ignores it
+ *   System32.skip();                             // DOM-ination and 404: Window Manager only: the shell re-checks that 2 losses were counted, then repairs the component like a win
+ *   System32.playtime(15000);                    // add unpaused play time in ms (the shell clamps one call to 20000); Inspect Element's sudoku escape hatch uses it
  *   System32.fullscreen();                       // BONUS games: toggle fullscreen (the game window fills the whole screen, no desktop around it); the shell does it, so call this from a click or key press
  *   System32.onFullscreen(function (p) { ... }); // { on }: the window entered or left fullscreen (also when the user pressed Esc)
  *   System32.onSound(function (p) { ... });      // { soundOn }: the taskbar speaker was toggled while the game is open
@@ -55,6 +58,9 @@
     save: function (data) { send('SAVE', { payload: { data: data } }); },
     onSaved: function (fn) { handlers.SAVED.push(fn); },
     fullscreen: function () { send('FULLSCREEN'); },
+    achieve: function (id) { send('ACHIEVEMENT', { id: String(id) }); },
+    skip: function () { send('GAME_SKIPPED'); },
+    playtime: function (ms) { send('PLAYTIME', { ms: Number(ms) }); },
     onFullscreen: function (fn) { handlers.FULLSCREEN.push(fn); },
   };
 })();

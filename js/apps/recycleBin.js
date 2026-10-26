@@ -29,7 +29,7 @@ const ITEMS = (win) => [
 /** Bonus games that are in the bin: unlocked and not restored yet. They are never emptied. */
 const bonusItems = () => BONUS_GAMES.filter((g) => isBonusUnlocked(g.id) && !isBonusRestored(g.id)).map((g) => ({
   name: g.file, icon: g.icon, from: g.binFrom, date: g.binDate, type: 'Application', size: g.size, bonus: g.id, lore: g.binLore,
-  open: () => launch(g.id),
+  open: () => { bus.emit('bin:open', g.id); launch(g.id); },
 }));
 
 export const binHasBonus = () => bonusItems().length > 0;

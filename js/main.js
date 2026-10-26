@@ -10,6 +10,8 @@ import { initLauncher } from './launcher.js';
 import { initCorruption, scheduleEnding } from './corruption.js';
 import { initEggs } from './easterEggs.js';
 import { initGameWindows } from './apps/gameWindow.js';
+import { initAchievements, achieve, grantRetroactive } from './achievements.js';
+import { initAchievementsPanel } from './achievementsPanel.js';
 import { announceBonus, debugUnlock } from './bonus.js';
 import { closeMenu, closeFlyout } from './menu.js';
 import { toast } from './notifications.js';
@@ -78,6 +80,8 @@ function enterDesktop() {
   setPhase('desktop');
   play('startup');
   revealIcons();
+  grantRetroactive();
+  achieve('boot');
   if (state.firstVisit) {
     set({ firstVisit: false });
     setTimeout(() => {
@@ -85,7 +89,7 @@ function enterDesktop() {
       launch('readme');
     }, 1500);
   }
-  scheduleEnding(3000);          // finished all four but never restarted? offer again
+  scheduleEnding(800);           // finished all three but never restarted? offer again
   announceBonus();               // the ending is complete (clean desktop after the restart): the Recycle Bin has one more item
 }
 
@@ -131,6 +135,8 @@ function init() {
   initLauncher();
   initCorruption();
   initEggs();
+  initAchievementsPanel();
+  initAchievements();
 
   // Our own context menus replace the browser's, except inside text fields.
   document.addEventListener('contextmenu', (e) => {

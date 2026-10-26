@@ -17,8 +17,8 @@ const onDesktop = () => document.body.dataset.phase === 'desktop';
 export function applyAppearance() {
   if (state.theme === 'light' || state.theme === 'dark') root.dataset.theme = state.theme;
   else delete root.dataset.theme;
-  // Accent colours are part of theme.dll: before it is repaired the default accent is locked in.
-  const a = state.repaired.specificity ? ACCENTS[state.accent % ACCENTS.length] : ACCENTS[0];
+  // Accent colours come with admin_access.dll (Settings): before it is repaired the default accent is locked in.
+  const a = state.repaired.inspect ? ACCENTS[state.accent % ACCENTS.length] : ACCENTS[0];
   root.style.setProperty('--accent', a.value);
   root.style.setProperty('--accent-light', a.light);
 }
@@ -26,7 +26,7 @@ export function applyAppearance() {
 /* ---------- corruption visuals ---------- */
 function applyVisuals() {
   root.style.setProperty('--corruption', String(1 - repairedCount() / GAME_IDS.length));
-  root.classList.toggle('theme-broken', !state.repaired.specificity);
+  root.classList.toggle('theme-broken', !allRepaired());
   document.body.classList.toggle('wm-ok', !!state.repaired.wm404);
 }
 
@@ -58,7 +58,7 @@ export function scheduleEnding(delay = 3000) {
 function onRepaired(gameId) {
   toast({
     title: 'System Integrity', kind: 'ok',
-    text: `${GAME_BY_ID[gameId].component} restored. System integrity: ${integrity()}%.`,
+    text: `${GAME_BY_ID[gameId].component} restored${state.skipped[gameId] ? ' (skipped)' : ''}. System integrity: ${integrity()}%.`,
   });
   sweep();
   scheduleEnding(3000);        // 3 s after the last toast

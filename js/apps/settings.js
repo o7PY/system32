@@ -1,7 +1,7 @@
 // Settings: unlocked by repairing admin_access.dll (Inspect Element).
 import { bus } from '../events.js';
 import { Window, WM } from '../WindowManager.js';
-import { state, set, reset, repairedCount, integrity, isBonusUnlocked } from '../state.js';
+import { state, set, repairedCount, integrity, isBonusUnlocked } from '../state.js';
 import { gameSaveBytes, deleteGameSave } from '../saves.js';
 import { GAMES, GAME_IDS, EGGS, ACCENTS, BONUS_GAMES } from '../registry.js';
 import { icon, esc, meterColor } from '../ui.js';
@@ -33,12 +33,12 @@ function build(win) {
   root.className = 'set';
 
   const draw = () => {
-    const themeOk = state.repaired.specificity;
+    const themeOk = state.repaired.inspect;
     const pct = integrity();
     root.innerHTML =
       '<h2>Settings</h2>' +
       '<section><h3>Personalization</h3>' +
-      `<div class="row"><div>Accent color${themeOk ? '' : '<small>Unavailable. Missing component: theme.dll</small>'}</div>` +
+      `<div class="row"><div>Accent color${themeOk ? '' : '<small>Unavailable. Missing component: admin_access.dll</small>'}</div>` +
       `<div class="swatches">${ACCENTS.map((a, i) =>
         `<button class="swatch${themeOk && state.accent === i ? ' on' : ''}" data-accent="${i}" style="background:${a.value}" aria-label="${a.name}" ${themeOk ? '' : 'disabled'}></button>`).join('')}</div></div>` +
       '<div class="row"><div>Theme</div><div class="seg" role="group" aria-label="Theme">' +
@@ -60,7 +60,7 @@ function build(win) {
             `<button class="btn danger" data-delsave="${g.id}" ${n ? '' : 'disabled'}>Delete save…</button></div>`; }).join('') + '</section>'
         : '') +
       '<section><h3>Recovery</h3>' +
-      '<div class="row"><div>Reset progress<small>Un-repairs everything and starts over. Cannot be undone.</small></div><button class="btn danger" data-reset>Reset…</button></div></section>';
+      '<div class="row"><div>Reset progress and Hard reset<small>They live at the bottom of the Achievements &amp; Secrets panel (the trophy at the left of the taskbar).</small></div><button class="btn" data-openach>Open panel</button></div></section>';
   };
 
   root.addEventListener('click', async (e) => {
@@ -75,10 +75,7 @@ function build(win) {
       const ok = await confirmDialog(`Delete the saved world of ${g?.title ?? id}? This cannot be undone.`, { title: 'Delete save', parent: win });
       if (ok) deleteGameSave(id);
     }
-    else if (e.target.closest('[data-reset]')) {
-      const ok = await confirmDialog('Reset all progress? Every component will be broken again and all secrets forgotten.', { title: 'Reset progress', parent: win });
-      if (ok) { reset(); location.reload(); }
-    }
+    else if (e.target.closest('[data-openach]')) bus.emit('achievements:open', {});
   });
 
   const rerender = () => { if (!win.closed) { const top = root.scrollTop; draw(); root.scrollTop = top; } };

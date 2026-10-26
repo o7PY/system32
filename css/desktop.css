@@ -32,7 +32,7 @@
   mix-blend-mode: screen;
 }
 
-/* ---------- corruption FX (theme.dll broken) ---------- */
+/* ---------- corruption FX (scale with corruption; gone at 100%) ---------- */
 .theme-broken #wallpaper {
   filter: hue-rotate(calc(var(--corruption) * 28deg)) saturate(calc(1 + var(--corruption) * .25));
 }
@@ -128,6 +128,8 @@
   align-items: center; justify-content: center;
 }
 .d-icon.done .d-check { display: flex; }
+.d-icon.skipped .d-check { background: #b7791f; }
+.d-icon.skipped .d-check::after { content: "\21B7"; position: absolute; right: -9px; top: -9px; width: 14px; height: 14px; border-radius: 50%; background: #fff; color: #7a4a00; font-size: 11px; line-height: 14px; text-align: center; }
 .d-check svg { width: 12px !important; height: 12px !important; stroke-width: 3; filter: none !important; }
 /* the same green check on a finished bonus game in the Start menu and the Recycle Bin (small icons) */
 .pin-art { position: relative; display: inline-flex; max-width: none !important; overflow: visible !important; }

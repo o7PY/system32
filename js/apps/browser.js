@@ -1,8 +1,9 @@
 // Edgy: the fake browser. Owns the sandboxed iframes and the game <-> shell postMessage protocol (§9).
 import { bus } from '../events.js';
 import { Window } from '../WindowManager.js';
-import { state, set, repair, recordTime, recordScore, unlock, foundEgg } from '../state.js';
-import { ROUTES, GAMES, GAME_BY_ID, EGG_IDS } from '../registry.js';
+import { state, set, save, repair, recordTime, recordScore, unlock, foundEgg } from '../state.js';
+import { ROUTES, GAMES, GAME_BY_ID, EGG_IDS, ACHIEVE_PREFIX, SKIPPABLE, SKIP_AFTER, PLAYTIME_CAP_MS } from '../registry.js';
+import { achieve } from '../achievements.js';
 import { icon, esc, wait, fmtTime } from '../ui.js';
 import { toast } from '../notifications.js';
 import { showDialog } from '../dialogs.js';
@@ -192,6 +193,9 @@ class Browser {
             beaten: gameId ? !!state.repaired[gameId] : false,
             soundOn: state.soundOn,
             highScore: state.offlineHighScore,
+            losses: gameId ? state.losses[gameId] ?? 0 : 0,
+            canSkip: !!gameId && SKIPPABLE.includes(gameId) && (state.losses[gameId] ?? 0) >= SKIP_AFTER && !state.repaired[gameId],
+            playtimeMs: gameId ? state.playtime[gameId] ?? 0 : 0,
           },
         });
         this.#updateLive();
@@ -202,6 +206,7 @@ class Browser {
         const timeMs = Number(msg.payload?.timeMs);
         const newBest = recordTime(gameId, timeMs);
         recordScore(gameId, Number(msg.payload?.score));
+        if (state.skipped[gameId]) { delete state.skipped[gameId]; save(); bus.emit('state:change', ['skipped']); }          // a real win clears the skip marker
         const first = repair(gameId);
         if (!first) {
           toast({
@@ -215,9 +220,31 @@ class Browser {
       case 'GAME_LOST': {
         if (!gameId || msg.gameId !== gameId) return;
         const reason = short(msg.payload?.reason, 80);
+        if (SKIPPABLE.includes(gameId) && !state.repaired[gameId]) { state.losses[gameId] = (state.losses[gameId] ?? 0) + 1; save(); bus.emit('state:change', ['losses']); }       // the shell counts, never the game
         toast({ title: 'Edgy', kind: 'warn', text: `${GAME_BY_ID[gameId].component} is still broken.${reason ? ` (${reason})` : ''}` });
         break;
       }
+
+      case 'GAME_SKIPPED': {
+        if (!gameId || msg.gameId !== gameId || !SKIPPABLE.includes(gameId) || state.repaired[gameId] || (state.losses[gameId] ?? 0) < SKIP_AFTER) return;     // too early: ignored
+        state.skipped[gameId] = true; state.noShortcuts = false;
+        save();
+        repair(gameId);
+        bus.emit('puzzle:skipped', gameId);
+        break;
+      }
+
+      case 'PLAYTIME': {
+        const ms = Number(msg.ms);
+        if (!gameId || msg.gameId !== gameId || !Number.isFinite(ms) || ms <= 0) return;
+        state.playtime[gameId] = (state.playtime[gameId] ?? 0) + Math.min(ms, PLAYTIME_CAP_MS);
+        save();
+        break;
+      }
+
+      case 'ACHIEVEMENT':
+        if (gameId && typeof msg.id === 'string' && msg.id.startsWith(ACHIEVE_PREFIX[gameId] ?? '\0')) achieve(msg.id);
+        break;
 
       case 'GAME_PROGRESS': {
         const label = short(msg.payload?.label, 24);

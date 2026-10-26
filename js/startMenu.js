@@ -129,4 +129,5 @@ export function initStartMenu() {
   }, true);
 
   bus.on('win:open', () => closeStart());
+  bus.on('start:close', () => closeStart());
 }

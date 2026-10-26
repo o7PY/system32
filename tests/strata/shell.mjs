@@ -22,7 +22,7 @@ const openStrata = async (page) => {
   await page.waitFor(`!!document.querySelector('#game-strata iframe')`, { what: 'Strata window' });
   await page.waitForFrame(GAME, `!!window.__stub && __stub.inits === 1`, { timeout: 20000 });
 };
-const stateOf2 = (page) => page.eval(`JSON.parse(localStorage.getItem('system32.state') ?? 'null')`);
+const stateOf2 = (page) => page.eval(`(() => { const a = JSON.parse(localStorage.getItem('system32.state') ?? 'null'), b = JSON.parse(localStorage.getItem('system32.meta') ?? 'null'); return a || b ? { ...a, ...b } : null; })()`);
 const close = (page) => page.eval(`document.querySelector('#game-strata [data-act="close"]')?.click()`);
 const doSave = async (page, data, n = 1) => {                                       // call System32.save in the frame, wait for the nth reply
   await stub(page, `__stub.save(${JSON.stringify(data)}); 1`);
